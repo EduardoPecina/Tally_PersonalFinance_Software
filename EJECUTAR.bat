@@ -19,7 +19,7 @@ py -3.13 -m venv .venv
 if errorlevel 1 goto error
 
 :instalar
-echo [2/4] Revisando librerias. La primera vez las descarga de Internet, puede tardar 1 o 2 minutos...
+echo [2/4] Revisando librerias. La primera vez las descarga de Internet, puede tardar de 1 a 3 minutos...
 ".venv\Scripts\python.exe" -m pip install --disable-pip-version-check --require-hashes --timeout 30 --retries 2 -r requirements-lock.txt
 if errorlevel 1 goto error
 
@@ -29,6 +29,8 @@ echo [3/4] Demostracion del motor con datos ficticios:
 echo.
 echo [4/4] Corriendo las pruebas automaticas...
 ".venv\Scripts\python.exe" -m pytest -q
+echo.
+echo Para abrir TALLY en tu navegador: EJECUTAR PORTAL.bat
 echo.
 pause
 exit /b 0

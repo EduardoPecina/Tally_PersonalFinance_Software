@@ -179,6 +179,36 @@ def cambiar_saldo_inicial(libro: Libro, cuenta_id: str, saldo: Monto, fecha: dat
         libro.reemplazar_operacion(actual.id, _operacion_inicial(cuenta_id, centavos, fecha))
 
 
+def cambiar_deuda_inicial(libro: Libro, cuenta_id: str, deuda: Monto, fecha: date | None = None) -> None:
+    """Como :func:`cambiar_saldo_inicial`, pero para tarjetas: indica lo que se debía (en positivo)."""
+    if libro.cuenta(cuenta_id).tipo is not TipoCuenta.CREDITO:
+        raise ErrorValidacion("La deuda inicial solo aplica a tarjetas de crédito.")
+    cambiar_saldo_inicial(libro, cuenta_id, -a_pesos(a_centavos(deuda)), fecha)
+
+
+def deuda_inicial(libro: Libro, cuenta_id: str) -> Decimal:
+    """Lo que se debía en una tarjeta al empezar a usar TALLY (0 si no había deuda)."""
+    registrado = saldo_inicial(libro, cuenta_id)
+    return max(-registrado[0], Decimal("0.00")) if registrado else Decimal("0.00")
+
+
+def saldo_inicial(libro: Libro, cuenta_id: str) -> tuple[Decimal, date] | None:
+    """Saldo inicial registrado y su fecha (``None`` si la cuenta empezó en cero)."""
+    op = _operacion_saldo_inicial(libro, cuenta_id)
+    if op is None:
+        return None
+    (partida,) = op.partidas_de_cuenta()
+    return a_pesos(partida.importe), op.fecha
+
+
+def tiene_movimientos(libro: Libro, cuenta_id: str) -> bool:
+    """True si la cuenta tiene movimientos además de su saldo inicial (entonces no se puede borrar)."""
+    return any(
+        op.tipo is not TipoOperacion.SALDO_INICIAL and any(p.cuenta_id == cuenta_id for p in op.partidas)
+        for op in libro.operaciones()
+    )
+
+
 def saldo(libro: Libro, cuenta_id: str, al: date | None = None) -> Decimal:
     """Saldo de la cuenta. En crédito, negativo = deuda."""
     return a_pesos(libro.saldo_centavos(cuenta_id, al))

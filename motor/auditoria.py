@@ -62,3 +62,36 @@ def campos_modificados(registro: Registro | Cambio) -> dict[str, tuple]:
         for campo in antes.keys() | despues.keys()
         if antes.get(campo) != despues.get(campo)
     }
+
+
+ETIQUETA_ENTIDAD = {
+    "perfil": "Perfil",
+    "grupo": "Grupo",
+    "categoria": "Categoría",
+    "cuenta": "Cuenta",
+    "operacion": "Movimiento",
+    "respaldo": "Respaldo",
+}
+ETIQUETA_ACCION = {CREAR: "Creó", EDITAR: "Editó", BORRAR: "Borró", RESTAURAR: "Restauró"}
+_CAMPOS = {
+    "nombre": "nombre", "descripcion": "descripción", "notas": "notas", "fecha": "fecha",
+    "partidas": "importe/cuenta/categoría", "tipo": "tipo", "activa": "activa/archivada",
+    "grupo_id": "grupo", "principal": "ingreso principal", "orden": "orden",
+    "en_disponible": "cuenta como disponible", "institucion": "institución",
+    "limite_credito": "límite", "dia_corte": "día de corte", "dia_pago": "día de pago",
+}
+_IGNORAR = {"modificado_en", "secuencia", "creado_en"}
+
+
+def resumen(registro: Registro | Cambio) -> str:
+    """Una línea legible: «Editó Movimiento «Pizza» (importe/cuenta/categoría, descripción)»."""
+    datos = registro.despues or registro.antes or {}
+    nombre = datos.get("nombre") or datos.get("descripcion") or datos.get("archivo") or ""
+    texto = f"{ETIQUETA_ACCION.get(registro.accion, registro.accion)} {ETIQUETA_ENTIDAD.get(registro.entidad, registro.entidad)}"
+    if nombre:
+        texto += f" «{nombre}»"
+    if registro.accion == EDITAR:
+        campos = sorted(_CAMPOS.get(c, c) for c in campos_modificados(registro) if c not in _IGNORAR)
+        if campos:
+            texto += f" ({', '.join(campos)})"
+    return texto

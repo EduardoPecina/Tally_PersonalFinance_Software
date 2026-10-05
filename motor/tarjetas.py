@@ -123,6 +123,24 @@ def resumen_ciclo(libro: Libro, tarjeta_id: str, fecha: date | None = None, *, h
     )
 
 
+def ciclo_por_pagar(libro: Libro, tarjeta_id: str, hoy: date | None = None) -> ResumenCiclo | None:
+    """El último ciclo ya cortado: el que hay que liquidar. ``None`` si la tarjeta no tiene día de corte."""
+    tarjeta = _tarjeta(libro, tarjeta_id)
+    if tarjeta.dia_corte is None:
+        return None
+    hoy = hoy or libro.hoy()
+    inicio, fin = ciclo_de(hoy, tarjeta.dia_corte)
+    return resumen_ciclo(libro, tarjeta_id, hoy if fin == hoy else inicio - timedelta(days=1), hasta=hoy)
+
+
+def ciclo_actual(libro: Libro, tarjeta_id: str, hoy: date | None = None) -> ResumenCiclo | None:
+    """El ciclo en curso (aún sin cortar). ``None`` si la tarjeta no tiene día de corte."""
+    if _tarjeta(libro, tarjeta_id).dia_corte is None:
+        return None
+    hoy = hoy or libro.hoy()
+    return resumen_ciclo(libro, tarjeta_id, hoy, hasta=hoy)
+
+
 def _fecha_limite(corte: date, dia_pago: int | None) -> date | None:
     if dia_pago is None:
         return None

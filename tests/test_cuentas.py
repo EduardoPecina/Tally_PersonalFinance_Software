@@ -134,3 +134,14 @@ def test_saldo_a_una_fecha(libro, ctas, cat):
     assert cuentas.saldo(libro, ctas.debito, date(2026, 6, 30)) == 0
     assert cuentas.saldo(libro, ctas.debito, date(2026, 7, 9)) == D(1000)
     assert cuentas.saldo(libro, ctas.debito, date(2026, 7, 10)) == D(700)
+
+
+def test_cambiar_deuda_inicial(libro):
+    tdc = cuentas.crear(libro, "TDC", TipoCuenta.CREDITO, fecha_creacion=date(2026, 1, 1))
+    assert cuentas.deuda_inicial(libro, tdc.id) == 0
+    cuentas.cambiar_deuda_inicial(libro, tdc.id, 800)
+    assert cuentas.saldo(libro, tdc.id) == D(-800)
+    assert cuentas.deuda_inicial(libro, tdc.id) == D(800)
+    debito = cuentas.crear(libro, "Débito", TipoCuenta.DEBITO)
+    with pytest.raises(ErrorValidacion):
+        cuentas.cambiar_deuda_inicial(libro, debito.id, 10)

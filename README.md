@@ -7,8 +7,8 @@ código abierto. Está pensada para una sola persona y corre únicamente en su
 computadora. Es una alternativa más cómoda que llevar las finanzas a mano en
 Excel.
 
-> Estado: **Fase 2 — persistencia, respaldos e instalador**. Todavía no hay
-> interfaz gráfica (llega en la Fase 3).
+> Estado: **Fase 3 — portal básico**. Ya se puede usar: bienvenida, resumen,
+> registrar movimientos, historial, cuentas, categorías y respaldos.
 
 ## Privacidad
 
@@ -32,14 +32,35 @@ significa cada movimiento** sin contar nada dos veces:
 Detalle en [`docs/MODELO_CONTABLE.md`](docs/MODELO_CONTABLE.md) y
 [`docs/PERSISTENCIA.md`](docs/PERSISTENCIA.md).
 
-## Probarlo en tu PC
+## Instalar y usar
+
+1. Descarga el proyecto (en GitHub: **Code → Download ZIP**) y descomprímelo
+   en cualquier carpeta que no sea el Escritorio (por ejemplo, Descargas).
+2. Doble clic en `INSTALAR.bat`. Instala lo necesario y crea
+   `Escritorio\TALLY` y el acceso directo **TALLY**.
+3. Doble clic en el acceso directo **TALLY**: se abre en tu navegador, en
+   `http://localhost:8765`. Solo tu PC puede verlo.
+4. La primera vez te saluda, te pide tu nombre y te deja agregar tus cuentas.
+5. Para cerrarlo: botón **Cerrar TALLY** en el menú de la izquierda.
+
+Para actualizar, corre el `INSTALAR.bat` de la versión nueva. Antes de
+actualizar se respaldan tus datos y no se tocan.
+
+| Página | Responde a |
+|---|---|
+| Resumen | ¿Cuánto dinero tengo? ¿Cuánto gasté este periodo y en qué? ¿Cuánto debo en mis tarjetas? |
+| Registrar | Anotar un gasto, ingreso, transferencia, pago de tarjeta o reembolso, rápido |
+| Historial | Buscar, filtrar, ordenar, ver, editar o eliminar movimientos |
+| Cuentas | ¿Cuánto tengo en cada cuenta? Crear, editar, actualizar saldo, archivar |
+| Categorías | Organizar categorías y grupos a tu manera |
+| Respaldos y bitácora | Crear o restaurar respaldos y ver qué cambió |
+
+## Desarrollo
 
 ### Opción A: doble clic
 
-1. Descarga el proyecto (en GitHub: **Code → Download ZIP**) y descomprímelo.
-2. Doble clic en `EJECUTAR.bat`. Muestra un mes de demostración, guarda,
-   respalda y restaura en una carpeta temporal, y corre las pruebas. Todo con
-   datos ficticios.
+- `EJECUTAR.bat`: demostración del motor con datos ficticios y todas las pruebas.
+- `EJECUTAR PORTAL.bat`: abre el portal (usa `.venv` si existe).
 
 ### Opción B: terminal de VS Code
 
@@ -50,25 +71,23 @@ py -3.13 -m venv .venv
 .venv\Scripts\Activate.ps1
 python -m pip install --require-hashes -r requirements-lock.txt
 
-python -m pytest                       # todas las pruebas
+python -m pytest                       # todas las pruebas (incluye el portal, sin navegador)
 python -m motor.demo --persistencia    # la demostración
+python portal\iniciar.py               # abre el portal
 ```
+
+`requirements-lock.txt` está fijado para Windows con CPython 3.13. En otro
+sistema, instala `requirements.txt` sin hashes.
 
 Si PowerShell no deja activar el entorno, ejecuta una vez
 `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`.
-
-### Opción C: instalarlo como lo haría un usuario
-
-Doble clic en `INSTALAR.bat`. Crea `Escritorio\TALLY` con `Datos`,
-`Respaldos`, `_Programa`, `LEEME.txt` e `instalacion.log`. Correrlo otra vez
-actualiza el programa y antes respalda tus datos.
 
 ## Estructura
 
 ```text
 .streamlit/   Configuración del portal local (localhost:8765, sin telemetría)
 motor/        Toda la lógica financiera y de persistencia; independiente de Streamlit
-portal/       Interfaz con Streamlit (Fase 3)
+portal/       Interfaz con Streamlit: páginas, componentes y lanzador (iniciar.py)
 instalador/   Instalador para Windows (instalar.py)
 tests/        Pruebas automatizadas con datos ficticios
 docs/         Modelo contable y persistencia
@@ -82,7 +101,7 @@ vive fuera de `motor/`.
 
 1. **Motor financiero** ✅
 2. **Persistencia local, bitácora, respaldo, restauración e instalador** ✅
-3. Portal básico: bienvenida, dashboard, cuentas, captura, historial y categorías
+3. **Portal básico: bienvenida, resumen, cuentas, captura, historial, categorías y respaldos** ✅
 4. Análisis: gráficas, reportes y tablas dinámicas
 5. Exportación (Excel, CSV, ODS) e importación (incluido texto pegado desde Excel)
 6. Pulido y documentación
