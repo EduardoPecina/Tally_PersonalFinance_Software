@@ -25,7 +25,11 @@ def a_centavos(valor: Decimal | int | float | str) -> int:
     elif isinstance(valor, int):
         numero = Decimal(valor)
     elif isinstance(valor, float):
+        # Un float no representa centavos exactos (59.94 + 0.01 puede dar 59.950000000000003):
+        # se toleran residuos binarios, pero no un tercer decimal real.
         numero = Decimal(repr(valor))
+        if numero.is_finite() and abs(numero - numero.quantize(_CENTAVO)) < Decimal("0.000001"):
+            numero = numero.quantize(_CENTAVO)
     elif isinstance(valor, str):
         texto = valor.strip().replace("$", "").replace(",", "").replace(" ", "")
         try:

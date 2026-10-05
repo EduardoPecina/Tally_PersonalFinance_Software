@@ -1,3 +1,2 @@
-# Dependencias del portal local (Streamlit).
-# Se completará en la Fase 3, cuando exista el portal.
--r requirements.txt
+# Dependencias del portal local (Streamlit). Pandas y Altair llegan con Streamlit.
+streamlit==1.65.0

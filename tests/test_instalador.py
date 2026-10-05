@@ -128,9 +128,11 @@ def test_librerias_se_instalan_desde_el_lock_verificado(instalador, monkeypatch)
     (comando,) = comandos
     assert comando[comando.index("-r") + 1].endswith("requirements-lock.txt")
     assert "--require-hashes" in comando and "-c" not in comando
-    for linea in (RAIZ_REPO / "requirements-lock.txt").read_text().splitlines():
-        if linea and not linea.startswith("#"):
-            assert "==" in linea and "--hash=sha256:" in linea, linea
+    texto = (RAIZ_REPO / "requirements-lock.txt").read_text(encoding="utf-8").replace("\\\n", " ")
+    paquetes = [linea for linea in texto.splitlines() if linea.strip() and not linea.lstrip().startswith("#")]
+    assert any(p.startswith("streamlit==") for p in paquetes)
+    for paquete in paquetes:
+        assert "==" in paquete.split()[0] and "--hash=sha256:" in paquete, paquete
 
 
 def test_reintenta_si_windows_tiene_ocupada_la_carpeta(instalador, tmp_path, monkeypatch):
@@ -164,3 +166,14 @@ def test_si_sigue_ocupada_avisa_sin_tocar_nada(instalador, tmp_path, monkeypatch
     monkeypatch.setattr(Path, "rename", siempre_ocupado)
     assert instalador.instalar(sin_librerias=True, sin_accesos=True) == 1
     assert (raiz / "_Programa" / "marca.txt").exists()
+
+
+def test_crea_accesos_directos_cuando_hay_portal(instalador, tmp_path, monkeypatch):
+    llamadas = []
+    monkeypatch.setattr(instalador.sys, "platform", "win32")
+    monkeypatch.setattr(instalador, "crear_accesos", lambda raiz, programa: llamadas.append((raiz, programa)) or True)
+    assert instalador.instalar(sin_librerias=True, sin_accesos=False) == 0
+    raiz = carpeta(tmp_path)
+    assert llamadas == [(raiz, raiz / "_Programa")]
+    assert instalador.portal_disponible(raiz / "_Programa")
+    assert (raiz / "_Programa" / "portal" / "recursos" / "tally.ico").exists()

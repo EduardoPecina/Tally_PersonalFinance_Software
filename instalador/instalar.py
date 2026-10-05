@@ -58,6 +58,8 @@ Mis finanzas, mis números, mi PC, mis datos.
 ABRIR TALLY
   Doble clic en el acceso directo "{NOMBRE_ACCESO}" (en el Escritorio o en esta carpeta).
   Se abre en tu navegador, pero todo se queda en esta computadora: no usa Internet.
+  Para cerrarlo: botón "Cerrar TALLY" en el menú de la izquierda.
+  Si el acceso directo no funciona: _Programa\\EJECUTAR PORTAL.bat
 
 CARPETAS
   Datos       tus finanzas (tally.db). No la borres ni la edites a mano.

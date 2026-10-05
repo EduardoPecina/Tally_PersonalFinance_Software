@@ -169,6 +169,20 @@ def eliminar(libro: Libro, categoria_id: str, *, reasignar_a: str | None = None)
     libro.quitar_categoria(categoria_id)
 
 
+def para_tipo(libro: Libro, tipo) -> list[Categoria]:
+    """Categorías activas que se pueden elegir para un tipo de movimiento."""
+    from motor.modelo import TipoOperacion
+
+    tipo = TipoOperacion(tipo)
+    if tipo in (TipoOperacion.GASTO, TipoOperacion.REEMBOLSO):
+        clase = ClaseCategoria.GASTO
+    elif tipo in (TipoOperacion.INGRESO, TipoOperacion.RENDIMIENTO):
+        clase = ClaseCategoria.INGRESO
+    else:
+        return []
+    return [c for c in libro.categorias() if c.clase is clase and c.activa]
+
+
 def buscar(libro: Libro, nombre: str, clase: ClaseCategoria | None = None) -> Categoria | None:
     """Busca una categoría por nombre, sin importar mayúsculas ni espacios."""
     clave = normalizar_nombre(nombre).casefold()

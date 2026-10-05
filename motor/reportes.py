@@ -64,6 +64,23 @@ def resumen(libro: Libro, desde: date, hasta: date) -> Resumen:
     )
 
 
+@dataclass(frozen=True, slots=True)
+class Comparacion:
+    actual: Resumen
+    anterior: Resumen
+    diferencia: Resumen  # actual − anterior, campo por campo
+    desde_anterior: date
+    hasta_anterior: date
+
+
+def comparar(libro: Libro, desde: date, hasta: date) -> Comparacion:
+    """Resumen del periodo frente al periodo anterior ("¿gasté más que el mes pasado?")."""
+    desde_ant, hasta_ant = periodo_anterior(desde, hasta)
+    actual, anterior = resumen(libro, desde, hasta), resumen(libro, desde_ant, hasta_ant)
+    diferencia = Resumen(*(getattr(actual, f) - getattr(anterior, f) for f in Resumen.__dataclass_fields__))
+    return Comparacion(actual, anterior, diferencia, desde_ant, hasta_ant)
+
+
 def _hacia_ahorro(libro: Libro, op: Operacion) -> int:
     """Centavos que entran (+) o salen (−) del ahorro desde otras cuentas."""
     partidas = op.partidas_de_cuenta()
@@ -148,9 +165,13 @@ class Indicadores:
 
 def indicadores(libro: Libro, al: date | None = None) -> Indicadores:
     """Situación a una fecha. Las cuentas archivadas con saldo también cuentan."""
+    return _indicadores(libro, {c.id: libro.saldo_centavos(c.id, al) for c in libro.cuentas()})
+
+
+def _indicadores(libro: Libro, saldos: dict[str, int]) -> Indicadores:
     disponible = en_cuentas = te_deben = deuda = patrimonio = 0
     for cuenta in libro.cuentas():
-        saldo = libro.saldo_centavos(cuenta.id, al)
+        saldo = saldos.get(cuenta.id, 0)
         patrimonio += saldo
         if cuenta.en_disponible:
             disponible += saldo
@@ -167,6 +188,97 @@ def indicadores(libro: Libro, al: date | None = None) -> Indicadores:
         deuda_tarjetas=a_pesos(deuda),
         patrimonio_neto=a_pesos(patrimonio),
     )
+
+
+@dataclass(frozen=True, slots=True)
+class PuntoEvolucion:
+    fecha: date
+    patrimonio_neto: Decimal
+    dinero_disponible: Decimal
+    deuda_tarjetas: Decimal
+
+
+def evolucion(libro: Libro, desde: date, hasta: date) -> list[PuntoEvolucion]:
+    """Patrimonio, disponible y deuda al cierre de cada día, semana o mes del rango.
+
+    El paso se elige solo según la longitud del rango (diario hasta ~3 meses,
+    semanal hasta ~1 año, mensual después). El último punto siempre es ``hasta``.
+    """
+    if hasta < desde:
+        desde, hasta = hasta, desde
+    dias = (hasta - desde).days
+    if dias <= 93:
+        puntos = [desde + timedelta(days=i) for i in range(dias + 1)]
+    elif dias <= 400:
+        puntos = [desde + timedelta(days=i) for i in range(6, dias + 1, 7)]
+    else:
+        puntos, actual = [], date(desde.year, desde.month, 1)
+        while actual <= hasta:
+            fin_mes = rango_mes(actual.year, actual.month)[1]
+            if fin_mes >= desde:
+                puntos.append(min(fin_mes, hasta))
+            actual = fin_mes + timedelta(days=1)
+    if not puntos or puntos[-1] != hasta:
+        puntos.append(hasta)
+
+    saldos: dict[str, int] = defaultdict(int)
+    operaciones = libro.operaciones(hasta=hasta)
+    resultado, i = [], 0
+    for punto in puntos:
+        while i < len(operaciones) and operaciones[i].fecha <= punto:
+            for p in operaciones[i].partidas_de_cuenta():
+                saldos[p.cuenta_id] += p.importe
+            i += 1
+        ind = _indicadores(libro, saldos)
+        resultado.append(PuntoEvolucion(punto, ind.patrimonio_neto, ind.dinero_disponible, ind.deuda_tarjetas))
+    return resultado
+
+
+# ------------------------------------------------------------------ periodos
+
+PERIODOS = {
+    "mes_actual": "Este mes",
+    "mes_anterior": "Mes pasado",
+    "quincena": "Esta quincena",
+    "anio": "Este año",
+    "12_meses": "Últimos 12 meses",
+}
+
+
+def rango_periodo(libro: Libro, clave: str, hoy: date | None = None) -> tuple[date, date]:
+    """Fechas (inclusivas) de un periodo con nombre. Por omisión, el mes actual."""
+    hoy = hoy or libro.hoy()
+    if clave == "mes_anterior":
+        ultimo = date(hoy.year, hoy.month, 1) - timedelta(days=1)
+        return rango_mes(ultimo.year, ultimo.month)
+    if clave == "quincena":
+        quincena = quincena_de(libro, hoy)
+        if quincena is not None:
+            return quincena[0], quincena[1] or hoy
+        if hoy.day <= 15:
+            return date(hoy.year, hoy.month, 1), date(hoy.year, hoy.month, 15)
+        return date(hoy.year, hoy.month, 16), rango_mes(hoy.year, hoy.month)[1]
+    if clave == "anio":
+        return date(hoy.year, 1, 1), date(hoy.year, 12, 31)
+    if clave == "12_meses":
+        inicio = date(hoy.year - 1, hoy.month, 1) + timedelta(days=32)
+        return date(inicio.year, inicio.month, 1), rango_mes(hoy.year, hoy.month)[1]
+    return rango_mes(hoy.year, hoy.month)
+
+
+def periodo_anterior(desde: date, hasta: date) -> tuple[date, date]:
+    """El periodo inmediatamente anterior, para comparar ("¿gasté más que el mes pasado?").
+
+    Si el rango es un mes completo, el anterior es el mes completo previo; si
+    no, un rango de la misma duración que termina el día antes de ``desde``.
+    """
+    if desde.day == 1 and hasta == rango_mes(hasta.year, hasta.month)[1] and (desde.year, desde.month) == (
+        hasta.year, hasta.month
+    ):
+        ultimo = desde - timedelta(days=1)
+        return rango_mes(ultimo.year, ultimo.month)
+    fin = desde - timedelta(days=1)
+    return fin - (hasta - desde), fin
 
 
 # ------------------------------------------------------------------ hechos
