@@ -1,4 +1,5 @@
 import sqlite3
+from pathlib import Path
 from datetime import date
 
 import pytest
@@ -179,7 +180,10 @@ def test_rutas_por_defecto(monkeypatch, tmp_path):
     assert sesion.almacen.ruta == tmp_path / "Datos" / "tally.db"
 
 
-def test_rutas_instalado(monkeypatch):
+def test_raiz_en_desarrollo_o_instalado(monkeypatch):
     monkeypatch.delenv("TALLY_RAIZ", raising=False)
-    raiz = rutas.raiz()
-    assert (raiz / "motor").is_dir()  # en desarrollo, la raíz es el repositorio
+    programa = Path(rutas.__file__).resolve().parents[1]
+    if programa.name == "_Programa":
+        assert rutas.raiz() == programa.parent  # instalado: Escritorio\TALLY
+    else:
+        assert rutas.raiz() == programa  # en desarrollo: el repositorio
