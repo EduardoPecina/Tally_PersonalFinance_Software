@@ -43,6 +43,36 @@ class Libro:
         ):
             self._categorias[categoria.id] = categoria
 
+    @classmethod
+    def desde_estado(
+        cls,
+        *,
+        perfil: Perfil | None,
+        grupos: list[Grupo],
+        categorias: list[Categoria],
+        cuentas: list[Cuenta],
+        operaciones: list[Operacion],
+        secuencia: int,
+        reloj: Callable[[], datetime] | None = None,
+    ) -> Libro:
+        """Reconstruye un libro ya guardado, tal cual (lo usa la persistencia)."""
+        libro = cls(reloj=reloj)
+        libro.perfil = perfil
+        libro._grupos = {g.id: g for g in grupos}
+        libro._categorias.update({c.id: c for c in categorias})
+        libro._cuentas = {c.id: c for c in cuentas}
+        libro._operaciones = {op.id: op for op in operaciones}
+        libro._secuencia = max([secuencia, *(op.secuencia for op in operaciones)])
+        return libro
+
+    @property
+    def reloj(self) -> Callable[[], datetime]:
+        return self._reloj
+
+    @property
+    def secuencia(self) -> int:
+        return self._secuencia
+
     # ----------------------------------------------------------------- tiempo
 
     def ahora(self) -> datetime:

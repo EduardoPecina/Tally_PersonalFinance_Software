@@ -1,6 +1,7 @@
 @echo off
 REM TALLY - prueba del motor (provisional hasta que exista el portal).
-REM Muestra un mes de demostracion con datos ficticios y corre las pruebas.
+REM Muestra un mes de demostracion con datos ficticios, guarda/respalda/restaura
+REM en una carpeta temporal y corre las pruebas.
 setlocal
 cd /d "%~dp0"
 chcp 65001 >nul
@@ -21,7 +22,7 @@ if errorlevel 1 goto error
 ".venv\Scripts\python.exe" -m pip install --disable-pip-version-check -q --require-hashes -r requirements-lock.txt
 if errorlevel 1 goto error
 
-".venv\Scripts\python.exe" -m motor.demo
+".venv\Scripts\python.exe" -m motor.demo --persistencia
 echo.
 echo Corriendo las pruebas automaticas...
 ".venv\Scripts\python.exe" -m pytest -q

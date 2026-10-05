@@ -1,10 +1,15 @@
-"""Demostración del motor con un mes ficticio (no usa ni guarda datos reales).
+"""Demostración del motor con un mes ficticio (no usa ni toca datos reales).
 
-Uso:  python -m motor.demo
+Uso:  python -m motor.demo                 un mes calculado por el motor
+      python -m motor.demo --persistencia  además: guardar, reabrir, respaldar y restaurar
+                                           (en una carpeta temporal que se muestra al final)
 Provisional hasta que exista el portal (Fase 3).
 """
 
+import sys
+import tempfile
 from datetime import date, datetime
+from pathlib import Path
 
 from motor import categorias, cuentas, movimientos, perfil, reportes, tarjetas
 from motor.dinero import formatear
@@ -97,5 +102,48 @@ def main() -> None:
     )
 
 
+def demo_persistencia() -> None:
+    from motor import respaldos
+    from motor.serializacion import instantanea
+    from motor.sesion import Sesion
+
+    carpeta = Path(tempfile.mkdtemp(prefix="tally_demo_"))
+    ruta = carpeta / "Datos" / "tally.db"
+    print("PERSISTENCIA")
+
+    sesion = Sesion(ruta)
+    with sesion.cambio() as libro:
+        perfil.configurar(libro, "Usuario de prueba")
+        debito = cuentas.crear(libro, "Débito", TipoCuenta.DEBITO, saldo_inicial=1000).id
+        movimientos.registrar_gasto(libro, libro.hoy(), debito, categorias.buscar(libro, "Alimentos").id, 250, "Pizza")
+    print(f"  1. Guardado en {ruta}")
+
+    reabierta = Sesion(ruta)
+    print(f"  2. Al reabrir, saldo de Débito: {formatear(cuentas.saldo(reabierta.libro, debito))}")
+
+    respaldo = respaldos.crear(reabierta, carpeta / "Respaldos")
+    print(f"  3. Respaldo creado: {respaldo.name}")
+
+    with reabierta.cambio() as libro:
+        movimientos.registrar_gasto(libro, libro.hoy(), debito, categorias.buscar(libro, "Regalos").id, 700, "Error")
+    print(f"  4. Se registró un gasto por error. Saldo: {formatear(cuentas.saldo(reabierta.libro, debito))}")
+
+    info = respaldos.inspeccionar(respaldo)
+    print(f"  5. El respaldo contiene {info.cuentas} cuenta(s) y {info.movimientos} movimiento(s) de {info.perfil}")
+    resultado = respaldos.restaurar(reabierta, respaldo, carpeta_seguridad=carpeta / "Respaldos")
+    print(f"  6. Restaurado. Saldo: {formatear(cuentas.saldo(reabierta.libro, debito))}"
+          f"  (antes se guardó {resultado.respaldo_de_seguridad.name})")
+
+    assert instantanea(Sesion(ruta).libro) == instantanea(reabierta.libro)
+    print("\nBITÁCORA (últimos cambios)")
+    for registro in reabierta.almacen.bitacora(limite=4):
+        datos = registro.despues or registro.antes or {}
+        nombre = datos.get("descripcion") or datos.get("nombre") or datos.get("archivo", "")
+        print(f"  {registro.fecha_hora}  {registro.accion:<10} {registro.entidad:<10} {nombre}")
+    print(f"\nPuedes revisar los archivos en: {carpeta}\n")
+
+
 if __name__ == "__main__":
     main()
+    if "--persistencia" in sys.argv:
+        demo_persistencia()

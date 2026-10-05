@@ -14,3 +14,7 @@ class ErrorValidacion(ErrorTally, ValueError):
 
 class ErrorNoEncontrado(ErrorTally, LookupError):
     """Se pidió una entidad que no existe."""
+
+
+class ErrorDatos(ErrorTally):
+    """El archivo de datos o un respaldo está dañado, es de otra versión o cambió por fuera."""
