@@ -2,7 +2,16 @@
 
 Todos los cambios relevantes de TALLY se documentan aquí.
 
-## [0.3.1] — Sin publicar
+## [0.3.2] — Sin publicar
+
+- Acceso directo **TALLY** más confiable: el instalador lo crea con pywin32,
+  como el Portal de Honorarios, y si falla usa PowerShell (restringido en
+  algunas PC de trabajo). Al final comprueba que los dos `.lnk` existan (en
+  el Escritorio y dentro de la carpeta TALLY) y anota en `instalacion.log`
+  cualquiera que falte.
+- Nueva dependencia solo para Windows: `pywin32` (lock: 44 paquetes con hash).
+
+## [0.3.1]
 
 ### Marca y robustez del portal
 
