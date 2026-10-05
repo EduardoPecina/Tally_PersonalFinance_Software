@@ -1,0 +1,69 @@
+# ==========================================================================
+# TALLY — los datos financieros del usuario NUNCA van al repositorio.
+# ==========================================================================
+
+# --- Datos personales y respaldos ---
+Datos/
+datos/
+Respaldos/
+respaldos/
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+*.tally
+*.bak
+*.zip
+
+# --- Hojas de cálculo y exportaciones ---
+*.csv
+*.tsv
+*.xlsx
+*.xlsm
+*.xls
+*.ods
+*.json
+
+# --- Texto pegado / importaciones (excepto archivos del proyecto) ---
+*.txt
+!requirements.txt
+!requirements-lock.txt
+!requirements-portal.txt
+
+# Datos ficticios de prueba, si alguna vez se necesitan como archivo.
+!tests/fixtures/**
+
+# --- Logs ---
+*.log
+instalacion.log
+
+# --- Contenido generado por el instalador ---
+_Programa/*
+!_Programa/LEEME.md
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+env/
+.pytest_cache/
+.coverage
+htmlcov/
+build/
+dist/
+*.egg-info/
+
+# --- Streamlit (secretos locales) ---
+.streamlit/secrets.toml
+
+# --- Sistema / editores ---
+.DS_Store
+Thumbs.db
+desktop.ini
+.vscode/
+.idea/
+*.tmp
+~$*

@@ -1,0 +1,23 @@
+# Configuración del portal local de TALLY. Sin lógica de negocio aquí.
+
+[server]
+address = "localhost"   # solo accesible desde esta PC
+port = 8765             # puerto fijo, distinto del 8501 por defecto
+headless = true
+runOnSave = false
+
+[browser]
+gatherUsageStats = false   # sin telemetría
+serverAddress = "localhost"
+serverPort = 8765
+
+[client]
+toolbarMode = "minimal"
+
+[theme]
+base = "light"
+primaryColor = "#2E7D5B"
+backgroundColor = "#FFFFFF"
+secondaryBackgroundColor = "#F3F6F4"
+textColor = "#1F2A24"
+font = "sans serif"

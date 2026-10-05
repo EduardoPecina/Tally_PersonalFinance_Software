@@ -1,0 +1,5 @@
+# Dependencias generales de TALLY.
+#
+# El motor financiero (motor/) solo usa la biblioteca estándar de Python 3.13.
+# Lo siguiente es para ejecutar las pruebas (tests/).
+pytest>=9.1,<10
