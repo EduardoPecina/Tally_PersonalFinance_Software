@@ -1,0 +1,133 @@
+import json
+import zipfile
+from datetime import date
+
+import pytest
+
+from conftest import AHORA, D
+from motor import auditoria, categorias, cuentas, movimientos, perfil, respaldos
+from motor.errores import ErrorDatos
+from motor.serializacion import instantanea
+from motor.sesion import Sesion
+
+
+def reloj():
+    return AHORA
+
+
+@pytest.fixture
+def sesion(tmp_path):
+    s = Sesion(tmp_path / "Datos" / "tally.db", reloj=reloj)
+    with s.cambio() as libro:
+        perfil.configurar(libro, "Usuario Ficticio")
+        debito = cuentas.crear(libro, "Débito", "debito", saldo_inicial=500, fecha_creacion=date(2026, 7, 1)).id
+        movimientos.registrar_gasto(libro, date(2026, 7, 3), debito, categorias.buscar(libro, "Alimentos").id, 120)
+    return s
+
+
+def test_crear_e_inspeccionar(sesion, tmp_path):
+    ruta = respaldos.crear(sesion, tmp_path / "Respaldos")
+    assert ruta.name == "TALLY_respaldo_2026-07-20_120000.zip"
+    info = respaldos.inspeccionar(ruta)
+    assert (info.perfil, info.cuentas, info.movimientos) == ("Usuario Ficticio", 1, 2)
+    assert (info.primera_fecha, info.ultima_fecha) == ("2026-07-01", "2026-07-03")
+    assert info.creado_en == "2026-07-20T12:00:00"
+    # Mismo minuto: no se sobrescribe, se usa otro nombre.
+    assert respaldos.crear(sesion, tmp_path / "Respaldos").name == "TALLY_respaldo_2026-07-20_120000_2.zip"
+
+
+def test_crear_en_ruta_elegida(sesion, tmp_path):
+    destino = tmp_path / "USB" / "mis_finanzas.zip"
+    assert respaldos.crear(sesion, destino) == destino
+    assert destino.exists()
+    assert not list(destino.parent.glob("*.tmp"))
+
+
+def test_restaurar_recupera_todo_y_crea_respaldo_de_seguridad(sesion, tmp_path):
+    respaldo = respaldos.crear(sesion, tmp_path / "Respaldos")
+    original = instantanea(sesion.libro)
+    with sesion.cambio() as libro:
+        movimientos.registrar_gasto(libro, date(2026, 7, 9), cuentas.buscar(libro, "Débito").id,
+                                    categorias.buscar(libro, "Alimentos").id, 999)
+        perfil.configurar(libro, "Otro")
+
+    resultado = respaldos.restaurar(sesion, respaldo, carpeta_seguridad=tmp_path / "Respaldos")
+
+    assert instantanea(sesion.libro) == original
+    assert resultado.respaldo_de_seguridad.name.startswith("TALLY_antes_de_restaurar_")
+    assert respaldos.inspeccionar(resultado.respaldo_de_seguridad).movimientos == 3
+    # Persistido: al reabrir sigue restaurado y la bitácora lo anota.
+    reabierta = Sesion(sesion.almacen.ruta, reloj=reloj)
+    assert instantanea(reabierta.libro) == original
+    ultimo = reabierta.almacen.bitacora(limite=1)[0]
+    assert ultimo.accion == auditoria.RESTAURAR and ultimo.despues["archivo"] == respaldo.name
+    # Y se puede seguir trabajando normalmente.
+    with sesion.cambio() as libro:
+        cuentas.crear(libro, "Nueva", "efectivo")
+
+
+def test_restaurar_en_otra_pc(sesion, tmp_path):
+    respaldo = respaldos.crear(sesion, tmp_path / "Respaldos")
+    otra_pc = Sesion(tmp_path / "OtraPC" / "Datos" / "tally.db", reloj=reloj)
+    respaldos.restaurar(otra_pc, respaldo, carpeta_seguridad=tmp_path / "OtraPC" / "Respaldos")
+    assert instantanea(otra_pc.libro) == instantanea(sesion.libro)
+    assert cuentas.saldo(otra_pc.libro, cuentas.buscar(otra_pc.libro, "Débito").id) == D(380)
+
+
+def test_respaldo_daniado_no_cambia_nada(sesion, tmp_path):
+    respaldo = respaldos.crear(sesion, tmp_path / "Respaldos")
+    alterado = tmp_path / "alterado.zip"
+    with zipfile.ZipFile(respaldo) as origen, zipfile.ZipFile(alterado, "w") as destino:
+        destino.writestr(respaldos.MANIFIESTO, origen.read(respaldos.MANIFIESTO))
+        destino.writestr(respaldos.DATOS, origen.read(respaldos.DATOS).replace(b"Usuario", b"Usuaria"))
+    antes = instantanea(sesion.libro)
+    seguridad = tmp_path / "Seguridad"
+    with pytest.raises(ErrorDatos, match="huella"):
+        respaldos.restaurar(sesion, alterado, carpeta_seguridad=seguridad)
+    assert instantanea(sesion.libro) == antes
+    assert not seguridad.exists()  # ni siquiera se creó el respaldo de seguridad
+
+
+@pytest.mark.parametrize("contenido", [b"no es un zip", None])
+def test_archivos_que_no_son_respaldos(tmp_path, contenido):
+    ruta = tmp_path / "x.zip"
+    if contenido is None:
+        with zipfile.ZipFile(ruta, "w") as zz:
+            zz.writestr("otra_cosa.txt", "hola")
+    else:
+        ruta.write_bytes(contenido)
+    with pytest.raises(ErrorDatos):
+        respaldos.inspeccionar(ruta)
+    with pytest.raises(ErrorDatos):
+        respaldos.inspeccionar(tmp_path / "no_existe.zip")
+
+
+def test_respaldo_de_version_mas_nueva(sesion, tmp_path):
+    respaldo = respaldos.crear(sesion, tmp_path / "Respaldos")
+    nuevo = tmp_path / "nuevo.zip"
+    with zipfile.ZipFile(respaldo) as origen, zipfile.ZipFile(nuevo, "w") as destino:
+        manifiesto = json.loads(origen.read(respaldos.MANIFIESTO))
+        manifiesto["version_formato"] = 99
+        destino.writestr(respaldos.MANIFIESTO, json.dumps(manifiesto))
+        destino.writestr(respaldos.DATOS, origen.read(respaldos.DATOS))
+    with pytest.raises(ErrorDatos, match="más nueva"):
+        respaldos.inspeccionar(nuevo)
+
+
+def test_respaldo_automatico_rota(sesion, tmp_path):
+    carpeta = tmp_path / "Respaldos"
+    for _ in range(5):
+        respaldos.respaldo_automatico(sesion, carpeta, conservar=3)
+    respaldos.crear(sesion, carpeta)  # los manuales no se borran
+    assert len(list(carpeta.glob("TALLY_automatico_*.zip"))) == 3
+    assert len(list(carpeta.glob("TALLY_respaldo_*.zip"))) == 1
+
+
+def test_respaldar_archivo_sin_modificarlo(sesion, tmp_path):
+    ruta = sesion.almacen.ruta
+    antes = ruta.read_bytes()
+    respaldo = respaldos.respaldar_archivo_de_datos(ruta, tmp_path / "Respaldos")
+    assert respaldo.name.startswith("TALLY_antes_de_actualizar_")
+    assert respaldos.inspeccionar(respaldo).movimientos == 2
+    assert ruta.read_bytes() == antes
+    assert respaldos.respaldar_archivo_de_datos(tmp_path / "no_hay.db", tmp_path / "Respaldos") is None
