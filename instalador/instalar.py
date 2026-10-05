@@ -244,7 +244,25 @@ def respaldar_datos(raiz):
     return respaldar_archivo_de_datos(raiz / DATOS / ARCHIVO_DATOS, raiz / RESPALDOS, prefijo="antes_de_actualizar")
 
 
-def borrar_carpeta(ruta, intentos=10, espera=1.0):
+ESPERA_BLOQUEO = 1.0                              # segundos entre reintentos si Windows tiene archivos ocupados
+
+
+def renombrar(origen, destino, intentos=15):
+    """Renombra una carpeta reintentando unos segundos: justo después de copiar, el antivirus, el indexador de
+    Windows u OneDrive suelen tener archivos abiertos un momento y Windows niega el cambio (PermissionError)."""
+    for intento in range(intentos):
+        try:
+            origen.rename(destino)
+            return
+        except PermissionError:
+            if intento == intentos - 1:
+                raise
+            if intento == 0:
+                print(f"Windows tiene ocupada la carpeta {origen.name}; esperando a que la libere...")
+            time.sleep(ESPERA_BLOQUEO)
+
+
+def borrar_carpeta(ruta, intentos=10, espera=None):
     """Borra una carpeta aunque tenga archivos de solo lectura. Reintenta unos segundos: OneDrive (o el antivirus)
     a veces deja archivos abiertos un momento después de copiarlos. True si quedó borrada."""
     def quitar_solo_lectura(funcion, camino, _):
@@ -259,7 +277,7 @@ def borrar_carpeta(ruta, intentos=10, espera=1.0):
             return True
         shutil.rmtree(ruta, **opcion)
         if ruta.exists() and intento < intentos - 1:
-            time.sleep(espera)
+            time.sleep(ESPERA_BLOQUEO if espera is None else espera)
     return not ruta.exists()
 
 
@@ -282,14 +300,14 @@ def copiar_programa(destino):
     while anterior.exists():                             # uno viejo sigue bloqueado: se usa otro nombre
         anterior, n = destino.with_name(f"{destino.name}_anterior_{n}"), n + 1
     if destino.exists():
-        destino.rename(anterior)             # si el portal o un archivo está abierto, Windows no deja: PermissionError
+        renombrar(destino, anterior)         # si TALLY o un archivo sigue abierto, al final: PermissionError
     try:
         shutil.copytree(ORIGEN, destino, ignore=NO_COPIAR)
     except BaseException:
         if destino.exists():
             borrar_carpeta(destino, intentos=3)
         if anterior.exists() and not destino.exists():
-            anterior.rename(destino)         # algo falló: se deja la versión anterior como estaba
+            renombrar(anterior, destino)     # algo falló: se deja la versión anterior como estaba
         raise
     if not borrar_carpeta(anterior):
         print(f"OneDrive todavía usa {anterior.name}: se borrará en la próxima actualización.")

@@ -22,6 +22,7 @@ def instalador(monkeypatch, tmp_path):
     monkeypatch.setenv("TALLY_ESCRITORIO", str(tmp_path / "Escritorio"))
     monkeypatch.setenv("TALLY_SIN_VENTANAS", "1")
     monkeypatch.setattr(modulo, "portal_abierto", lambda: False)
+    monkeypatch.setattr(modulo, "ESPERA_BLOQUEO", 0)
     return modulo
 
 
@@ -130,3 +131,36 @@ def test_librerias_se_instalan_desde_el_lock_verificado(instalador, monkeypatch)
     for linea in (RAIZ_REPO / "requirements-lock.txt").read_text().splitlines():
         if linea and not linea.startswith("#"):
             assert "==" in linea and "--hash=sha256:" in linea, linea
+
+
+def test_reintenta_si_windows_tiene_ocupada_la_carpeta(instalador, tmp_path, monkeypatch):
+    """Justo después de copiar, el antivirus u OneDrive bloquean la carpeta unos segundos."""
+    instalador.instalar(sin_librerias=True, sin_accesos=True)
+    raiz = carpeta(tmp_path)
+    original = Path.rename
+    fallos = {"pendientes": 3}
+
+    def rename_ocupado(self, destino):
+        if self.name == "_Programa" and fallos["pendientes"]:
+            fallos["pendientes"] -= 1
+            raise PermissionError("El proceso no tiene acceso al archivo")
+        return original(self, destino)
+
+    monkeypatch.setattr(Path, "rename", rename_ocupado)
+    assert instalador.instalar(sin_librerias=True, sin_accesos=True) == 0
+    assert fallos["pendientes"] == 0
+    assert (raiz / "_Programa" / "motor").is_dir()
+    assert not list(raiz.glob("_Programa_anterior*"))
+
+
+def test_si_sigue_ocupada_avisa_sin_tocar_nada(instalador, tmp_path, monkeypatch):
+    instalador.instalar(sin_librerias=True, sin_accesos=True)
+    raiz = carpeta(tmp_path)
+    (raiz / "_Programa" / "marca.txt").write_text("versión anterior")
+
+    def siempre_ocupado(self, destino):
+        raise PermissionError("ocupado")
+
+    monkeypatch.setattr(Path, "rename", siempre_ocupado)
+    assert instalador.instalar(sin_librerias=True, sin_accesos=True) == 1
+    assert (raiz / "_Programa" / "marca.txt").exists()
