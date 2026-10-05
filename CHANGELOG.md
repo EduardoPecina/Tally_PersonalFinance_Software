@@ -2,7 +2,30 @@
 
 Todos los cambios relevantes de TALLY se documentan aquí.
 
-## [0.3.0] — Sin publicar
+## [0.3.1] — Sin publicar
+
+### Marca y robustez del portal
+
+- Identidad visual de TALLY: símbolo de marcas de conteo, logotipo con
+  wordmark, acento violeta `#6B53F1`, favicon e ícono del acceso directo.
+  Recursos y su generador en `docs/marca/`.
+- «Cerrar TALLY» detiene todo lo del portal (incluidos portales viejos y el
+  lanzador) y muestra «TALLY se cerró» en lugar del error de conexión.
+- TALLY se apaga solo tras 15 minutos sin pestañas abiertas
+  (`TALLY_INACTIVIDAD_MIN`).
+- Lanzador más robusto: un solo lanzador a la vez (clics de más), reinicio
+  de un portal trabado, vida máxima y mensaje de error con las últimas
+  líneas de `portal.log`.
+- Al abrir se borran las copias `_Programa_anterior` que OneDrive no dejó
+  borrar al actualizar, solo si de verdad son copias del programa.
+- Corregido: al intentar abrir un archivo de datos dañado quedaba una
+  conexión abierta; en Windows eso bloqueaba el archivo e impedía apartarlo
+  para restaurar un respaldo.
+- Nueva dependencia: `psutil` (lock regenerado: 43 paquetes con hash).
+
+Basado en la lógica de apagado, lanzador y limpieza del Portal de Honorarios.
+
+## [0.3.0]
 
 ### Fase 3: portal básico (Streamlit)
 

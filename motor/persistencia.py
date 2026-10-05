@@ -73,8 +73,12 @@ class Almacen:
 
     def _conectar(self) -> sqlite3.Connection:
         conexion = sqlite3.connect(self.ruta, isolation_level=None, timeout=10)
-        conexion.execute("PRAGMA journal_mode=WAL")
-        conexion.execute("PRAGMA synchronous=FULL")
+        try:
+            conexion.execute("PRAGMA journal_mode=WAL")
+            conexion.execute("PRAGMA synchronous=FULL")
+        except BaseException:
+            conexion.close()  # si no, en Windows el archivo queda bloqueado y no se puede apartar ni restaurar
+            raise
         return conexion
 
     def _preparar(self) -> None:

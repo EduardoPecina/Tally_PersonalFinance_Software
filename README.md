@@ -1,6 +1,7 @@
-# TALLY
+<p align="center"><img src="docs/marca/logotipo.png" alt="TALLY" width="360"></p>
 
-**Mis finanzas, mis números, mi PC, mis datos.**
+<p align="center"><b>Mis finanzas, mis números, mi PC, mis datos.</b><br>
+<i>Your money. Your computer. Your data.</i></p>
 
 TALLY es una aplicación de finanzas personales **local-first**, gratuita y de
 código abierto. Está pensada para una sola persona y corre únicamente en su
@@ -41,7 +42,9 @@ Detalle en [`docs/MODELO_CONTABLE.md`](docs/MODELO_CONTABLE.md) y
 3. Doble clic en el acceso directo **TALLY**: se abre en tu navegador, en
    `http://localhost:8765`. Solo tu PC puede verlo.
 4. La primera vez te saluda, te pide tu nombre y te deja agregar tus cuentas.
-5. Para cerrarlo: botón **Cerrar TALLY** en el menú de la izquierda.
+5. Para cerrarlo: botón **Cerrar TALLY** en el menú de la izquierda. Si solo
+   cierras la pestaña, TALLY se apaga solo tras 15 minutos sin pestañas
+   abiertas. Todo se guarda al momento, así que no se pierde nada.
 
 Para actualizar, corre el `INSTALAR.bat` de la versión nueva. Antes de
 actualizar se respaldan tus datos y no se tocan.
@@ -90,7 +93,7 @@ motor/        Toda la lógica financiera y de persistencia; independiente de Str
 portal/       Interfaz con Streamlit: páginas, componentes y lanzador (iniciar.py)
 instalador/   Instalador para Windows (instalar.py)
 tests/        Pruebas automatizadas con datos ficticios
-docs/         Modelo contable y persistencia
+docs/         Modelo contable, persistencia y marca (docs/marca)
 _Programa/    Carpeta administrada por el instalador
 ```
 
