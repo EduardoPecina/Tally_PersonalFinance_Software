@@ -1,4 +1,5 @@
 import sqlite3
+from contextlib import closing
 from pathlib import Path
 from datetime import date
 
@@ -140,7 +141,7 @@ def test_archivo_que_no_es_base_de_datos(ruta):
 def test_datos_que_no_cuadran_se_detectan(ruta):
     sesion = Sesion(ruta, reloj=reloj)
     poblar(sesion)
-    with sqlite3.connect(ruta) as conexion:
+    with closing(sqlite3.connect(ruta)) as conexion, conexion:
         conexion.execute(
             "UPDATE entidades SET datos = replace(datos, '\"importe\": 12345', '\"importe\": 99999') "
             "WHERE tipo = 'operacion'"
@@ -151,7 +152,7 @@ def test_datos_que_no_cuadran_se_detectan(ruta):
 
 def test_version_de_esquema_mas_nueva(ruta):
     Sesion(ruta)
-    with sqlite3.connect(ruta) as conexion:
+    with closing(sqlite3.connect(ruta)) as conexion, conexion:
         conexion.execute("UPDATE meta SET valor = '999' WHERE clave = 'version_esquema'")
     with pytest.raises(ErrorDatos, match="más nueva"):
         Sesion(ruta)
@@ -187,3 +188,27 @@ def test_raiz_en_desarrollo_o_instalado(monkeypatch):
         assert rutas.raiz() == programa.parent  # instalado: Escritorio\TALLY
     else:
         assert rutas.raiz() == programa  # en desarrollo: el repositorio
+
+
+def test_archivo_danado_no_queda_bloqueado(ruta, monkeypatch):
+    """En Windows un archivo con una conexión abierta no se puede renombrar: abrir uno dañado no debe dejarla."""
+    from motor import persistencia
+
+    abiertas = []
+    conectar = sqlite3.connect
+
+    def conectar_y_anotar(*args, **kwargs):
+        conexion = conectar(*args, **kwargs)
+        abiertas.append(conexion)
+        return conexion
+
+    monkeypatch.setattr(persistencia.sqlite3, "connect", conectar_y_anotar)
+    ruta.parent.mkdir(parents=True)
+    ruta.write_bytes(b"esto no es sqlite" * 100)
+    with pytest.raises(ErrorDatos):
+        Sesion(ruta)
+    assert abiertas
+    for conexion in abiertas:
+        with pytest.raises(sqlite3.ProgrammingError):  # «Cannot operate on a closed database»
+            conexion.execute("SELECT 1")
+    assert Sesion.apartar_archivo_danado(ruta) is not None

@@ -16,8 +16,8 @@ toolbarMode = "minimal"
 
 [theme]
 base = "light"
-primaryColor = "#2E7D5B"
+primaryColor = "#6B53F1"            # acento de la marca
 backgroundColor = "#FFFFFF"
-secondaryBackgroundColor = "#F3F6F4"
-textColor = "#1F2A24"
+secondaryBackgroundColor = "#F4F4F6"
+textColor = "#101014"               # tinta de la marca
 font = "sans serif"

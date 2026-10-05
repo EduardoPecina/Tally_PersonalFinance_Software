@@ -11,7 +11,7 @@ import streamlit as st
 
 from portal.componentes.formato import dinero
 
-COLOR = "#2E7D5B"  # el color principal del portal (.streamlit/config.toml)
+COLOR = "#6B53F1"  # acento de la marca (.streamlit/config.toml)
 TEXTO_SECUNDARIO = "#52514e"
 
 

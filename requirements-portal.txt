@@ -1,2 +1,4 @@
 # Dependencias del portal local (Streamlit). Pandas y Altair llegan con Streamlit.
 streamlit==1.65.0
+# Para cerrar TALLY por completo y reiniciar un portal trabado (portal/apagado.py).
+psutil==7.2.2
