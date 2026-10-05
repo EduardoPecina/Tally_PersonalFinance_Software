@@ -1,0 +1,3 @@
+# Dependencias del portal local (Streamlit).
+# Se completará en la Fase 3, cuando exista el portal.
+-r requirements.txt
