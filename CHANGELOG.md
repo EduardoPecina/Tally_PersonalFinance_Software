@@ -20,4 +20,6 @@ Todos los cambios relevantes de TALLY se documentan aquí.
   cuenta, indicadores, tabla de hechos para pivots y sobrantes por quincena.
 - Perfil local para la bienvenida.
 - Pruebas automatizadas con datos ficticios.
+- `EJECUTAR.bat` provisional: demostración del motor con datos ficticios
+  (`python -m motor.demo`) y pruebas automáticas.
 - Estructura del proyecto, licencia MIT y configuración de Streamlit.

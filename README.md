@@ -61,6 +61,15 @@ _Programa/    Carpeta administrada por el instalador
 El portal solo muestra información y llama al motor. Ninguna regla financiera
 vive fuera de `motor/`.
 
+## Probarlo en Windows (por ahora)
+
+Mientras no exista el portal, `EJECUTAR.bat` muestra un mes de demostración
+con datos ficticios y corre las pruebas:
+
+1. Instala [Python 3.13](https://www.python.org/downloads/).
+2. Descarga el proyecto (botón **Code → Download ZIP** en GitHub) y descomprímelo.
+3. Doble clic en `EJECUTAR.bat`.
+
 ## Desarrollo y pruebas
 
 Requiere Python 3.13.
