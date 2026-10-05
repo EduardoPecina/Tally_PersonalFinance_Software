@@ -325,28 +325,68 @@ def portal_disponible(programa):
     return (programa / "portal" / "iniciar.py").exists()
 
 
-def crear_accesos(raiz, programa):
-    """Acceso directo con pythonw (sin ventana negra), creado con PowerShell (no requiere librerías extra)."""
+def rutas_de_accesos(raiz):
+    """Dónde va el acceso directo: en el Escritorio y dentro de la carpeta TALLY."""
+    return [raiz.parent / f"{NOMBRE_ACCESO}.lnk", raiz / f"{NOMBRE_ACCESO}.lnk"]
+
+
+def destino_del_acceso(programa):
+    """Con pythonw (sin ventana negra) si existe; si no, el .bat."""
     pythonw = Path(sys.executable).with_name("pythonw.exe")
     if pythonw.exists():
-        destino, argumentos = pythonw, '"portal\\iniciar.py"'
-    else:                                                        # sin pythonw: el .bat
-        destino, argumentos = programa / "EJECUTAR PORTAL.bat", ""
+        return pythonw, '"portal\\iniciar.py"'
+    return programa / "EJECUTAR PORTAL.bat", ""
+
+
+_CON_PYWIN32 = (
+    "import sys, win32com.client\n"
+    "shell = win32com.client.Dispatch('WScript.Shell')\n"
+    "for ruta in sys.argv[5:]:\n"
+    "    acceso = shell.CreateShortcut(ruta)\n"
+    "    acceso.TargetPath, acceso.Arguments, acceso.WorkingDirectory = sys.argv[1], sys.argv[2], sys.argv[3]\n"
+    "    if sys.argv[4]: acceso.IconLocation = sys.argv[4]\n"
+    "    acceso.Description = 'Abre TALLY en el navegador'\n"
+    "    acceso.Save()\n"
+)
+
+_CON_POWERSHELL = (
+    "foreach ($ruta in $env:TALLY_LNK.Split('|')) { "
+    "$s = (New-Object -ComObject WScript.Shell).CreateShortcut($ruta); "
+    "$s.TargetPath = $env:TALLY_DESTINO; $s.Arguments = $env:TALLY_ARGUMENTOS; "
+    "$s.WorkingDirectory = $env:TALLY_TRABAJO; $s.Description = 'Abre TALLY en el navegador'; "
+    "if ($env:TALLY_ICONO) { $s.IconLocation = $env:TALLY_ICONO }; $s.Save() }"
+)
+
+
+def crear_accesos(raiz, programa):
+    """Crea el acceso directo «TALLY» en el Escritorio y en la carpeta TALLY.
+
+    Primero con pywin32, como el Portal de Honorarios (en otro proceso: pywin32 se acaba de instalar y en este
+    todavía no se puede importar). Si falla, con PowerShell, que en algunas PC de trabajo está restringido.
+    Al final se comprueba que los archivos .lnk existan de verdad."""
+    destino, argumentos = destino_del_acceso(programa)
     icono = programa / "portal" / "recursos" / "tally.ico"
-    resultado = 0
-    for ruta in (raiz.parent / f"{NOMBRE_ACCESO}.lnk", raiz / f"{NOMBRE_ACCESO}.lnk"):
-        script = (
-            "$s = (New-Object -ComObject WScript.Shell).CreateShortcut($env:TALLY_LNK); "
-            "$s.TargetPath = $env:TALLY_DESTINO; $s.Arguments = $env:TALLY_ARGUMENTOS; "
-            "$s.WorkingDirectory = $env:TALLY_TRABAJO; $s.Description = 'Abre TALLY en el navegador'; "
-            "if ($env:TALLY_ICONO) { $s.IconLocation = $env:TALLY_ICONO }; $s.Save()"
-        )
-        entorno = {**os.environ, "TALLY_LNK": str(ruta), "TALLY_DESTINO": str(destino),
-                   "TALLY_ARGUMENTOS": argumentos, "TALLY_TRABAJO": str(programa),
-                   "TALLY_ICONO": str(icono) if icono.exists() else ""}
-        resultado |= subprocess.run(["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", script],
-                                    env=entorno, stdin=subprocess.DEVNULL).returncode
-    return resultado == 0
+    icono = str(icono) if icono.exists() else ""
+    rutas = rutas_de_accesos(raiz)
+
+    print("Creando el acceso directo TALLY (con pywin32)...")
+    ejecutar([sys.executable, "-c", _CON_PYWIN32, str(destino), argumentos, str(programa), icono,
+              *map(str, rutas)])
+    if all(ruta.exists() for ruta in rutas):
+        return True
+
+    print("Intentando crear el acceso directo con PowerShell...")
+    entorno = {**os.environ, "TALLY_LNK": "|".join(map(str, rutas)), "TALLY_DESTINO": str(destino),
+               "TALLY_ARGUMENTOS": argumentos, "TALLY_TRABAJO": str(programa), "TALLY_ICONO": icono}
+    try:
+        subprocess.run(["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", _CON_POWERSHELL],
+                       env=entorno, stdin=subprocess.DEVNULL, timeout=60)
+    except (OSError, subprocess.TimeoutExpired) as error:
+        print(f"PowerShell no pudo ejecutarse: {error}")
+    faltan = [ruta for ruta in rutas if not ruta.exists()]
+    for ruta in faltan:
+        print(f"No se pudo crear el acceso directo: {ruta}")
+    return not faltan
 
 
 def instalar(sin_librerias=False, sin_accesos=False):
@@ -425,7 +465,8 @@ def _instalar(raiz, sin_librerias, sin_accesos):
     if hay_portal:
         mensaje += f"\n\nPara abrir TALLY: doble clic en \"{NOMBRE_ACCESO}\" en tu Escritorio."
         if not accesos:
-            mensaje += "\n\n(No se pudo crear el acceso directo: usa EJECUTAR PORTAL.bat dentro de _Programa.)"
+            mensaje += ("\n\nNo se pudo crear el acceso directo (el detalle está en instalacion.log). Mientras tanto, "
+                        "abre TALLY con EJECUTAR PORTAL.bat dentro de _Programa.")
     else:
         mensaje += ("\n\nEsta versión todavía no trae el portal (las pantallas). Para ver el motor en acción: "
                     "doble clic en EJECUTAR.bat dentro de _Programa.")

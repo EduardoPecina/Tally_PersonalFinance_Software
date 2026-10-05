@@ -177,3 +177,55 @@ def test_crea_accesos_directos_cuando_hay_portal(instalador, tmp_path, monkeypat
     assert llamadas == [(raiz, raiz / "_Programa")]
     assert instalador.portal_disponible(raiz / "_Programa")
     assert (raiz / "_Programa" / "portal" / "recursos" / "tally.ico").exists()
+
+
+def _preparar_accesos(instalador, tmp_path):
+    raiz = tmp_path / "Escritorio" / "TALLY"
+    programa = raiz / "_Programa"
+    (programa / "portal" / "recursos").mkdir(parents=True)
+    (programa / "portal" / "recursos" / "tally.ico").write_bytes(b"ico")
+    return raiz, programa
+
+
+def test_acceso_directo_con_pywin32(instalador, tmp_path, monkeypatch):
+    raiz, programa = _preparar_accesos(instalador, tmp_path)
+    llamados = []
+
+    def ejecutar(comando):
+        llamados.append(comando)
+        for ruta in comando[-2:]:
+            Path(ruta).write_text("lnk")
+        return 0
+
+    monkeypatch.setattr(instalador, "ejecutar", ejecutar)
+    monkeypatch.setattr(instalador.subprocess, "run", lambda *a, **k: pytest.fail("no debe usar PowerShell"))
+    assert instalador.crear_accesos(raiz, programa)
+    assert "win32com.client" in llamados[0][2]
+    assert llamados[0][-2:] == [str(raiz.parent / "TALLY.lnk"), str(raiz / "TALLY.lnk")]
+    assert llamados[0][6] == str(programa / "portal" / "recursos" / "tally.ico")
+
+
+def test_acceso_directo_con_powershell_si_falla_pywin32(instalador, tmp_path, monkeypatch):
+    raiz, programa = _preparar_accesos(instalador, tmp_path)
+    monkeypatch.setattr(instalador, "ejecutar", lambda comando: 1)  # sin pywin32
+
+    def powershell(comando, env, **_):
+        assert comando[0] == "powershell"
+        for ruta in env["TALLY_LNK"].split("|"):
+            Path(ruta).write_text("lnk")
+
+    monkeypatch.setattr(instalador.subprocess, "run", powershell)
+    assert instalador.crear_accesos(raiz, programa)
+    assert (raiz / "TALLY.lnk").exists() and (raiz.parent / "TALLY.lnk").exists()
+
+
+def test_acceso_directo_que_no_se_pudo_crear(instalador, tmp_path, monkeypatch, capsys):
+    raiz, programa = _preparar_accesos(instalador, tmp_path)
+    monkeypatch.setattr(instalador, "ejecutar", lambda comando: 1)
+
+    def powershell_bloqueado(*_, **__):
+        raise OSError("PowerShell está restringido")
+
+    monkeypatch.setattr(instalador.subprocess, "run", powershell_bloqueado)
+    assert not instalador.crear_accesos(raiz, programa)
+    assert "No se pudo crear el acceso directo" in capsys.readouterr().out
