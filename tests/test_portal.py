@@ -455,3 +455,35 @@ def test_el_icono_violeta_se_llama_asi(raiz, con_datos):
     at = abrir(_pagina("configuracion"))
     etiquetas = [b.label for b in at.button if b.key and b.key.startswith("configuracion_icono_")]
     assert "Usar violeta" in etiquetas and not any("acento" in e.lower() for e in etiquetas)
+
+
+def test_eliminar_tarjeta_guarda_su_historial(raiz, con_datos):
+    at = abrir(_pagina("cuentas"))
+    sin_errores(at)
+    # Desde la pestaña Eliminar de «Administrar una cuenta» (el mismo contenido que la ventana del botón).
+    at.selectbox(key="cuentas_elegida").set_value(con_datos["tdc"]).run()
+    clave = f"pestana_eliminar_{con_datos['tdc']}"
+    at.checkbox(key=f"{clave}_confirmar").check().run()
+    next(b for b in at.button if b.key == f"{clave}_eliminar").click().run()
+    sin_errores(at)
+    lib = sesion_en(raiz).libro
+    assert not lib.cuenta(con_datos["tdc"]).activa
+    assert any(op for op in lib.operaciones() if any(p.cuenta_id == con_datos["tdc"] for p in op.partidas))
+    assert not any(b.key == f"ver_{con_datos['tdc']}" for b in at.button)       # ya no sale en la lista
+
+    at.toggle(key="cuentas_mostrar_archivadas").set_value(True).run()
+    next(b for b in at.button if b.key == f"restaurar_{con_datos['tdc']}").click().run()
+    sin_errores(at)
+    assert sesion_en(raiz).libro.cuenta(con_datos["tdc"]).activa
+
+
+def test_cuenta_eliminada_se_ve_sin_agregar_movimientos(raiz, con_datos):
+    s = sesion_en(raiz)
+    with s.cambio() as lib:
+        cuentas.eliminar_cuenta(lib, con_datos["ahorro"])
+    at = abrir(_pagina("cuentas"))
+    at.toggle(key="cuentas_mostrar_archivadas").set_value(True).run()
+    next(b for b in at.button if b.key == f"ver_{con_datos['ahorro']}").click().run()
+    sin_errores(at)
+    assert at.title[0].value == "Ahorro Ficticio"
+    assert not any(b.label == "Agregar movimiento" for b in at.button)

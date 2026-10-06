@@ -2,7 +2,19 @@
 
 Todos los cambios relevantes de TALLY se documentan aquí.
 
-## [0.5.1] — Sin publicar
+## [0.5.2] — Sin publicar
+
+- **Eliminar cuenta o tarjeta**: botón «Eliminar» en cada cuenta.
+  - Si tiene movimientos, desaparece de tus cuentas y de los formularios,
+    pero **su historial se guarda** en Historial, Tablas dinámicas y
+    Gráficas.
+  - Puedes ver su estado de cuenta y restaurarla con «Mostrar eliminadas».
+  - Si todavía tiene saldo o deuda, te avisa y te deja ponerla en $0 con un
+    ajuste (si ya la pagaste o cancelaste).
+  - Antes de eliminarla puedes descargar su historial a Excel.
+  - Si no tiene movimientos, se borra por completo.
+
+## [0.5.1]
 
 - Configuración → Apariencia: el ícono «Acento» ahora se llama **«Violeta»**.
 

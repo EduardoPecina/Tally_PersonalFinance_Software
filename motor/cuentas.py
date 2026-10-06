@@ -224,6 +224,32 @@ def saldo_inicial(libro: Libro, cuenta_id: str) -> tuple[Decimal, date] | None:
     return a_pesos(partida.importe), op.fecha
 
 
+BORRADA, GUARDADA = "borrada", "guardada"
+
+
+def eliminar_cuenta(libro: Libro, cuenta_id: str, *, dejar_en_cero: bool = False, fecha: date | None = None) -> str:
+    """Lo que hace el botón «Eliminar» del portal.
+
+    - Sin movimientos: se borra por completo (``BORRADA``).
+    - Con movimientos: se archiva (``GUARDADA``). Desaparece de las cuentas y de los formularios, pero su
+      historial sigue en Historial, tablas dinámicas y gráficas, y se puede restaurar con :func:`reactivar`.
+      Con ``dejar_en_cero``, antes se registra un ajuste (no es ingreso ni gasto) para que su saldo o deuda
+      quede en 0 y deje de contar en el patrimonio.
+    """
+    cuenta = libro.cuenta(cuenta_id)
+    if not tiene_movimientos(libro, cuenta_id):
+        eliminar(libro, cuenta_id)
+        return BORRADA
+    if dejar_en_cero and libro.saldo_centavos(cuenta_id):
+        if not cuenta.activa:
+            libro.guardar_cuenta(replace(cuenta, activa=True))
+        from motor.movimientos import actualizar_saldo
+
+        actualizar_saldo(libro, cuenta_id, 0, fecha or libro.hoy(), descripcion="Cuenta eliminada: saldo en 0")
+    archivar(libro, cuenta_id)
+    return GUARDADA
+
+
 def tiene_movimientos(libro: Libro, cuenta_id: str) -> bool:
     """True si la cuenta tiene movimientos además de su saldo inicial (entonces no se puede borrar)."""
     return any(
