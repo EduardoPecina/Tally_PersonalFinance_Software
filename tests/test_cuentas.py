@@ -145,3 +145,32 @@ def test_cambiar_deuda_inicial(libro):
     debito = cuentas.crear(libro, "Débito", TipoCuenta.DEBITO)
     with pytest.raises(ErrorValidacion):
         cuentas.cambiar_deuda_inicial(libro, debito.id, 10)
+
+
+def test_eliminar_cuenta_con_historial_la_guarda(libro, ctas, cat):
+    movimientos.registrar_gasto(libro, date(2026, 7, 5), ctas.credito, cat("Despensa"), 300, "Súper")
+    assert cuentas.eliminar_cuenta(libro, ctas.credito) == cuentas.GUARDADA
+    tarjeta = libro.cuenta(ctas.credito)
+    assert not tarjeta.activa and tarjeta not in cuentas.listar(libro)
+    # El historial sigue: el gasto cuenta en los reportes y la deuda sigue en el patrimonio.
+    assert reportes.resumen(libro, date(2026, 7, 1), date(2026, 7, 31)).gastos == D(300)
+    assert reportes.indicadores(libro).deuda_tarjetas == D(300)
+    cuentas.reactivar(libro, ctas.credito)
+    assert libro.cuenta(ctas.credito).activa
+
+
+def test_eliminar_cuenta_dejando_el_saldo_en_cero(libro, ctas, cat):
+    movimientos.registrar_gasto(libro, date(2026, 7, 5), ctas.credito, cat("Despensa"), 300, "Súper")
+    assert cuentas.eliminar_cuenta(libro, ctas.credito, dejar_en_cero=True, fecha=date(2026, 7, 20)) == cuentas.GUARDADA
+    assert cuentas.saldo(libro, ctas.credito) == 0 and not libro.cuenta(ctas.credito).activa
+    ajuste = libro.operaciones()[-1]
+    assert ajuste.tipo is TipoOperacion.AJUSTE and ajuste.fecha == date(2026, 7, 20)
+    r = reportes.resumen(libro, date(2026, 7, 1), date(2026, 7, 31))
+    assert (r.gastos, r.ingresos, r.ajustes) == (D(300), 0, D(300))       # el ajuste no es ingreso ni gasto
+
+
+def test_eliminar_cuenta_sin_movimientos_la_borra(libro):
+    nueva = cuentas.crear(libro, "Sin usar", TipoCuenta.DEBITO, saldo_inicial=100)
+    assert cuentas.eliminar_cuenta(libro, nueva.id) == cuentas.BORRADA
+    with pytest.raises(ErrorNoEncontrado):
+        libro.cuenta(nueva.id)

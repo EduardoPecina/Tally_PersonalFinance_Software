@@ -1,13 +1,14 @@
-"""¿Cuánto tengo en cada cuenta? Crear, editar, actualizar saldo y archivar cuentas."""
+"""¿Cuánto tengo en cada cuenta? Crear, editar, actualizar saldo y eliminar cuentas (guardando su historial)."""
 
 from __future__ import annotations
 
+import pandas as pd
 import streamlit as st
 
-from motor import categorias, cuentas, movimientos, tarjetas
+from motor import categorias, consultas, cuentas, movimientos, tarjetas
 from motor.consultas import ETIQUETA_TIPO_CUENTA
 from motor.modelo import TIPOS_DISPONIBLES_POR_DEFECTO, Cuenta, TipoCuenta
-from portal.componentes import formato
+from portal.componentes import exportar, formato
 from portal.componentes import tarjeta as estado_tarjeta
 from portal.componentes.sesion import aplicar, avisar, ejecutar, libro
 from portal.paginas import estado_cuenta
@@ -115,11 +116,18 @@ def _tarjeta_de_cuenta(cuenta: Cuenta) -> None:
         izquierda, derecha = st.columns([3, 2])
         detalle = _etiqueta_tipo(cuenta.tipo) + (f" · {cuenta.institucion}" if cuenta.institucion else "")
         if not cuenta.activa:
-            detalle += " · archivada"
+            detalle += " · eliminada (su historial se conserva)"
         izquierda.markdown(f"**{cuenta.nombre}**  \n:gray[{detalle}]")
-        if izquierda.button("Ver movimientos", icon=":material/receipt_long:", key=f"ver_{cuenta.id}"):
+        ver, quitar = izquierda.columns(2)
+        if ver.button("Ver movimientos", icon=":material/receipt_long:", key=f"ver_{cuenta.id}", width="stretch"):
             estado_cuenta.abrir(cuenta.id)
             st.rerun()
+        if cuenta.activa:
+            if quitar.button("Eliminar", icon=":material/delete:", key=f"eliminar_{cuenta.id}", width="stretch"):
+                _dialogo_eliminar(cuenta.id)
+        elif quitar.button("Restaurar", icon=":material/restore:", key=f"restaurar_{cuenta.id}", width="stretch"):
+            if ejecutar(lambda lib: cuentas.reactivar(lib, cuenta.id), exito=f"«{cuenta.nombre}» restaurada"):
+                st.rerun()
         if cuenta.tipo is not TipoCuenta.CREDITO:
             derecha.metric("Saldo", formato.dinero(saldo))
             return
@@ -215,22 +223,56 @@ def _saldo_inicial(cuenta: Cuenta) -> None:
                 st.rerun()
 
 
-def _archivar_o_borrar(cuenta: Cuenta) -> None:
-    if cuenta.activa:
-        st.caption("Archivar oculta la cuenta para movimientos nuevos. Su historial y su saldo se conservan.")
-        if st.button("Archivar cuenta", key=f"archivar_{cuenta.id}"):
-            if ejecutar(lambda lib: cuentas.archivar(lib, cuenta.id), exito="Cuenta archivada"):
+def eliminar(cuenta: Cuenta, clave: str) -> None:
+    """Eliminar una cuenta: si tiene movimientos se guarda su historial (archivada); si no, se borra."""
+    lib = libro()
+    if not cuenta.activa:
+        st.info("Esta cuenta ya está eliminada; su historial se conserva.")
+        if st.button("Restaurar cuenta", key=f"{clave}_restaurar"):
+            if ejecutar(lambda lib: cuentas.reactivar(lib, cuenta.id), exito=f"«{cuenta.nombre}» restaurada"):
                 st.rerun()
-    elif st.button("Reactivar cuenta", key=f"reactivar_{cuenta.id}"):
-        if ejecutar(lambda lib: cuentas.reactivar(lib, cuenta.id), exito="Cuenta reactivada"):
-            st.rerun()
-    if cuentas.tiene_movimientos(libro(), cuenta.id):
-        st.caption("Esta cuenta tiene movimientos, así que no se puede borrar; puedes archivarla.")
         return
-    confirmar = st.checkbox("Quiero borrar esta cuenta", key=f"confirmar_borrar_{cuenta.id}")
-    if st.button("Borrar cuenta", key=f"borrar_{cuenta.id}", disabled=not confirmar):
-        if ejecutar(lambda lib: cuentas.eliminar(lib, cuenta.id), exito="Cuenta borrada"):
+    if not cuentas.tiene_movimientos(lib, cuenta.id):
+        st.markdown(f"**{formato.md(cuenta.nombre)}** no tiene movimientos: se borrará por completo.")
+    else:
+        st.markdown(
+            f"**{formato.md(cuenta.nombre)}** desaparecerá de tus cuentas y de los formularios, pero **su historial se "
+            "guarda**: sus movimientos siguen en Historial, Tablas dinámicas y Gráficas. Si cambias de opinión, "
+            "actívala de nuevo con «Mostrar eliminadas» → Restaurar.")
+    saldo = cuentas.saldo(lib, cuenta.id)
+    dejar_en_cero = False
+    if saldo and cuentas.tiene_movimientos(lib, cuenta.id):
+        es_credito = cuenta.tipo is TipoCuenta.CREDITO
+        texto = (f"Todavía debes {formato.dinero_md(-saldo)} en esta tarjeta" if es_credito and saldo < 0
+                 else f"Esta cuenta todavía tiene {formato.dinero_md(saldo)}")
+        st.warning(f"{texto}. Si la eliminas así, ese saldo seguirá contando en tu patrimonio.", icon="⚠️")
+        dejar_en_cero = st.checkbox(
+            "Ya la pagué o la cancelé: dejar su saldo en $0", value=False, key=f"{clave}_cero",
+            help="Registra un ajuste de saldo con fecha de hoy. Un ajuste no cuenta como ingreso ni como gasto. "
+                 "Si todavía debes ese dinero, no lo marques.")
+    if cuentas.tiene_movimientos(lib, cuenta.id):
+        filas = consultas.movimientos_de_cuenta(lib, cuenta.id)
+        st.download_button(
+            "Descargar su historial a Excel (opcional)", on_click="ignore", key=f"{clave}_excel",
+            data=exportar.excel({cuenta.nombre: pd.DataFrame({
+                "Fecha": [f.fecha for f in filas], "Descripción": [f.descripcion for f in filas],
+                "Subcategoría o cuenta": [f.detalle for f in filas], "Cargo": [float(f.cargo) for f in filas],
+                "Abono": [float(f.abono) for f in filas], "Saldo": [float(f.saldo) for f in filas]})}),
+            file_name=f"TALLY_{cuenta.nombre}_historial.xlsx", icon=":material/table_view:",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+    confirmar = st.checkbox(f"Sí, quiero eliminar «{cuenta.nombre}»", key=f"{clave}_confirmar")
+    if st.button("Eliminar cuenta", type="primary", disabled=not confirmar, key=f"{clave}_eliminar"):
+        resultado = aplicar(lambda lib: cuentas.eliminar_cuenta(lib, cuenta.id, dejar_en_cero=dejar_en_cero))
+        if resultado:
+            avisar(f"«{cuenta.nombre}» eliminada" + (". Su historial se conserva." if resultado == cuentas.GUARDADA
+                                                       else "."))
+            st.session_state.pop("cuentas_elegida", None)
             st.rerun()
+
+
+@st.dialog("Eliminar cuenta")
+def _dialogo_eliminar(cuenta_id: str) -> None:
+    eliminar(libro().cuenta(cuenta_id), f"dialogo_eliminar_{cuenta_id}")
 
 
 def mostrar() -> None:
@@ -244,7 +286,9 @@ def mostrar() -> None:
     with st.expander("➕ Nueva cuenta", expanded=not cuentas.listar(libro())):
         formulario_nueva_cuenta()
 
-    archivadas = st.toggle("Mostrar archivadas", key="cuentas_mostrar_archivadas")
+    archivadas = st.toggle("Mostrar eliminadas", key="cuentas_mostrar_archivadas",
+                           help="Las cuentas eliminadas que tenían movimientos: su historial se conserva y se pueden "
+                                "restaurar.")
     lista = cuentas.listar(libro(), incluir_archivadas=archivadas)
     if not lista:
         st.info("Aún no tienes cuentas. Agrega la primera arriba.")
@@ -263,7 +307,7 @@ def mostrar() -> None:
     if elegida is None:
         return
     cuenta = libro().cuenta(elegida)
-    editar, actualizar, inicial, mas = st.tabs(["Editar", "Actualizar saldo", "Saldo inicial", "Archivar o borrar"])
+    editar, actualizar, inicial, mas = st.tabs(["Editar", "Actualizar saldo", "Saldo inicial", "Eliminar"])
     with editar:
         _editar(cuenta)
     with actualizar:
@@ -271,4 +315,4 @@ def mostrar() -> None:
     with inicial:
         _saldo_inicial(cuenta)
     with mas:
-        _archivar_o_borrar(cuenta)
+        eliminar(cuenta, f"pestana_eliminar_{cuenta.id}")
