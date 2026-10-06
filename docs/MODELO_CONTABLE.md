@@ -112,7 +112,7 @@ Campos:
 |---|---|---|
 | Categoría | `Rubro` | Caja que agrupa (SALUD, TECNOLOGIA…). De gasto o de ingreso |
 | Subcategoría | `Categoria` | Lo que lleva cada partida (DENTISTA, GASOLINA…). Vive en un rubro de su misma clase |
-| Clasificación | `Grupo` | Necesidad, Disfrute, Estabilidad, Inversión, Dádivas (la "Clasif. Metas" del Excel) |
+| Clasificación | `Grupo` | Para qué es el gasto (la "Clasif. Metas" del Excel): Necesidad, Compromisos, Estabilidad, Crecimiento, Disfrute, Antojos y Generosidad. Cada subcategoría está en una sola |
 
 - Las partidas solo apuntan a subcategorías. Un rubro nunca tiene movimientos
   propios: sus totales son la suma de sus subcategorías.

@@ -51,11 +51,11 @@ def test_gastos_por_subcategoria_categoria_clasificacion_y_cuenta(libro, ctas, c
     porcat = reportes.gastos_por_categoria(libro, *JULIO)
     assert [(t.nombre, t.total, t.grupo) for t in porcat] == [
         ("ALIMENTOS", D(150), "Necesidad"),
-        ("SNACKS Y ANTOJOS", D(65), "Disfrute"),
+        ("SNACKS Y ANTOJOS", D(65), "Antojos"),
         ("OTROS GASTOS", D(10), reportes.SIN_GRUPO),
     ]
     assert reportes.gastos_por_grupo(libro, *JULIO) == {
-        "Necesidad": D(150), "Disfrute": D(65), reportes.SIN_GRUPO: D(10)
+        "Necesidad": D(150), "Antojos": D(65), reportes.SIN_GRUPO: D(10)
     }
     # Por categoría que agrupa: ALIMENTOS y SNACKS Y ANTOJOS están en ALIMENTACION.
     assert [t.rubro for t in porcat] == ["ALIMENTACION", "ALIMENTACION", "VARIOS"]

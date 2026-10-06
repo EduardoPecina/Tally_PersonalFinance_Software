@@ -135,7 +135,7 @@ def test_grupos_editables(libro, cat):
     with pytest.raises(ErrorValidacion):
         categorias.crear_grupo(libro, "necesidad")
     with pytest.raises(ErrorValidacion):
-        categorias.crear_grupo(libro, "INVERSION")      # sin importar el acento
+        categorias.crear_grupo(libro, "ANTOJOS")        # sin importar mayúsculas
 
 
 def test_eliminar_categoria_sin_uso(libro):
@@ -175,3 +175,14 @@ def test_archivar_categoria(libro, ctas, cat):
         movimientos.registrar_ingreso(libro, date(2026, 7, 1), ctas.debito, cat("Bonos"), 100)
     categorias.reactivar(libro, cat("Bonos"))
     movimientos.registrar_ingreso(libro, date(2026, 7, 1), ctas.debito, cat("Bonos"), 100)
+
+
+def test_una_subcategoria_esta_en_una_sola_clasificacion(libro, cat):
+    grupo = {g.nombre: g.id for g in libro.grupos()}
+    snacks = cat("SNACKS Y ANTOJOS")
+    with pytest.raises(ErrorValidacion, match="ya está en «Antojos»"):
+        categorias.clasificar(libro, snacks, grupo["Disfrute"])
+    categorias.clasificar(libro, snacks, None)                     # se quita de Antojos…
+    categorias.clasificar(libro, snacks, grupo["Disfrute"])        # …y ya se puede poner en Disfrute
+    assert libro.categoria(snacks).grupo_id == grupo["Disfrute"]
+    categorias.clasificar(libro, snacks, grupo["Disfrute"])        # ponerla donde ya está no es error

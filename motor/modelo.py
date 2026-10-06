@@ -69,6 +69,7 @@ class Perfil:
     tema: str = "claro"                # claro u oscuro (para descansar la vista)
     icono: str = "claro"               # color del ícono del acceso directo: claro, oscuro, acento o gris
     dias_para_reclamar: int = 45       # cargos temporales: avisar si no te los devuelven en estos días
+    clasificaciones: int = 2           # versión del reacomodo de clasificaciones ya aplicado (catalogo.py)
 
 
 @dataclass(frozen=True, slots=True)

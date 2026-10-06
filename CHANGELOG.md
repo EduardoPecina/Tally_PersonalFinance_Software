@@ -2,7 +2,29 @@
 
 Todos los cambios relevantes de TALLY se documentan aquí.
 
-## [0.5.5] — Sin publicar
+## [0.6.0] — Sin publicar
+
+- **Clasificaciones nuevas**:
+  - Antes eran 5 (Necesidad, Disfrute, Estabilidad, Inversión, Dádivas) y ahora son 7, cada una con una
+    pregunta clara:
+    - **Necesidad**: lo indispensable para vivir.
+    - **Compromisos**: intereses, comisiones, impuestos, multas y pagos de deudas; lo que pagas por obligación.
+    - **Estabilidad**: seguros, herramientas de trabajo e imprevistos.
+    - **Crecimiento** (antes «Inversión»): estudios, cursos, libros, ejercicio.
+    - **Disfrute**: salidas, viajes, entretenimiento, compras.
+    - **Antojos**: los gastos hormiga, como botanas, café y comida a domicilio.
+    - **Generosidad** (antes «Dádivas»): regalos, celebraciones, donativos, apoyo a la familia.
+  - Tus datos se ponen al día solos al abrir TALLY, una sola vez. Solo se mueven las subcategorías del catálogo
+    que seguían en su clasificación original; las que tú ya habías movido se quedan donde las pusiste.
+- **Categorías → Clasificaciones**, rediseñada:
+  - Cada clasificación es una caja con su descripción y **todas sus subcategorías adentro**, agrupadas por
+    categoría.
+  - Agregas o quitas subcategorías ahí mismo. Cada subcategoría está en **una sola** clasificación: si intentas
+    ponerla en otra, TALLY no lo deja y te dice dónde está.
+  - Arriba, una tabla con cuánto pesa cada clasificación en tu gasto del año.
+  - Renombrar y borrar quedan en el botón «Editar» de cada caja.
+
+## [0.5.5]
 
 - **Respaldos sin acumularse**:
   - «Descargar respaldo» ya no deja una copia en la carpeta Respaldos: el archivo solo va a tus Descargas.
