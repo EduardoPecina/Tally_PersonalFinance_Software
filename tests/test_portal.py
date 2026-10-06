@@ -304,6 +304,23 @@ def test_descargar_respaldo_en_un_clic(raiz, con_datos):
     sin_errores(at)
     (descarga,) = [b for b in at.get("download_button") if "Descargar respaldo" in str(b.proto)]
     assert ".zip" in str(descarga.proto)
+    from portal.componentes import respaldo as componente
+    from portal.componentes.sesion import sesion as sesion_actual
+
+    capturado = {}
+    real = componente.st.download_button
+    componente.st.download_button = lambda etiqueta, datos, **_: capturado.setdefault("datos", datos)
+    try:
+        import streamlit as st
+        st.session_state.clear()
+        componente.sesion = lambda: sesion_en(raiz)
+        componente.boton_descargar("prueba")
+    finally:
+        componente.st.download_button = real
+        componente.sesion = sesion_actual
+    contenido = capturado["datos"]()
+    assert contenido[:2] == b"PK"                                         # un .zip de verdad
+    assert not list((raiz / "Respaldos").glob("TALLY_descargado_*.zip"))   # sin copia en la carpeta
 
 
 def test_el_respaldo_automatico_del_dia(raiz, con_datos):

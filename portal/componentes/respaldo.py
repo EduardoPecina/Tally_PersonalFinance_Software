@@ -15,11 +15,17 @@ TIPOS = ["zip", "db"]
 
 
 def boton_descargar(clave: str, *, principal: bool = True) -> None:
-    """Un clic: crea el respaldo (también queda una copia en la carpeta Respaldos) y lo descarga."""
+    """Un clic: crea el respaldo y lo descarga. No deja copia en la carpeta Respaldos: el archivo va a donde el
+    navegador guarda las descargas."""
     actual = sesion()
     nombre = f"TALLY_respaldo_{actual.libro.ahora():%Y-%m-%d_%H%M%S}.zip"
+
+    def contenido() -> bytes:
+        with tempfile.TemporaryDirectory() as temporal:
+            return respaldos.crear(actual, Path(temporal), prefijo="descargado").read_bytes()
+
     st.download_button(
-        "Descargar respaldo", lambda: respaldos.crear(actual, prefijo="descargado").read_bytes(), file_name=nombre,
+        "Descargar respaldo", contenido, file_name=nombre,
         mime="application/zip", type="primary" if principal else "secondary", icon=":material/download:",
         on_click="ignore", key=f"{clave}_descargar",
         help="Un archivo .zip con TODO: cuentas, movimientos, categorías, configuración y bitácora. Guárdalo en "

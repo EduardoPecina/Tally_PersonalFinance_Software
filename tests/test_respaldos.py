@@ -123,6 +123,31 @@ def test_respaldo_automatico_rota(sesion, tmp_path):
     assert len(list(carpeta.glob("TALLY_respaldo_*.zip"))) == 1
 
 
+def test_los_de_seguridad_rotan_por_tipo(sesion, tmp_path):
+    carpeta = tmp_path / "Respaldos"
+    for _ in range(12):                                   # todos en el mismo segundo (reloj fijo)
+        ultimo = respaldos.de_seguridad(sesion, "antes_de_cargar_datos", carpeta)
+    respaldos.de_seguridad(sesion, "antes_de_restaurar", carpeta)
+    for _ in range(7):
+        respaldos.respaldar_archivo_de_datos(sesion.almacen.ruta, carpeta)
+    respaldos.crear(sesion, carpeta)                      # los guardados a mano no se tocan
+    assert len(list(carpeta.glob("TALLY_antes_de_cargar_datos_*.zip"))) == respaldos.DE_SEGURIDAD_A_CONSERVAR
+    assert ultimo.exists()                                # nunca se borra el que se acaba de crear
+    assert len(list(carpeta.glob("TALLY_antes_de_restaurar_*.zip"))) == 1
+    assert len(list(carpeta.glob("TALLY_antes_de_actualizar_*.zip"))) == respaldos.DE_SEGURIDAD_A_CONSERVAR
+    assert len(list(carpeta.glob("TALLY_respaldo_*.zip"))) == 1
+
+
+def test_restaurar_y_empezar_de_cero_rotan_su_respaldo(sesion, tmp_path):
+    carpeta = tmp_path / "Respaldos"
+    respaldo = respaldos.crear(sesion, tmp_path / "otro")
+    for _ in range(7):
+        respaldos.restaurar(sesion, respaldo, carpeta_seguridad=carpeta)
+        respaldos.empezar_de_cero(sesion, carpeta_seguridad=carpeta)
+    assert len(list(carpeta.glob("TALLY_antes_de_restaurar_*.zip"))) == 5
+    assert len(list(carpeta.glob("TALLY_antes_de_empezar_de_cero_*.zip"))) == 5
+
+
 def test_respaldar_archivo_sin_modificarlo(sesion, tmp_path):
     ruta = sesion.almacen.ruta
     antes = ruta.read_bytes()
