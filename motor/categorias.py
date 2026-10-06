@@ -1,6 +1,13 @@
-"""Categorías y grupos de categorías.
+"""Categorías, subcategorías y clasificaciones.
 
-Todo es personalizable; el catálogo inicial es solo un punto de partida.
+- **Categoría** (``Rubro``): la caja que agrupa (SALUD, TECNOLOGIA…). Es de gasto o de ingreso.
+- **Subcategoría** (``Categoria``): lo que se asigna a cada movimiento (DENTISTA, GASOLINA…). Vive en una
+  categoría y es de su mismo tipo.
+- **Clasificación** (``Grupo``): Necesidad, Disfrute, Estabilidad… (la «Clasif. Metas» del Excel).
+
+Los nombres de categorías y subcategorías se guardan en MAYÚSCULAS y sin acentos, y no se pueden repetir
+(sin importar mayúsculas, acentos, signos ni espacios): una subcategoría existe una sola vez en todo TALLY y
+una categoría también. Todo es editable; el catálogo inicial (``motor/catalogo.py``) es un punto de partida.
 """
 
 from __future__ import annotations
@@ -9,54 +16,17 @@ from dataclasses import replace
 
 from motor.errores import ErrorValidacion
 from motor.libro import Libro
-from motor.modelo import Categoria, ClaseCategoria, Grupo, Partida
+from motor.modelo import Categoria, ClaseCategoria, Grupo, Partida, Rubro
+from motor.textos import clave, estandarizar, normalizar_nombre  # noqa: F401 - normalizar_nombre se reexporta
 
-GRUPOS_INICIALES = ("Necesidad", "Disfrute", "Estabilidad", "Inversión", "Dádivas")
+SEPARADOR = " › "
 
-# (nombre, clase, grupo, principal)
-CATALOGO_INICIAL: tuple[tuple[str, ClaseCategoria, str | None, bool], ...] = (
-    ("Nómina", ClaseCategoria.INGRESO, None, True),
-    ("Freelance", ClaseCategoria.INGRESO, None, False),
-    ("Bonos", ClaseCategoria.INGRESO, None, False),
-    ("Intereses y rendimientos", ClaseCategoria.INGRESO, None, False),
-    ("Ventas", ClaseCategoria.INGRESO, None, False),
-    ("Otros ingresos", ClaseCategoria.INGRESO, None, False),
-    ("Alimentos", ClaseCategoria.GASTO, "Necesidad", False),
-    ("Snacks y antojos", ClaseCategoria.GASTO, "Disfrute", False),
-    ("Vivienda", ClaseCategoria.GASTO, "Necesidad", False),
-    ("Hogar y mantenimiento", ClaseCategoria.GASTO, "Necesidad", False),
-    ("Mejoras del hogar", ClaseCategoria.GASTO, "Disfrute", False),
-    ("Transporte", ClaseCategoria.GASTO, "Necesidad", False),
-    ("Salud y cuidado personal", ClaseCategoria.GASTO, "Necesidad", False),
-    ("Educación", ClaseCategoria.GASTO, "Inversión", False),
-    ("Insumos de trabajo", ClaseCategoria.GASTO, "Estabilidad", False),
-    ("Recargas y telefonía", ClaseCategoria.GASTO, "Necesidad", False),
-    ("Servicios de software", ClaseCategoria.GASTO, "Necesidad", False),
-    ("Suscripciones y streaming", ClaseCategoria.GASTO, "Disfrute", False),
-    ("Compras en línea", ClaseCategoria.GASTO, "Disfrute", False),
-    ("Hardware y entretenimiento", ClaseCategoria.GASTO, "Disfrute", False),
-    ("Regalos", ClaseCategoria.GASTO, "Dádivas", False),
-    ("Gastos financieros", ClaseCategoria.GASTO, "Necesidad", False),
-    ("Retiros de efectivo", ClaseCategoria.GASTO, "Necesidad", False),
-    ("Otros gastos", ClaseCategoria.GASTO, None, False),
-)
-
-
-def normalizar_nombre(nombre: str) -> str:
-    """Quita espacios sobrantes (evita «ALIMENTOS» y « ALIMENTOS» duplicadas)."""
-    limpio = " ".join(str(nombre).split())
-    if not limpio:
-        raise ErrorValidacion("El nombre no puede estar vacío.")
-    return limpio
-
-
-# ------------------------------------------------------------------- grupos
+# ------------------------------------------------------------ clasificaciones
 
 
 def crear_grupo(libro: Libro, nombre: str) -> Grupo:
     nombre = normalizar_nombre(nombre)
-    if any(g.nombre.casefold() == nombre.casefold() for g in libro.grupos()):
-        raise ErrorValidacion(f"Ya existe el grupo «{nombre}».")
+    _grupo_libre(libro, nombre)
     orden = max((g.orden for g in libro.grupos()), default=-1) + 1
     return libro.guardar_grupo(Grupo(libro.nuevo_id(), nombre, orden))
 
@@ -64,13 +34,12 @@ def crear_grupo(libro: Libro, nombre: str) -> Grupo:
 def renombrar_grupo(libro: Libro, grupo_id: str, nombre: str) -> Grupo:
     grupo = libro.grupo(grupo_id)
     nombre = normalizar_nombre(nombre)
-    if any(g.id != grupo_id and g.nombre.casefold() == nombre.casefold() for g in libro.grupos()):
-        raise ErrorValidacion(f"Ya existe el grupo «{nombre}».")
+    _grupo_libre(libro, nombre, excepto=grupo_id)
     return libro.guardar_grupo(replace(grupo, nombre=nombre))
 
 
 def eliminar_grupo(libro: Libro, grupo_id: str) -> None:
-    """Borra el grupo; sus categorías quedan sin grupo (no se pierde nada)."""
+    """Borra la clasificación; sus subcategorías quedan sin clasificación (no se pierde nada)."""
     libro.grupo(grupo_id)
     for categoria in libro.categorias():
         if categoria.grupo_id == grupo_id:
@@ -78,28 +47,74 @@ def eliminar_grupo(libro: Libro, grupo_id: str) -> None:
     libro.quitar_grupo(grupo_id)
 
 
-# --------------------------------------------------------------- categorías
+# ------------------------------------------------------- categorías (rubros)
+
+
+def crear_rubro(libro: Libro, nombre: str, clase: ClaseCategoria) -> Rubro:
+    clase = ClaseCategoria(clase)
+    if clase is ClaseCategoria.SISTEMA:
+        raise ErrorValidacion("Una categoría es de gasto o de ingreso.")
+    nombre = estandarizar(nombre)
+    _rubro_libre(libro, nombre)
+    orden = max((r.orden for r in libro.rubros()), default=-1) + 1
+    return libro.guardar_rubro(Rubro(libro.nuevo_id(), nombre, clase, orden))
+
+
+def renombrar_rubro(libro: Libro, rubro_id: str, nombre: str) -> Rubro:
+    rubro = libro.rubro(rubro_id)
+    nombre = estandarizar(nombre)
+    _rubro_libre(libro, nombre, excepto=rubro_id)
+    return libro.guardar_rubro(replace(rubro, nombre=nombre))
+
+
+def subcategorias(libro: Libro, rubro_id: str) -> list[Categoria]:
+    return [c for c in libro.categorias() if c.rubro_id == rubro_id]
+
+
+def eliminar_rubro(libro: Libro, rubro_id: str, *, mover_a: str | None = None) -> None:
+    """Borra una categoría. Si tiene subcategorías, pasan (con sus movimientos) a la categoría ``mover_a``."""
+    rubro = libro.rubro(rubro_id)
+    contenido = subcategorias(libro, rubro_id)
+    if contenido:
+        if mover_a is None:
+            raise ErrorValidacion(f"«{rubro.nombre}» tiene subcategorías; elige a qué categoría pasarlas.")
+        destino = libro.rubro(mover_a)
+        if destino.id == rubro_id or destino.clase is not rubro.clase:
+            raise ErrorValidacion("Las subcategorías solo pueden pasar a otra categoría del mismo tipo.")
+        for categoria in contenido:
+            libro.guardar_categoria(replace(categoria, rubro_id=destino.id))
+    libro.quitar_rubro(rubro_id)
+
+
+def buscar_rubro(libro: Libro, nombre: str) -> Rubro | None:
+    buscada = clave(nombre)
+    return next((r for r in libro.rubros() if clave(r.nombre) == buscada), None)
+
+
+# --------------------------------------------------------------- subcategorías
 
 
 def crear(
     libro: Libro,
     nombre: str,
-    clase: ClaseCategoria,
+    rubro_id: str,
     *,
     grupo_id: str | None = None,
     principal: bool = False,
 ) -> Categoria:
-    clase = ClaseCategoria(clase)
-    if clase is ClaseCategoria.SISTEMA:
-        raise ErrorValidacion("No se pueden crear categorías del sistema.")
-    nombre = normalizar_nombre(nombre)
-    _nombre_libre(libro, nombre, clase)
+    """Crea una subcategoría dentro de la categoría ``rubro_id`` (y de su mismo tipo)."""
+    if rubro_id is None:
+        raise ErrorValidacion("Elige en qué categoría va la subcategoría.")
+    rubro = libro.rubro(rubro_id)
+    nombre = estandarizar(nombre)
+    _nombre_libre(libro, nombre)
     if grupo_id is not None:
         libro.grupo(grupo_id)
-    _validar_principal(clase, principal)
+    _validar_principal(rubro.clase, principal)
     orden = max((c.orden for c in libro.categorias()), default=-1) + 1
     return libro.guardar_categoria(
-        Categoria(libro.nuevo_id(), nombre, clase, grupo_id=grupo_id, principal=principal, orden=orden)
+        Categoria(libro.nuevo_id(), nombre, rubro.clase, grupo_id=grupo_id, principal=principal, orden=orden,
+                  rubro_id=rubro.id)
     )
 
 
@@ -111,6 +126,7 @@ def editar(
     categoria_id: str,
     *,
     nombre: str | None = None,
+    rubro_id: str | object = _SIN_CAMBIO,
     grupo_id: str | None | object = _SIN_CAMBIO,
     principal: bool | None = None,
     orden: int | None = None,
@@ -118,9 +134,13 @@ def editar(
     categoria = _editable(libro, categoria_id)
     cambios: dict = {}
     if nombre is not None:
-        nombre = normalizar_nombre(nombre)
-        _nombre_libre(libro, nombre, categoria.clase, excepto=categoria_id)
+        nombre = estandarizar(nombre)
+        _nombre_libre(libro, nombre, excepto=categoria_id)
         cambios["nombre"] = nombre
+    if rubro_id is not _SIN_CAMBIO:
+        if rubro_id is None or libro.rubro(rubro_id).clase is not categoria.clase:
+            raise ErrorValidacion("La subcategoría solo puede pasar a otra categoría del mismo tipo.")
+        cambios["rubro_id"] = rubro_id
     if grupo_id is not _SIN_CAMBIO:
         if grupo_id is not None:
             libro.grupo(grupo_id)
@@ -134,7 +154,7 @@ def editar(
 
 
 def archivar(libro: Libro, categoria_id: str) -> Categoria:
-    """Oculta la categoría para movimientos nuevos; su historial se conserva."""
+    """Oculta la subcategoría para movimientos nuevos; su historial se conserva."""
     return libro.guardar_categoria(replace(_editable(libro, categoria_id), activa=False))
 
 
@@ -147,18 +167,18 @@ def en_uso(libro: Libro, categoria_id: str) -> bool:
 
 
 def eliminar(libro: Libro, categoria_id: str, *, reasignar_a: str | None = None) -> None:
-    """Borra una categoría.
+    """Borra una subcategoría.
 
-    Si tiene movimientos, hay que indicar a qué categoría (de la misma clase)
-    pasan; en la práctica es una fusión de categorías.
+    Si tiene movimientos, hay que indicar a qué subcategoría (del mismo tipo)
+    pasan; en la práctica es juntarlas.
     """
     categoria = _editable(libro, categoria_id)
     if en_uso(libro, categoria_id):
         if reasignar_a is None:
-            raise ErrorValidacion(f"«{categoria.nombre}» tiene movimientos; elige a qué categoría pasarlos.")
+            raise ErrorValidacion(f"«{categoria.nombre}» tiene movimientos; elige a qué subcategoría pasarlos.")
         destino = libro.categoria(reasignar_a)
         if destino.id == categoria_id or destino.clase is not categoria.clase:
-            raise ErrorValidacion("Los movimientos solo pueden pasar a otra categoría del mismo tipo.")
+            raise ErrorValidacion("Los movimientos solo pueden pasar a otra subcategoría del mismo tipo.")
         for op in libro.operaciones():
             if any(p.categoria_id == categoria_id for p in op.partidas):
                 partidas = tuple(
@@ -170,7 +190,7 @@ def eliminar(libro: Libro, categoria_id: str, *, reasignar_a: str | None = None)
 
 
 def para_tipo(libro: Libro, tipo) -> list[Categoria]:
-    """Categorías activas que se pueden elegir para un tipo de movimiento."""
+    """Subcategorías activas que se pueden elegir para un tipo de movimiento, ordenadas por categoría."""
     from motor.modelo import TipoOperacion
 
     tipo = TipoOperacion(tipo)
@@ -180,25 +200,42 @@ def para_tipo(libro: Libro, tipo) -> list[Categoria]:
         clase = ClaseCategoria.INGRESO
     else:
         return []
-    return [c for c in libro.categorias() if c.clase is clase and c.activa]
+    return ordenadas(libro, [c for c in libro.categorias() if c.clase is clase and c.activa])
+
+
+def ordenadas(libro: Libro, lista: list[Categoria]) -> list[Categoria]:
+    """En el orden de sus categorías y, dentro de cada una, en el suyo."""
+    orden_rubro = {r.id: r.orden for r in libro.rubros()}
+    return sorted(lista, key=lambda c: (orden_rubro.get(c.rubro_id, -1), c.orden, c.nombre))
+
+
+def nombre_rubro(libro: Libro, categoria_id: str) -> str:
+    """Nombre de la categoría de una subcategoría ("" para las del sistema)."""
+    rubro_id = libro.categoria(categoria_id).rubro_id
+    return libro.rubro(rubro_id).nombre if rubro_id else ""
+
+
+def etiqueta(libro: Libro, categoria_id: str) -> str:
+    """«SALUD › DENTISTA»: para listas donde se elige una subcategoría."""
+    categoria = libro.categoria(categoria_id)
+    rubro = nombre_rubro(libro, categoria_id)
+    return f"{rubro}{SEPARADOR}{categoria.nombre}" if rubro else categoria.nombre
 
 
 def buscar(libro: Libro, nombre: str, clase: ClaseCategoria | None = None) -> Categoria | None:
-    """Busca una categoría por nombre, sin importar mayúsculas ni espacios."""
-    clave = normalizar_nombre(nombre).casefold()
+    """Busca una subcategoría por nombre, sin importar mayúsculas, acentos ni espacios."""
+    buscada = clave(nombre)
     for categoria in libro.categorias():
-        if categoria.nombre.casefold() == clave and (clase is None or categoria.clase is clase):
+        if clave(categoria.nombre) == buscada and (clase is None or categoria.clase is clase):
             return categoria
     return None
 
 
 def cargar_catalogo_inicial(libro: Libro) -> None:
-    """Crea los grupos y categorías sugeridos. Solo actúa sobre un libro vacío."""
-    if libro.grupos() or any(c.clase is not ClaseCategoria.SISTEMA for c in libro.categorias()):
-        return
-    grupos = {nombre: crear_grupo(libro, nombre).id for nombre in GRUPOS_INICIALES}
-    for nombre, clase, grupo, principal in CATALOGO_INICIAL:
-        crear(libro, nombre, clase, grupo_id=grupos.get(grupo) if grupo else None, principal=principal)
+    """Crea las clasificaciones, categorías y subcategorías sugeridas. Solo actúa sobre un libro vacío."""
+    from motor import catalogo
+
+    catalogo.cargar(libro)
 
 
 # ---------------------------------------------------------------- internos
@@ -207,23 +244,36 @@ def cargar_catalogo_inicial(libro: Libro) -> None:
 def _editable(libro: Libro, categoria_id: str) -> Categoria:
     categoria = libro.categoria(categoria_id)
     if categoria.clase is ClaseCategoria.SISTEMA:
-        raise ErrorValidacion("Las categorías del sistema no se pueden modificar.")
+        raise ErrorValidacion("Las subcategorías del sistema no se pueden modificar.")
     return categoria
 
 
-def _nombre_libre(libro: Libro, nombre: str, clase: ClaseCategoria, excepto: str | None = None) -> None:
+def _nombre_libre(libro: Libro, nombre: str, excepto: str | None = None) -> None:
     for c in libro.categorias():
-        if c.id != excepto and c.clase is clase and c.nombre.casefold() == nombre.casefold():
-            raise ErrorValidacion(f"Ya existe la categoría «{nombre}».")
+        if c.id != excepto and clave(c.nombre) == clave(nombre):
+            donde = f" (en {libro.rubro(c.rubro_id).nombre})" if c.rubro_id else ""
+            raise ErrorValidacion(f"Ya existe la subcategoría «{c.nombre}»{donde}. No se puede agregar dos veces.")
+
+
+def _rubro_libre(libro: Libro, nombre: str, excepto: str | None = None) -> None:
+    for r in libro.rubros():
+        if r.id != excepto and clave(r.nombre) == clave(nombre):
+            raise ErrorValidacion(f"Ya existe la categoría «{r.nombre}». No se puede agregar dos veces.")
+
+
+def _grupo_libre(libro: Libro, nombre: str, excepto: str | None = None) -> None:
+    for g in libro.grupos():
+        if g.id != excepto and clave(g.nombre) == clave(nombre):
+            raise ErrorValidacion(f"Ya existe la clasificación «{g.nombre}».")
 
 
 def _validar_principal(clase: ClaseCategoria, principal: bool) -> None:
     if principal and clase is not ClaseCategoria.INGRESO:
-        raise ErrorValidacion("Solo una categoría de ingreso puede ser el ingreso principal.")
+        raise ErrorValidacion("Solo una subcategoría de ingreso puede ser el ingreso principal.")
 
 
 def _fusionar(partidas: tuple[Partida, ...]) -> tuple[Partida, ...]:
-    """Une partidas que quedaron repetidas en la misma categoría tras una fusión."""
+    """Une partidas que quedaron repetidas en la misma subcategoría tras una fusión."""
     resultado: list[Partida] = []
     for p in partidas:
         previa = next(

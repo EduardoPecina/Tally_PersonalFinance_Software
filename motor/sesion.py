@@ -19,7 +19,7 @@ from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
 
-from motor import categorias, rutas
+from motor import catalogo, categorias, rutas
 from motor.libro import Libro
 from motor.persistencia import Almacen
 
@@ -33,6 +33,16 @@ class Sesion:
         if self.almacen.es_nuevo:
             with self.cambio() as libro:
                 categorias.cargar_catalogo_inicial(libro)
+        self.poner_al_dia()
+
+    def poner_al_dia(self) -> bool:
+        """Si los datos son de una versión anterior (o de un respaldo viejo), pone al día las categorías.
+        Queda anotado en la bitácora como cualquier otro cambio. Devuelve True si cambió algo."""
+        if not catalogo.necesita_actualizar(self.libro):
+            return False
+        with self.cambio() as libro:
+            catalogo.actualizar(libro)
+        return True
 
     @classmethod
     def abrir(cls, ruta_datos: Path | str | None = None, *, reloj=None) -> Sesion:

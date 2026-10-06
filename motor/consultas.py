@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
 
+from motor import categorias
 from motor.dinero import a_pesos
 from motor.libro import Libro
 from motor.modelo import ClaseCategoria, Operacion, TipoCuenta, TipoOperacion
@@ -71,9 +72,10 @@ class FilaMovimiento:
     notas: str
     cuenta: str
     cuenta_destino: str
-    categoria: str
+    categoria: str  # subcategoría(s)
     monto: Decimal  # siempre positivo
     sentido: str  # "-", "+" o "↔"
+    rubro: str = ""  # la categoría que agrupa a la subcategoría
 
     @property
     def importe_con_signo(self) -> Decimal:
@@ -88,10 +90,9 @@ def _normalizar(texto: str) -> str:
 
 def fila(libro: Libro, op: Operacion) -> FilaMovimiento:
     detalle = describir(op)
-    if detalle.categoria_id is not None:
-        categoria = libro.categoria(detalle.categoria_id).nombre
-    else:
-        categoria = ", ".join(libro.categoria(cat_id).nombre for cat_id, _ in detalle.reparto)
+    ids = [detalle.categoria_id] if detalle.categoria_id is not None else [cat_id for cat_id, _ in detalle.reparto]
+    categoria = ", ".join(libro.categoria(cat_id).nombre for cat_id in ids)
+    rubro = ", ".join(dict.fromkeys(r for cat_id in ids if (r := categorias.nombre_rubro(libro, cat_id))))
     sentido = _SENTIDO.get(op.tipo) or ("+" if detalle.monto >= 0 else "-")
     return FilaMovimiento(
         id=op.id,
@@ -105,6 +106,7 @@ def fila(libro: Libro, op: Operacion) -> FilaMovimiento:
         categoria=categoria,
         monto=abs(detalle.monto),
         sentido=sentido,
+        rubro=rubro,
     )
 
 
@@ -138,7 +140,7 @@ def buscar(
             continue
         f = fila(libro, op)
         if buscado:
-            pajar = _normalizar(" ".join((f.descripcion, f.notas, f.cuenta, f.cuenta_destino, f.categoria)))
+            pajar = _normalizar(" ".join((f.descripcion, f.notas, f.cuenta, f.cuenta_destino, f.categoria, f.rubro)))
             if buscado not in pajar:
                 continue
         filas.append(f)

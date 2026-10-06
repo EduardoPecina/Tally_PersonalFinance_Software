@@ -41,9 +41,9 @@ def con_datos(raiz):
         tdc = cuentas.crear(lib, "TDC Ficticia", "credito", limite_credito=2000, dia_corte=3, dia_pago=23,
                             fecha_creacion=date(hoy.year, 1, 1)).id
         cat = {c.nombre: c.id for c in lib.categorias()}
-        movimientos.registrar_ingreso(lib, hoy, debito, cat["Nómina"], 4000, "Nómina")
-        movimientos.registrar_gasto(lib, hoy, tdc, cat["Alimentos"], 300, "Pizza")
-        movimientos.registrar_gasto(lib, hoy, debito, cat["Transporte"], 80, "Taxi")
+        movimientos.registrar_ingreso(lib, hoy, debito, cat["NOMINA"], 4000, "Nómina")
+        movimientos.registrar_gasto(lib, hoy, tdc, cat["ALIMENTOS"], 300, "Pizza")
+        movimientos.registrar_gasto(lib, hoy, debito, cat["TRANSPORTE"], 80, "Taxi")
         registrar_transferencia(lib, hoy, debito, ahorro, 1000, "Al ahorro")
         registrar_pago_tarjeta(lib, hoy, debito, tdc, 300, "Pago TDC")
     return {"debito": debito, "ahorro": ahorro, "tdc": tdc, "cat": cat}
@@ -102,7 +102,7 @@ def test_registrar_gasto_y_pago_de_tarjeta(raiz, con_datos):
     at = abrir()
     at.switch_page(_pagina("registrar")).run()
     sin_errores(at)
-    next(s for s in at.selectbox if s.label == "Categoría").set_value(con_datos["cat"]["Alimentos"])
+    next(s for s in at.selectbox if s.label == "Subcategoría").set_value(con_datos["cat"]["ALIMENTOS"])
     next(s for s in at.selectbox if s.label == "Pagado con").set_value(con_datos["tdc"])
     next(n for n in at.number_input if n.label == "Importe").set_value(125.5)
     next(t for t in at.text_input if t.label == "Descripción").input("Tacos")
@@ -147,7 +147,7 @@ def test_historial_filtra_y_conserva_filtros(con_datos):
 
 def test_cuentas_y_categorias_y_respaldos_cargan(con_datos):
     at = abrir()
-    for pagina in ("cuentas", "categorias", "respaldos"):
+    for pagina in ("cuentas", "categorias", "respaldos", "cargar"):
         at.switch_page(_pagina(pagina)).run()
         sin_errores(at)
 
@@ -202,3 +202,85 @@ def test_tarjeta_con_10_dias_naturales_despues_del_corte(raiz, con_datos):
     tdc = cuentas.buscar(sesion_en(raiz).libro, "TDC con plazo")
     assert (tdc.dia_corte, tdc.dias_para_pagar, tdc.dias_habiles, tdc.recorrer_inhabil, tdc.dia_pago) == (
         3, 10, False, True, None)
+
+
+def nueva_subcategoria(at: AppTest, rubro_id: str, nombre: str) -> None:
+    """Llena el formulario «Nueva subcategoría» de la pestaña Gastos (la primera)."""
+    next(s for s in at.selectbox if s.label == "Dentro de la categoría").set_value(rubro_id)
+    next(t for t in at.text_input if t.label == "Nombre de la subcategoría").input(nombre)
+    boton(at, "Agregar subcategoría").click().run()
+
+
+def test_categorias_y_subcategorias_desde_el_portal(raiz, con_datos):
+    from motor import categorias
+
+    at = abrir(_pagina("categorias"))
+    sin_errores(at)
+    assert any(e.label.startswith("**SALUD**") for e in at.expander)
+    at.text_input(key="buscar_gasto").input("dentísta").run()
+    assert at.dataframe[0].value["Subcategoría"].tolist() == ["DENTISTA"]
+    at.text_input(key="buscar_gasto").input("").run()
+
+    salud = categorias.buscar_rubro(sesion_en(raiz).libro, "Salud").id
+    nueva_subcategoria(at, salud, "Ortodóncia")
+    sin_errores(at)
+    nueva = categorias.buscar(sesion_en(raiz).libro, "ortodoncia")
+    assert nueva.nombre == "ORTODONCIA" and nueva.rubro_id == salud
+
+    # La misma, escrita distinto: no se puede agregar dos veces.
+    nueva_subcategoria(at, salud, "ORTODONCIA ")
+    assert any("dos veces" in e.value for e in at.error)
+
+
+TEXTO_CON_DESCONOCIDA = (
+    "CUENTA: Débito Ficticio\nFECHA\tDESCRIPCION\tSUBCATEGORIA\tCARGO\tABONO\n"
+    "01/07/2026\tCafé\tCafecitos\t60\t\n02/07/2026\tSúper\tDespensa\t500\t\n"
+)
+
+
+def test_cargar_datos_con_la_plantilla(raiz, con_datos):
+    from motor import categorias, importacion
+
+    at = abrir(_pagina("cargar"))
+    sin_errores(at)
+    at.text_area(key="cargar_texto_0").input(importacion.plantilla()).run()
+    sin_errores(at)
+    metricas = {m.label: m.value for m in at.metric}
+    assert metricas["Se cargan"] == "22" and metricas["En las dos cuentas"] == "3"
+    boton(at, "Cargar 22 movimiento(s)").click().run()
+    sin_errores(at)
+    lib = sesion_en(raiz).libro
+    assert cuentas.buscar(lib, "Mi tarjeta de crédito") is not None
+    assert list((raiz / "Respaldos").glob("TALLY_antes_de_cargar_datos_*.zip"))
+    assert at.text_area(key="cargar_texto_1").value == ""                 # listo para otro archivo
+
+    # Un nombre que TALLY no conoce: por omisión se crea como subcategoría nueva en VARIOS.
+    at.text_area(key="cargar_texto_1").input(TEXTO_CON_DESCONOCIDA).run()
+    sin_errores(at)
+    assert any(m.value.startswith("**CAFECITOS**") for m in at.markdown)
+    boton(at, "Cargar 2 movimiento(s)").click().run()
+    sin_errores(at)
+    cafecitos = categorias.buscar(sesion_en(raiz).libro, "cafecitos")
+    assert categorias.etiqueta(sesion_en(raiz).libro, cafecitos.id) == "VARIOS › CAFECITOS"
+
+
+def test_cargar_datos_con_errores_no_carga_nada(raiz, con_datos):
+    at = abrir(_pagina("cargar"))
+    at.text_area(key="cargar_texto_0").input(
+        "CUENTA: Débito Ficticio\nFECHA\tDESCRIPCION\tSUBCATEGORIA\tCARGO\tABONO\n31/02/2026\tMal\tDespensa\t5\t\n"
+        "01/07/2026\tBien\tDespensa\t5\t\n").run()
+    assert any("Línea 3" in e.value for e in at.error)
+    assert boton(at, "Cargar 1 movimiento(s)").disabled
+
+
+def test_empezar_de_cero_desde_respaldos(raiz, con_datos):
+    at = abrir(_pagina("respaldos"))
+    assert boton(at, "Borrar todo y empezar de cero").disabled
+    at.text_input(key="confirmar_empezar_de_cero").input("borrar").run()
+    boton(at, "Borrar todo y empezar de cero").click().run()
+    assert not at.exception
+    assert at.title[0].value.startswith("¡Hola!")                         # como recién instalado
+    lib = sesion_en(raiz).libro
+    assert lib.perfil is None and lib.cuentas() == []
+    (respaldo,) = (raiz / "Respaldos").glob("TALLY_antes_de_empezar_de_cero_*.zip")
+    assert respaldos.inspeccionar(respaldo).movimientos == 6

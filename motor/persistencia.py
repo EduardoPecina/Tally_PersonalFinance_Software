@@ -28,7 +28,9 @@ from motor.errores import ErrorDatos
 from motor.libro import Libro
 from motor.serializacion import Instantanea, instantanea, libro_desde_instantanea
 
-VERSION_ESQUEMA = 1
+VERSION_ESQUEMA = 2
+# 1: TALLY 0.1–0.3. 2: categorías con subcategorías (entidad «rubro»). Las tablas no cambian; el contenido lo
+#    pone al día ``Sesion`` (motor/catalogo.py) la primera vez que se abre.
 NOMBRE_ARCHIVO = "tally.db"
 
 _ESQUEMA = """
@@ -102,6 +104,11 @@ class Almacen:
                     conexion.execute("COMMIT")
                 elif int(version) > VERSION_ESQUEMA:
                     raise ErrorDatos("Estos datos son de una versión más nueva de TALLY. Actualiza el programa.")
+                elif int(version) < VERSION_ESQUEMA:
+                    # Así una versión anterior de TALLY ya no los abre (no conoce las categorías nuevas).
+                    conexion.execute("BEGIN IMMEDIATE")
+                    self._poner_meta(conexion, "version_esquema", VERSION_ESQUEMA)
+                    conexion.execute("COMMIT")
         except sqlite3.DatabaseError as error:
             raise ErrorDatos(f"No se pudo abrir el archivo de datos ({error}). Restaura un respaldo.") from error
 

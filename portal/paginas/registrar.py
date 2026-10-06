@@ -19,7 +19,7 @@ AYUDA = {
     TipoOperacion.INGRESO: "Dinero que recibiste: nómina, ventas, freelance…",
     TipoOperacion.TRANSFERENCIA: "Mover dinero entre tus cuentas (p. ej. al ahorro). No es gasto.",
     TipoOperacion.PAGO_TARJETA: "Pagar tu tarjeta de crédito. No es otro gasto: el gasto se contó al comprar.",
-    TipoOperacion.REEMBOLSO: "Te devolvieron dinero de una compra: resta del gasto de esa categoría.",
+    TipoOperacion.REEMBOLSO: "Te devolvieron dinero de una compra: resta del gasto de esa subcategoría.",
 }
 
 
@@ -66,9 +66,9 @@ def mostrar() -> None:
         else:
             opciones = categorias.para_tipo(lib, tipo)
             cat_ids = [c.id for c in opciones]
-            cat_nombre = {c.id: c.nombre for c in opciones}
-            categoria_id = izquierda.selectbox("Categoría", cat_ids, format_func=cat_nombre.get, index=None,
-                                               placeholder="Elige una categoría")
+            cat_nombre = {c.id: categorias.etiqueta(lib, c.id) for c in opciones}
+            categoria_id = izquierda.selectbox("Subcategoría", cat_ids, format_func=cat_nombre.get, index=None,
+                                               placeholder="Escribe para buscar: gym, súper, uber…")
             origen = derecha.selectbox("Cuenta" if tipo is not TipoOperacion.GASTO else "Pagado con", ids,
                                        format_func=nombre.get, index=_indice(ids, recordadas.get("cuenta")))
         monto = izquierda.number_input("Importe", min_value=0.0, value=None, step=1.0, format="%.2f",

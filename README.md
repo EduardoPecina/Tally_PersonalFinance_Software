@@ -61,8 +61,25 @@ el acceso directo **Mis datos de TALLY**, dentro de `Escritorio\TALLY`.
 | Registrar | Anotar un gasto, ingreso, transferencia, pago de tarjeta o reembolso, rápido |
 | Historial | Buscar, filtrar, ordenar, ver, editar o eliminar movimientos |
 | Cuentas | ¿Cuánto tengo en cada cuenta? Crear, editar, actualizar saldo, archivar |
-| Categorías | Organizar categorías y grupos a tu manera |
-| Respaldos y bitácora | Crear o restaurar respaldos y ver qué cambió |
+| Categorías | Categorías (SALUD, TECNOLOGIA…) con sus subcategorías y clasificaciones, a tu manera |
+| Cargar datos | Subir tu historial de Excel de una vez con una plantilla `.txt` |
+| Respaldos y bitácora | Crear o restaurar respaldos, ver qué cambió o empezar de cero |
+
+### Pasar tu historial de Excel a TALLY
+
+1. En **Cargar datos**, descarga la plantilla de tu cuenta (débito, crédito,
+   ahorro, inversión) o la de todas.
+2. Ábrela con el Bloc de notas. Escribe el nombre de la cuenta y pega tus
+   movimientos copiados de Excel en este orden de columnas: FECHA,
+   DESCRIPCION, SUBCATEGORIA, CARGO, ABONO y NOTAS.
+3. Súbela. Antes de guardar verás una vista previa. Ahí decides qué es cada
+   nombre que TALLY no reconozca: una subcategoría nueva, una que ya existe o
+   una de tus cuentas.
+
+Si en SUBCATEGORIA escribes el nombre de otra de tus cuentas, el movimiento
+es una transferencia y no cuenta como gasto. Si la misma transferencia viene
+en las dos cuentas, se carga una sola vez. Subir dos veces el mismo archivo
+no duplica nada.
 
 ## Desarrollo
 

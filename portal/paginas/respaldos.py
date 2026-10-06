@@ -83,6 +83,31 @@ def _restaurar() -> None:
         st.rerun()
 
 
+CONFIRMAR = "BORRAR"
+
+
+def _empezar_de_cero() -> None:
+    st.subheader("Empezar de cero")
+    st.markdown("Borra **todo**: tu nombre, tus cuentas, tus movimientos, las categorías que creaste y la bitácora. "
+                "TALLY queda como recién instalado y te vuelve a saludar.")
+    st.info("Antes de borrar, TALLY guarda un respaldo completo en la carpeta Respaldos "
+            "(«TALLY_antes_de_empezar_de_cero_…»). Si te arrepientes, restáuralo en la pestaña **Restaurar** y "
+            "recuperas todo.", icon="🛟")
+    confirmacion = st.text_input(f"Para confirmar, escribe {CONFIRMAR}", key="confirmar_empezar_de_cero",
+                                 max_chars=20)
+    if st.button("Borrar todo y empezar de cero", type="primary",
+                 disabled=confirmacion.strip().upper() != CONFIRMAR):
+        try:
+            seguridad = respaldos.empezar_de_cero(sesion())
+        except (ErrorTally, OSError) as error:
+            st.error(f"No se borró nada: {error}")
+            return
+        for clave in [k for k in st.session_state if not k.startswith("_avisos")]:
+            del st.session_state[clave]
+        avisar(f"Empezaste de cero. Lo anterior quedó respaldado en {seguridad.name}")
+        st.rerun()
+
+
 def _bitacora() -> None:
     st.subheader("Bitácora de cambios")
     st.caption("Qué cambió y cuándo. Se guarda solo en esta PC.")
@@ -108,10 +133,12 @@ def mostrar() -> None:
     else:
         st.caption(f"Tus datos viven solo en esta PC, en **{rutas.carpeta_usuario()}** (fuera de OneDrive y de "
                    "cualquier nube).")
-    crear, restaurar, bitacora = st.tabs(["Crear respaldo", "Restaurar", "Bitácora"])
+    crear, restaurar, bitacora, cero = st.tabs(["Crear respaldo", "Restaurar", "Bitácora", "Empezar de cero"])
     with crear:
         _crear()
     with restaurar:
         _restaurar()
     with bitacora:
         _bitacora()
+    with cero:
+        _empezar_de_cero()

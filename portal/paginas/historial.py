@@ -20,17 +20,17 @@ CON_SIGNO = (TipoOperacion.AJUSTE, TipoOperacion.RENDIMIENTO, TipoOperacion.SALD
 def _filtros() -> dict:
     lib = libro()
     todas_cuentas = {c.id: c.nombre for c in cuentas.listar(lib, incluir_archivadas=True)}
-    todas_categorias = {c.id: c.nombre for c in lib.categorias()}
+    todas_categorias = {c.id: categorias.etiqueta(lib, c.id) for c in categorias.ordenadas(lib, lib.categorias())}
 
     texto = estado.control(FILTROS, "texto", "", lambda k: st.text_input(
-        "Buscar", key=k, placeholder="Descripción, notas, cuenta o categoría…"))
+        "Buscar", key=k, placeholder="Descripción, notas, cuenta, categoría o subcategoría…"))
     col1, col2, col3 = st.columns(3)
     with col1:
         sel_cuentas = estado.control(FILTROS, "cuentas", [], lambda k: st.multiselect(
             "Cuentas", list(todas_cuentas), format_func=todas_cuentas.get, key=k, placeholder="Todas"))
     with col2:
         sel_categorias = estado.control(FILTROS, "categorias", [], lambda k: st.multiselect(
-            "Categorías", list(todas_categorias), format_func=todas_categorias.get, key=k, placeholder="Todas"))
+            "Subcategorías", list(todas_categorias), format_func=todas_categorias.get, key=k, placeholder="Todas"))
     with col3:
         sel_tipos = estado.control(FILTROS, "tipos", [], lambda k: st.multiselect(
             "Tipos", list(TipoOperacion), format_func=ETIQUETA_TIPO_OPERACION.get, key=k, placeholder="Todos"))
@@ -79,7 +79,8 @@ def mostrar() -> None:
             "Tipo": [f.tipo_etiqueta for f in filas],
             "Descripción": [f.descripcion for f in filas],
             "Cuenta": [f.cuenta + (f" → {f.cuenta_destino}" if f.cuenta_destino else "") for f in filas],
-            "Categoría": [f.categoria for f in filas],
+            "Categoría": [f.rubro for f in filas],
+            "Subcategoría": [f.categoria for f in filas],
             "Importe": [formato.dinero_con_signo(f.monto, f.sentido) for f in filas],
         }
     )
@@ -108,7 +109,7 @@ def _detalle(operacion_id: str) -> None:
         f"{fila.tipo_etiqueta} · {formato.fecha_larga(fila.fecha)} · "
         f"**{formato.dinero_con_signo_md(fila.monto, fila.sentido)}**  \n"
         f":gray[{fila.cuenta}{' → ' + fila.cuenta_destino if fila.cuenta_destino else ''}"
-        f"{' · ' + fila.categoria if fila.categoria else ''}]"
+        f"{' · ' + (fila.rubro + ' › ' if fila.rubro else '') + fila.categoria if fila.categoria else ''}]"
     )
     if fila.notas:
         st.caption(f"Notas: {formato.md(fila.notas)}")
@@ -164,10 +165,10 @@ def _editar(detalle: movimientos.Detalle) -> None:
             cat_ids = [c.id for c in opciones]
             if detalle.categoria_id not in cat_ids:
                 cat_ids.append(detalle.categoria_id)
-            categoria = derecha.selectbox("Categoría", cat_ids, index=cat_ids.index(detalle.categoria_id),
-                                          format_func=lambda i: lib.categoria(i).nombre)
+            categoria = derecha.selectbox("Subcategoría", cat_ids, index=cat_ids.index(detalle.categoria_id),
+                                          format_func=lambda i: categorias.etiqueta(lib, i))
         if repartido:
-            st.caption("Este movimiento está repartido en varias categorías: aquí puedes cambiar fecha, cuenta "
+            st.caption("Este movimiento está repartido en varias subcategorías: aquí puedes cambiar fecha, cuenta "
                        "y textos.")
         descripcion = st.text_input("Descripción", value=detalle.descripcion, max_chars=120)
         notas = st.text_input("Notas", value=detalle.notas, max_chars=300)

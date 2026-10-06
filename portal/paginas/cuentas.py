@@ -186,7 +186,8 @@ def _actualizar_saldo(cuenta: Cuenta) -> None:
             real = izquierda.number_input("Saldo que dice tu banco", step=100.0, format="%.2f",
                                           value=float(cuentas.saldo(lib, cuenta.id)))
             razon = st.radio("¿Qué explica la diferencia?", razones)
-            categoria = st.selectbox("Categoría del rendimiento", de_ingreso, format_func=lambda c: c.nombre,
+            categoria = st.selectbox("Subcategoría del rendimiento", de_ingreso,
+                                     format_func=lambda c: categorias.etiqueta(lib, c.id),
                                      index=sugerida if de_ingreso else None)
         if st.form_submit_button("Actualizar saldo", type="primary"):
             if es_credito:

@@ -14,12 +14,12 @@ from motor.transferencias import registrar_pago_tarjeta, registrar_transferencia
 
 @pytest.fixture
 def mes(libro, ctas, cat):
-    movimientos.registrar_ingreso(libro, date(2026, 7, 15), ctas.debito, cat("Nómina"), 5000, "Nómina julio")
-    movimientos.registrar_gasto(libro, date(2026, 7, 2), ctas.credito, cat("Alimentos"), 300, "Pizza", "con amigos")
-    movimientos.registrar_gasto(libro, date(2026, 7, 9), ctas.debito, cat("Transporte"), 80, "Taxi aeropuerto")
+    movimientos.registrar_ingreso(libro, date(2026, 7, 15), ctas.debito, cat("NOMINA"), 5000, "Nómina julio")
+    movimientos.registrar_gasto(libro, date(2026, 7, 2), ctas.credito, cat("ALIMENTOS"), 300, "Pizza", "con amigos")
+    movimientos.registrar_gasto(libro, date(2026, 7, 9), ctas.debito, cat("TRANSPORTE"), 80, "Taxi aeropuerto")
     registrar_transferencia(libro, date(2026, 7, 15), ctas.debito, ctas.ahorro, 2000, "Al ahorro")
     registrar_pago_tarjeta(libro, date(2026, 7, 20), ctas.debito, ctas.credito, 300, "Pago TDC")
-    movimientos.registrar_reembolso(libro, date(2026, 7, 21), ctas.credito, cat("Alimentos"), 50, "Devolución")
+    movimientos.registrar_reembolso(libro, date(2026, 7, 21), ctas.credito, cat("ALIMENTOS"), 50, "Devolución")
     return libro
 
 
@@ -34,7 +34,7 @@ def test_buscar_sin_filtros_mas_recientes_primero(mes):
 
 def test_buscar_texto_sin_acentos_ni_mayusculas(mes):
     assert [f.descripcion for f in consultas.buscar(mes, texto="AEROPUERTO")] == ["Taxi aeropuerto"]
-    assert [f.descripcion for f in consultas.buscar(mes, texto="nomina")] == ["Nómina julio"]
+    assert [f.descripcion for f in consultas.buscar(mes, texto="NOMINA")] == ["Nómina julio"]
     assert [f.descripcion for f in consultas.buscar(mes, texto="amigos")] == ["Pizza"]  # busca en notas
 
 
@@ -44,7 +44,7 @@ def test_buscar_por_cuenta_incluye_origen_y_destino(mes, ctas):
 
 
 def test_buscar_por_categoria_tipo_y_fechas(mes, cat):
-    assert {f.descripcion for f in consultas.buscar(mes, categorias=[cat("Alimentos")])} == {"Pizza", "Devolución"}
+    assert {f.descripcion for f in consultas.buscar(mes, categorias=[cat("ALIMENTOS")])} == {"Pizza", "Devolución"}
     assert [f.descripcion for f in consultas.buscar(mes, tipos=["transferencia"])] == ["Al ahorro"]
     filas = consultas.buscar(mes, desde=date(2026, 7, 10), hasta=date(2026, 7, 15), orden="fecha_asc")
     assert [f.descripcion for f in filas] == ["Nómina julio", "Al ahorro"]
@@ -68,10 +68,10 @@ def test_sentido_y_totales(mes):
 def test_fila_de_ajuste_y_repartido(libro, ctas, cat):
     movimientos.actualizar_saldo(libro, ctas.debito, -20, date(2026, 7, 1))
     movimientos.registrar_gasto(libro, date(2026, 7, 2), ctas.debito,
-                                reparto=[(cat("Alimentos"), 10), (cat("Regalos"), 5)])
+                                reparto=[(cat("ALIMENTOS"), 10), (cat("REGALOS"), 5)])
     ajuste, repartido = consultas.buscar(libro, orden="fecha_asc")
     assert (ajuste.sentido, ajuste.monto, ajuste.tipo_etiqueta) == ("-", D(20), "Ajuste de saldo")
-    assert repartido.categoria == "Alimentos, Regalos" and repartido.monto == D(15)
+    assert repartido.categoria == "ALIMENTOS, REGALOS" and repartido.monto == D(15)
 
 
 # ------------------------------------------------------------------ periodos
@@ -84,7 +84,7 @@ def test_rango_periodo(libro, cat, ctas):
     assert reportes.rango_periodo(libro, "anio", hoy) == (date(2026, 1, 1), date(2026, 12, 31))
     assert reportes.rango_periodo(libro, "12_meses", hoy) == (date(2025, 8, 1), date(2026, 7, 31))
     assert reportes.rango_periodo(libro, "quincena", hoy) == (date(2026, 7, 16), date(2026, 7, 31))
-    movimientos.registrar_ingreso(libro, date(2026, 7, 15), ctas.debito, cat("Nómina"), 1)
+    movimientos.registrar_ingreso(libro, date(2026, 7, 15), ctas.debito, cat("NOMINA"), 1)
     assert reportes.rango_periodo(libro, "quincena", hoy) == (date(2026, 7, 15), hoy)
     assert reportes.rango_periodo(libro, "desconocido", hoy) == JULIO
     assert reportes.rango_periodo(libro, "mes_anterior", date(2026, 1, 10)) == (date(2025, 12, 1), date(2025, 12, 31))
@@ -97,8 +97,8 @@ def test_periodo_anterior():
 
 
 def test_comparar(libro, ctas, cat):
-    movimientos.registrar_gasto(libro, date(2026, 6, 5), ctas.debito, cat("Alimentos"), 500)
-    movimientos.registrar_gasto(libro, date(2026, 7, 5), ctas.debito, cat("Alimentos"), 300)
+    movimientos.registrar_gasto(libro, date(2026, 6, 5), ctas.debito, cat("ALIMENTOS"), 500)
+    movimientos.registrar_gasto(libro, date(2026, 7, 5), ctas.debito, cat("ALIMENTOS"), 300)
     c = reportes.comparar(libro, *JULIO)
     assert (c.actual.gastos, c.anterior.gastos, c.diferencia.gastos) == (D(300), D(500), D(-200))
     assert (c.desde_anterior, c.hasta_anterior) == (date(2026, 6, 1), date(2026, 6, 30))
@@ -124,7 +124,7 @@ def test_categorias_para_tipo(libro):
     assert clases[TipoOperacion.GASTO] == clases[TipoOperacion.REEMBOLSO] == {"gasto"}
     assert clases[TipoOperacion.INGRESO] == clases[TipoOperacion.RENDIMIENTO] == {"ingreso"}
     assert clases[TipoOperacion.TRANSFERENCIA] == set()
-    alimentos = categorias.buscar(libro, "Alimentos")
+    alimentos = categorias.buscar(libro, "ALIMENTOS")
     categorias.archivar(libro, alimentos.id)
     assert alimentos.id not in [c.id for c in categorias.para_tipo(libro, "gasto")]
 
@@ -133,15 +133,15 @@ def test_saldo_inicial_y_movimientos_de_cuenta(libro, cat):
     cuenta = cuentas.crear(libro, "Débito", "debito", saldo_inicial=700, fecha_creacion=date(2026, 7, 1))
     assert cuentas.saldo_inicial(libro, cuenta.id) == (D(700), date(2026, 7, 1))
     assert not cuentas.tiene_movimientos(libro, cuenta.id)
-    movimientos.registrar_gasto(libro, date(2026, 7, 2), cuenta.id, cat("Alimentos"), 1)
+    movimientos.registrar_gasto(libro, date(2026, 7, 2), cuenta.id, cat("ALIMENTOS"), 1)
     assert cuentas.tiene_movimientos(libro, cuenta.id)
     sin = cuentas.crear(libro, "Vacía", "efectivo")
     assert cuentas.saldo_inicial(libro, sin.id) is None
 
 
 def test_ciclo_por_pagar_y_actual(libro, ctas, cat):
-    movimientos.registrar_gasto(libro, date(2026, 6, 20), ctas.credito, cat("Alimentos"), 400)
-    movimientos.registrar_gasto(libro, date(2026, 7, 10), ctas.credito, cat("Alimentos"), 100)
+    movimientos.registrar_gasto(libro, date(2026, 6, 20), ctas.credito, cat("ALIMENTOS"), 400)
+    movimientos.registrar_gasto(libro, date(2026, 7, 10), ctas.credito, cat("ALIMENTOS"), 100)
     por_pagar = tarjetas.ciclo_por_pagar(libro, ctas.credito, date(2026, 7, 20))
     assert (por_pagar.inicio, por_pagar.fin, por_pagar.por_liquidar) == (date(2026, 6, 4), date(2026, 7, 3), D(400))
     actual = tarjetas.ciclo_actual(libro, ctas.credito, date(2026, 7, 20))
@@ -160,7 +160,7 @@ def test_resumen_de_bitacora():
     assert auditoria.resumen(auditoria.Cambio("cuenta", "y", auditoria.CREAR, None, {"nombre": "Débito"})) == \
         "Creó Cuenta «Débito»"
     assert auditoria.resumen(auditoria.Cambio("grupo", "z", auditoria.BORRAR, {"nombre": "Metas"}, None)) == \
-        "Borró Grupo «Metas»"
+        "Borró Clasificación «Metas»"
 
 
 def test_apartar_archivo_danado(tmp_path):

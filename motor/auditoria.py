@@ -15,11 +15,12 @@ CREAR = "crear"
 EDITAR = "editar"
 BORRAR = "borrar"
 RESTAURAR = "restaurar"
+EMPEZAR_DE_CERO = "empezar_de_cero"
 
 
 @dataclass(frozen=True, slots=True)
 class Cambio:
-    entidad: str  # perfil, grupo, categoria, cuenta, operacion o respaldo
+    entidad: str  # perfil, grupo, rubro, categoria, cuenta, operacion o respaldo
     entidad_id: str
     accion: str  # crear, editar, borrar o restaurar
     antes: dict | None
@@ -66,8 +67,9 @@ def campos_modificados(registro: Registro | Cambio) -> dict[str, tuple]:
 
 ETIQUETA_ENTIDAD = {
     "perfil": "Perfil",
-    "grupo": "Grupo",
-    "categoria": "Categoría",
+    "grupo": "Clasificación",
+    "rubro": "Categoría",
+    "categoria": "Subcategoría",
     "cuenta": "Cuenta",
     "operacion": "Movimiento",
     "respaldo": "Respaldo",
@@ -75,8 +77,8 @@ ETIQUETA_ENTIDAD = {
 ETIQUETA_ACCION = {CREAR: "Creó", EDITAR: "Editó", BORRAR: "Borró", RESTAURAR: "Restauró"}
 _CAMPOS = {
     "nombre": "nombre", "descripcion": "descripción", "notas": "notas", "fecha": "fecha",
-    "partidas": "importe/cuenta/categoría", "tipo": "tipo", "activa": "activa/archivada",
-    "grupo_id": "grupo", "principal": "ingreso principal", "orden": "orden",
+    "partidas": "importe/cuenta/subcategoría", "tipo": "tipo", "activa": "activa/archivada",
+    "grupo_id": "clasificación", "rubro_id": "categoría", "principal": "ingreso principal", "orden": "orden",
     "en_disponible": "cuenta como disponible", "institucion": "institución",
     "limite_credito": "límite", "dia_corte": "día de corte", "dia_pago": "día de pago",
     "dias_para_pagar": "días para pagar", "dias_habiles": "días hábiles", "recorrer_inhabil": "recorrer a día hábil",
@@ -87,6 +89,8 @@ _IGNORAR = {"modificado_en", "secuencia", "creado_en"}
 def resumen(registro: Registro | Cambio) -> str:
     """Una línea legible: «Editó Movimiento «Pizza» (importe/cuenta/categoría, descripción)»."""
     datos = registro.despues or registro.antes or {}
+    if registro.accion == EMPEZAR_DE_CERO:
+        return f"Empezó de cero (lo anterior quedó en «{datos.get('respaldo_de_seguridad', '')}»)"
     nombre = datos.get("nombre") or datos.get("descripcion") or datos.get("archivo") or ""
     texto = f"{ETIQUETA_ACCION.get(registro.accion, registro.accion)} {ETIQUETA_ENTIDAD.get(registro.entidad, registro.entidad)}"
     if nombre:

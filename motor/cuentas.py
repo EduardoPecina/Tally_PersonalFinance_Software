@@ -9,7 +9,6 @@ from dataclasses import replace
 from datetime import date
 from decimal import Decimal
 
-from motor.categorias import normalizar_nombre
 from motor.dinero import a_centavos, a_pesos
 from motor.errores import ErrorValidacion
 from motor.libro import Libro
@@ -22,6 +21,7 @@ from motor.modelo import (
     TipoCuenta,
     TipoOperacion,
 )
+from motor.textos import normalizar_nombre
 
 Monto = Decimal | int | float | str
 

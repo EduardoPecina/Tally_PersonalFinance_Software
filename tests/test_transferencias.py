@@ -12,7 +12,7 @@ from motor.transferencias import origen_y_destino, registrar_pago_tarjeta, regis
 
 
 def test_transferencia_a_ahorro_no_es_gasto(libro, ctas, cat):
-    movimientos.registrar_ingreso(libro, date(2026, 7, 15), ctas.debito, cat("Nómina"), 5000)
+    movimientos.registrar_ingreso(libro, date(2026, 7, 15), ctas.debito, cat("NOMINA"), 5000)
     op = registrar_transferencia(libro, date(2026, 7, 15), ctas.debito, ctas.ahorro, 3000, "Al ahorro")
 
     assert cuentas.saldo(libro, ctas.debito) == D(2000)
@@ -26,14 +26,14 @@ def test_transferencia_a_ahorro_no_es_gasto(libro, ctas, cat):
     assert r.ahorro_real == D(5000)
     assert r.apartado_a_ahorro == D(3000)
     assert reportes.gastos_por_categoria(libro, *JULIO) == []
-    assert reportes.hechos(libro, *JULIO)[0]["categoria"] == "Nómina"
+    assert reportes.hechos(libro, *JULIO)[0]["categoria"] == "NOMINA"
     assert len(reportes.hechos(libro, *JULIO)) == 1
 
 
 def test_compra_con_tdc_y_pago_cuentan_un_solo_gasto(libro, ctas, cat):
     """Ejemplo fundamental del modelo: Gastos = 500, no 1,000."""
-    movimientos.registrar_ingreso(libro, date(2026, 7, 1), ctas.debito, cat("Nómina"), 2000)
-    movimientos.registrar_gasto(libro, date(2026, 7, 5), ctas.credito, cat("Alimentos"), 500, "Restaurante")
+    movimientos.registrar_ingreso(libro, date(2026, 7, 1), ctas.debito, cat("NOMINA"), 2000)
+    movimientos.registrar_gasto(libro, date(2026, 7, 5), ctas.credito, cat("ALIMENTOS"), 500, "Restaurante")
 
     assert reportes.resumen(libro, *JULIO).gastos == D(500)
     assert tarjetas.deuda(libro, ctas.credito) == D(500)
@@ -48,14 +48,14 @@ def test_compra_con_tdc_y_pago_cuentan_un_solo_gasto(libro, ctas, cat):
 
 
 def test_pago_de_tarjeta_en_otro_mes_no_genera_gasto_en_ese_mes(libro, ctas, cat):
-    movimientos.registrar_gasto(libro, date(2026, 6, 28), ctas.credito, cat("Alimentos"), 800)
+    movimientos.registrar_gasto(libro, date(2026, 6, 28), ctas.credito, cat("ALIMENTOS"), 800)
     registrar_pago_tarjeta(libro, date(2026, 7, 4), ctas.debito, ctas.credito, 800)
     assert reportes.resumen(libro, date(2026, 6, 1), date(2026, 6, 30)).gastos == D(800)
     assert reportes.resumen(libro, *JULIO).gastos == 0
 
 
 def test_pagos_parciales_desde_varias_cuentas(libro, ctas, cat):
-    movimientos.registrar_gasto(libro, date(2026, 7, 5), ctas.credito, cat("Alimentos"), 900)
+    movimientos.registrar_gasto(libro, date(2026, 7, 5), ctas.credito, cat("ALIMENTOS"), 900)
     registrar_pago_tarjeta(libro, date(2026, 7, 10), ctas.debito, ctas.credito, 400)
     registrar_pago_tarjeta(libro, date(2026, 7, 12), ctas.ahorro, ctas.credito, 100)
     assert tarjetas.deuda(libro, ctas.credito) == D(400)
@@ -65,7 +65,7 @@ def test_pagos_parciales_desde_varias_cuentas(libro, ctas, cat):
 
 
 def test_pago_mayor_a_la_deuda_deja_saldo_a_favor(libro, ctas, cat):
-    movimientos.registrar_gasto(libro, date(2026, 7, 5), ctas.credito, cat("Alimentos"), 500)
+    movimientos.registrar_gasto(libro, date(2026, 7, 5), ctas.credito, cat("ALIMENTOS"), 500)
     registrar_pago_tarjeta(libro, date(2026, 7, 6), ctas.debito, ctas.credito, 600)
     assert cuentas.saldo(libro, ctas.credito) == D(100)
     assert tarjetas.deuda(libro, ctas.credito) == 0
@@ -111,7 +111,7 @@ def test_eliminar_transferencia_borra_ambos_lados(libro, ctas):
 
 def test_retiro_de_efectivo_es_gasto(libro, ctas, cat):
     """Decisión del usuario: el efectivo retirado se da por gastado."""
-    movimientos.registrar_gasto(libro, date(2026, 7, 2), ctas.debito, cat("Retiros de efectivo"), 600)
+    movimientos.registrar_gasto(libro, date(2026, 7, 2), ctas.debito, cat("RETIROS DE EFECTIVO"), 600)
     assert reportes.resumen(libro, *JULIO).gastos == D(600)
 
 
@@ -119,7 +119,7 @@ def test_retiro_con_cuenta_de_efectivo_es_transferencia(libro, ctas, cat):
     """Quien sí quiera rastrear su efectivo puede tener una cuenta de efectivo."""
     efectivo = cuentas.crear(libro, "Cartera", "efectivo").id
     registrar_transferencia(libro, date(2026, 7, 2), ctas.debito, efectivo, 600)
-    movimientos.registrar_gasto(libro, date(2026, 7, 3), efectivo, cat("Alimentos"), 150)
+    movimientos.registrar_gasto(libro, date(2026, 7, 3), efectivo, cat("ALIMENTOS"), 150)
     assert reportes.resumen(libro, *JULIO).gastos == D(150)
     assert reportes.indicadores(libro).dinero_disponible == D(-150)
 
@@ -140,7 +140,7 @@ def test_tercero_paga_de_mas(libro, ctas, cat):
     por_cobrar = cuentas.crear(libro, "Por cobrar", "por_cobrar").id
     registrar_transferencia(libro, date(2026, 7, 1), ctas.debito, por_cobrar, "412.40")
     registrar_transferencia(libro, date(2026, 7, 2), por_cobrar, ctas.debito, "412.40")
-    movimientos.registrar_ingreso(libro, date(2026, 7, 2), ctas.debito, cat("Otros ingresos"), "37.60")
+    movimientos.registrar_ingreso(libro, date(2026, 7, 2), ctas.debito, cat("OTROS INGRESOS"), "37.60")
     assert reportes.resumen(libro, *JULIO).ingresos == D("37.60")
     assert cuentas.saldo(libro, ctas.debito) == D("37.60")
 

@@ -38,6 +38,8 @@ def mostrar() -> None:
             st.markdown(f"- **{cuenta.nombre}** · {ETIQUETA_TIPO_CUENTA[cuenta.tipo]} · {texto}")
     with st.container(border=True):
         formulario_nueva_cuenta(clave="bienvenida")
+    st.caption("¿Ya llevabas tus finanzas en Excel? Al terminar, ve a **Cargar datos**: con una plantilla subes "
+               "todo tu historial de una vez (y TALLY crea las cuentas que falten).")
 
     st.subheader("3. ¡Listo!")
     if st.button("Empezar a usar TALLY", type="primary", disabled=not nombre.strip()):
