@@ -639,3 +639,27 @@ def test_precios_automaticos_solo_si_el_usuario_los_activa(raiz, monkeypatch):
     assert enviados == ["FICT.MX"]                           # no vuelve a consultar en la misma visita
     assert any("Última actualización" in c.value for c in at.caption)
     assert cotizaciones.ultimos()[0]["FICT.MX"].valor == 101   # guardado en la PC para usarlo sin internet
+
+
+def test_graficas_dicen_que_hay_dentro_de_otros(raiz, con_datos):
+    s = sesion_en(raiz)
+    hoy = s.libro.hoy()
+    nombres = ["RENTA", "LUZ", "GASOLINA", "DENTISTA", "CINE", "ROPA", "IMPUESTOS", "VUELOS", "VETERINARIO", "REGALOS"]
+    with s.cambio() as lib:
+        cat = {c.nombre: c.id for c in lib.categorias()}
+        for i, nombre in enumerate(nombres):
+            movimientos.registrar_gasto(lib, hoy, con_datos["debito"], cat[nombre], 10 + i, f"Ficticio {nombre}")
+    at = abrir(_pagina("graficas"))
+    sin_errores(at)
+    importes = at.dataframe[0].value
+    assert "dentro de OTROS" in set(importes["En la gráfica"])
+    at.selectbox(key="grafica_detalle").set_value("OTROS").run()
+    sin_errores(at)
+    assert any(m.value.startswith("#### Detalle de OTROS") for m in at.markdown)
+    por_categoria, movimientos_tabla = at.dataframe[1].value, at.dataframe[2].value
+    assert set(por_categoria["Categoría"]) == {n for n in importes["Categoría"]
+                                                if importes.set_index("Categoría").loc[n, "En la gráfica"] ==
+                                                "dentro de OTROS"}
+    assert len(movimientos_tabla) >= len(por_categoria)
+    at.selectbox(key="grafica_detalle").set_value("HOGAR").run()
+    assert "Subcategoría" in at.dataframe[1].value.columns                      # una categoría se abre en subcategorías

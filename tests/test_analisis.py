@@ -96,3 +96,21 @@ def test_repetir_un_movimiento(datos, ctas):
     (inicial,) = [op for op in datos.operaciones() if any(p.cuenta_id == nueva.id for p in op.partidas)]
     with pytest.raises(ErrorValidacion):
         movimientos.duplicar(datos, inicial.id, date(2026, 3, 10))
+
+
+def test_detalle_dice_de_que_movimientos_sale_cada_grupo(libro, ctas, cat):
+    from motor import movimientos
+
+    movimientos.registrar_gasto(libro, date(2026, 7, 3), ctas.debito, cat("SNACKS Y ANTOJOS"), 65, "Botana")
+    movimientos.registrar_gasto(libro, date(2026, 7, 9), ctas.credito, cat("CAFETERIAS"), 40, "Café")
+    movimientos.registrar_reembolso(libro, date(2026, 7, 10), ctas.debito, cat("CAFETERIAS"), 10, "Devolución")
+    movimientos.registrar_gasto(libro, date(2026, 7, 5), ctas.debito, cat("RENTA"), 900, "Renta")
+    filas = analisis.detalle(libro, "grupo", {"Antojos"}, desde=date(2026, 7, 1), hasta=date(2026, 7, 31))
+    assert [(f.descripcion, f.categoria, f.monto) for f in filas] == [
+        ("Devolución", "CAFETERIAS", D(-10)), ("Café", "CAFETERIAS", D(40)), ("Botana", "SNACKS Y ANTOJOS", D(65))]
+    assert sum(f.monto for f in filas) == analisis.pivot(libro, filas="grupo", columnas="ninguna",
+                                                          desde=date(2026, 7, 1)).total_fila["Antojos"]
+    varios = analisis.detalle(libro, "rubro", {"ALIMENTACION", "HOGAR"}, cuentas={ctas.debito})
+    assert {f.rubro for f in varios} == {"ALIMENTACION", "HOGAR"} and all(f.cuenta for f in varios)
+    with pytest.raises(ValueError):
+        analisis.detalle(libro, "nada", {"x"})
