@@ -16,20 +16,31 @@ from motor.libro import Libro
 from motor.modelo import Categoria, ClaseCategoria, Grupo, Rubro
 from motor.textos import clave, estandarizar
 
-GRUPOS_INICIALES = ("Necesidad", "Disfrute", "Estabilidad", "Inversión", "Dádivas")
+# Clasificaciones: para qué es cada gasto según tus metas (independiente de su categoría).
+DESCRIPCIONES = {
+    "Necesidad": "Lo indispensable para vivir: techo, comida, servicios, transporte, salud y ropa.",
+    "Compromisos": "Lo que pagas por obligación y no te da nada a cambio: intereses, comisiones, impuestos, multas "
+                   "y pagos de deudas.",
+    "Estabilidad": "Lo que protege tu ingreso y tu tranquilidad: seguros, herramientas de trabajo e imprevistos.",
+    "Crecimiento": "Lo que te hace crecer: estudios, cursos, libros, ejercicio y herramientas para aprender.",
+    "Disfrute": "Gustos que eliges: salidas, viajes, entretenimiento, compras y caprichos.",
+    "Antojos": "Los gastos hormiga: botanas, café, comida a domicilio. Pequeños, pero suman.",
+    "Generosidad": "Lo que das a otros: regalos, celebraciones, donativos y apoyo a la familia.",
+}
+GRUPOS_INICIALES = tuple(DESCRIPCIONES)
 
-_N, _D, _E, _I, _DA = GRUPOS_INICIALES
+_N, _C, _E, _CR, _D, _A, _G = GRUPOS_INICIALES
 G, I = ClaseCategoria.GASTO, ClaseCategoria.INGRESO
 
 # (categoría, clase, ((subcategoría, clasificación), ...)). La nómina es el ingreso principal (quincenas).
 CATALOGO: tuple[tuple[str, ClaseCategoria, tuple[tuple[str, str | None], ...]], ...] = (
     ("ALIMENTACION", G, (
-        ("DESPENSA", _N), ("ALIMENTOS", _N), ("RESTAURANTES", _D), ("COMIDA A DOMICILIO", _D),
-        ("SNACKS Y ANTOJOS", _D), ("CAFETERIAS", _D), ("COMIDA EN EL TRABAJO O ESCUELA", _N),
+        ("DESPENSA", _N), ("ALIMENTOS", _N), ("RESTAURANTES", _D), ("COMIDA A DOMICILIO", _A),
+        ("SNACKS Y ANTOJOS", _A), ("CAFETERIAS", _A), ("COMIDA EN EL TRABAJO O ESCUELA", _N),
         ("AGUA PURIFICADA", _N),
     )),
     ("HOGAR", G, (
-        ("RENTA", _N), ("HIPOTECA", _N), ("VIVIENDA", _N), ("CUOTA DE MANTENIMIENTO", _N), ("PREDIAL", _N),
+        ("RENTA", _N), ("HIPOTECA", _N), ("VIVIENDA", _N), ("CUOTA DE MANTENIMIENTO", _N), ("PREDIAL", _C),
         ("HOGAR Y MANTENIMIENTO", _N), ("MEJORAS DEL HOGAR", _D), ("MUEBLES Y DECORACION", _D),
         ("ARTICULOS DE LIMPIEZA", _N), ("SERVICIO DOMESTICO", _N), ("SEGURO DE CASA", _E),
     )),
@@ -39,7 +50,7 @@ CATALOGO: tuple[tuple[str, ClaseCategoria, tuple[tuple[str, str | None], ...]], 
     ("MOVILIDAD", G, (
         ("TRANSPORTE", _N), ("GASOLINA", _N), ("TRANSPORTE PUBLICO", _N), ("TAXI Y APPS DE VIAJE", _N),
         ("ESTACIONAMIENTO", _N), ("CASETAS", _N), ("MANTENIMIENTO DEL AUTO", _N), ("SEGURO DEL AUTO", _E),
-        ("TENENCIA Y VERIFICACION", _N), ("PAGO DEL AUTO", _N), ("LAVADO DEL AUTO", _D),
+        ("TENENCIA Y VERIFICACION", _C), ("PAGO DEL AUTO", _C), ("LAVADO DEL AUTO", _D),
     )),
     ("SALUD", G, (
         ("SALUD Y CUIDADO PERSONAL", _N), ("CONSULTAS MEDICAS", _N), ("MEDICINAS Y FARMACIA", _N),
@@ -50,14 +61,14 @@ CATALOGO: tuple[tuple[str, ClaseCategoria, tuple[tuple[str, str | None], ...]], 
         ("CORTE DE CABELLO Y ESTETICA", _N), ("COSMETICOS E HIGIENE", _N), ("SPA Y MASAJES", _D),
     )),
     ("DEPORTE Y BIENESTAR", G, (
-        ("GIMNASIO", _I), ("CLASES Y DEPORTES", _I), ("EQUIPO DEPORTIVO", _D), ("SUPLEMENTOS", _D),
+        ("GIMNASIO", _CR), ("CLASES Y DEPORTES", _CR), ("EQUIPO DEPORTIVO", _CR), ("SUPLEMENTOS", _D),
     )),
     ("ROPA Y CALZADO", G, (
         ("ROPA", _N), ("CALZADO", _N), ("ACCESORIOS", _D), ("LAVANDERIA Y TINTORERIA", _N),
     )),
     ("TECNOLOGIA", G, (
-        ("HARDWARE Y ENTRETENIMIENTO", _D), ("CELULARES Y TABLETS", _D), ("COMPUTADORAS Y ACCESORIOS", _I),
-        ("VIDEOJUEGOS", _D), ("SERVICIOS DE SOFTWARE", _N), ("REPARACION DE EQUIPOS", _N),
+        ("HARDWARE Y ENTRETENIMIENTO", _D), ("CELULARES Y TABLETS", _D), ("COMPUTADORAS Y ACCESORIOS", _CR),
+        ("VIDEOJUEGOS", _D), ("SERVICIOS DE SOFTWARE", _CR), ("REPARACION DE EQUIPOS", _N),
     )),
     ("SUSCRIPCIONES", G, (
         ("SUSCRIPCIONES Y STREAMING", _D), ("STREAMING DE VIDEO", _D), ("MUSICA", _D),
@@ -65,7 +76,7 @@ CATALOGO: tuple[tuple[str, ClaseCategoria, tuple[tuple[str, str | None], ...]], 
     )),
     ("ENTRETENIMIENTO", G, (
         ("CINE", _D), ("CONCIERTOS Y EVENTOS", _D), ("BARES Y FIESTAS", _D), ("SALIDAS Y PASEOS", _D),
-        ("LIBROS Y REVISTAS", _D), ("PASATIEMPOS", _D), ("LOTERIA Y APUESTAS", _D),
+        ("LIBROS Y REVISTAS", _CR), ("PASATIEMPOS", _D), ("LOTERIA Y APUESTAS", _A),
     )),
     ("COMPRAS", G, (
         ("COMPRAS EN LINEA", _D), ("TIENDAS DEPARTAMENTALES", _D), ("PAPELERIA", _N),
@@ -75,32 +86,32 @@ CATALOGO: tuple[tuple[str, ClaseCategoria, tuple[tuple[str, str | None], ...]], 
         ("TOURS Y ACTIVIDADES", _D),
     )),
     ("ESTUDIOS", G, (
-        ("EDUCACION", _I), ("COLEGIATURAS", _I), ("CURSOS Y CERTIFICACIONES", _I), ("IDIOMAS", _I),
-        ("LIBROS Y MATERIAL ESCOLAR", _I),
+        ("EDUCACION", _CR), ("COLEGIATURAS", _CR), ("CURSOS Y CERTIFICACIONES", _CR), ("IDIOMAS", _CR),
+        ("LIBROS Y MATERIAL ESCOLAR", _CR),
     )),
     ("TRABAJO", G, (
         ("INSUMOS DE TRABAJO", _E), ("CUOTAS PROFESIONALES", _E), ("COMIDAS DE TRABAJO", _N),
     )),
     ("HIJOS", G, (
         ("GUARDERIA", _N), ("ROPA INFANTIL", _N), ("JUGUETES", _D), ("PAÑALES Y ARTICULOS DE BEBE", _N),
-        ("NIÑERA", _N), ("MESADAS", _DA), ("ACTIVIDADES EXTRAESCOLARES", _I),
+        ("NIÑERA", _N), ("MESADAS", _G), ("ACTIVIDADES EXTRAESCOLARES", _CR),
     )),
     ("MASCOTAS", G, (
         ("ALIMENTO PARA MASCOTAS", _N), ("VETERINARIO", _N), ("ESTETICA DE MASCOTAS", _D),
         ("ACCESORIOS PARA MASCOTAS", _D),
     )),
     ("FINANZAS", G, (
-        ("GASTOS FINANCIEROS", _N), ("INTERESES DE TARJETAS", _N), ("COMISIONES BANCARIAS", _N),
-        ("ANUALIDADES", _N), ("INTERESES DE PRESTAMOS", _N), ("IMPUESTOS", _N), ("SEGURO DE VIDA", _E),
+        ("GASTOS FINANCIEROS", _C), ("INTERESES DE TARJETAS", _C), ("COMISIONES BANCARIAS", _C),
+        ("ANUALIDADES", _C), ("INTERESES DE PRESTAMOS", _C), ("IMPUESTOS", _C), ("SEGURO DE VIDA", _E),
     )),
     ("REGALOS Y DONATIVOS", G, (
-        ("REGALOS", _DA), ("DONATIVOS", _DA), ("CELEBRACIONES", _D), ("APOYO A FAMILIARES", _DA),
+        ("REGALOS", _G), ("DONATIVOS", _G), ("CELEBRACIONES", _G), ("APOYO A FAMILIARES", _G),
     )),
     ("EFECTIVO", G, (
         ("RETIROS DE EFECTIVO", _N),
     )),
     ("VARIOS", G, (
-        ("OTROS GASTOS", None), ("IMPREVISTOS", None), ("MULTAS Y RECARGOS", None),
+        ("OTROS GASTOS", None), ("IMPREVISTOS", _E), ("MULTAS Y RECARGOS", _C),
     )),
     ("SUELDO Y PRESTACIONES", I, (
         ("NOMINA", None), ("AGUINALDO", None), ("BONOS", None), ("PRIMA VACACIONAL", None),
@@ -119,6 +130,33 @@ CATALOGO: tuple[tuple[str, ClaseCategoria, tuple[tuple[str, str | None], ...]], 
     )),
 )
 PRINCIPAL = "NOMINA"
+
+# TALLY 0.6 reacomodó las clasificaciones (antes eran Necesidad, Disfrute, Estabilidad, Inversión y Dádivas).
+RENOMBRES_0_6 = {"Inversión": "Crecimiento", "Dádivas": "Generosidad"}
+NUEVAS_0_6 = ("Compromisos", "Antojos")
+# Subcategoría del catálogo → (clasificación anterior, nueva). Solo se cambian las que el usuario no movió.
+RECLASIFICACION_0_6 = {
+    "COMIDA A DOMICILIO": ("Disfrute", "Antojos"),
+    "SNACKS Y ANTOJOS": ("Disfrute", "Antojos"),
+    "CAFETERIAS": ("Disfrute", "Antojos"),
+    "PREDIAL": ("Necesidad", "Compromisos"),
+    "TENENCIA Y VERIFICACION": ("Necesidad", "Compromisos"),
+    "PAGO DEL AUTO": ("Necesidad", "Compromisos"),
+    "EQUIPO DEPORTIVO": ("Disfrute", "Crecimiento"),
+    "SERVICIOS DE SOFTWARE": ("Necesidad", "Crecimiento"),
+    "LIBROS Y REVISTAS": ("Disfrute", "Crecimiento"),
+    "LOTERIA Y APUESTAS": ("Disfrute", "Antojos"),
+    "GASTOS FINANCIEROS": ("Necesidad", "Compromisos"),
+    "INTERESES DE TARJETAS": ("Necesidad", "Compromisos"),
+    "COMISIONES BANCARIAS": ("Necesidad", "Compromisos"),
+    "ANUALIDADES": ("Necesidad", "Compromisos"),
+    "INTERESES DE PRESTAMOS": ("Necesidad", "Compromisos"),
+    "IMPUESTOS": ("Necesidad", "Compromisos"),
+    "CELEBRACIONES": ("Disfrute", "Generosidad"),
+    "IMPREVISTOS": (None, "Estabilidad"),
+    "MULTAS Y RECARGOS": (None, "Compromisos"),
+}
+VERSION_CLASIFICACIONES = 2
 # Adonde va lo que no tiene categoría (subcategorías creadas por el usuario en versiones anteriores).
 VARIOS = {ClaseCategoria.GASTO: "VARIOS", ClaseCategoria.INGRESO: "INGRESOS VARIOS"}
 
@@ -159,6 +197,44 @@ def actualizar(libro: Libro) -> None:
         if nombre != categoria.nombre:
             libro.guardar_categoria(replace(categoria, nombre=nombre))
     _completar(libro, principal=False)
+
+
+def necesita_reclasificar(libro: Libro) -> bool:
+    """True si los datos tienen las clasificaciones de antes de TALLY 0.6 (se revisa una sola vez)."""
+    return libro.perfil is not None and libro.perfil.clasificaciones < VERSION_CLASIFICACIONES
+
+
+def reclasificar(libro: Libro) -> None:
+    """Pone al día las clasificaciones sin pisar lo que el usuario decidió.
+
+    1. «Inversión» → «Crecimiento» y «Dádivas» → «Generosidad» (si siguen con ese nombre).
+    2. Crea «Compromisos» y «Antojos» si no existen.
+    3. Mueve las subcategorías del catálogo de :data:`RECLASIFICACION_0_6` **solo** si siguen en su clasificación
+       original: las que el usuario ya había movido se quedan donde las puso.
+    Se hace una sola vez: después el usuario puede acomodarlas como quiera.
+    """
+    grupos = {g.nombre: g for g in libro.grupos()}
+    for viejo, nuevo in RENOMBRES_0_6.items():
+        if viejo in grupos and not any(clave(n) == clave(nuevo) for n in grupos):
+            grupos[nuevo] = libro.guardar_grupo(replace(grupos.pop(viejo), nombre=nuevo))
+    orden = max((g.orden for g in grupos.values()), default=-1) + 1
+    for nombre in NUEVAS_0_6:
+        if not any(clave(n) == clave(nombre) for n in grupos):
+            grupos[nombre] = libro.guardar_grupo(Grupo(libro.nuevo_id(), nombre, orden))
+            orden += 1
+    for posicion, nombre in enumerate(GRUPOS_INICIALES):                 # el orden sugerido
+        if nombre in grupos and grupos[nombre].orden != posicion:
+            grupos[nombre] = libro.guardar_grupo(replace(grupos[nombre], orden=posicion))
+    nombre_de = {g.id: g.nombre for g in grupos.values()}
+    for categoria in libro.categorias():
+        cambio = RECLASIFICACION_0_6.get(categoria.nombre)
+        if cambio is None:
+            continue
+        antes, despues = cambio
+        actual = nombre_de.get(categoria.grupo_id)
+        if actual == RENOMBRES_0_6.get(antes, antes) and despues in grupos:
+            libro.guardar_categoria(replace(categoria, grupo_id=grupos[despues].id))
+    libro.perfil = replace(libro.perfil, clasificaciones=VERSION_CLASIFICACIONES)
 
 
 # ---------------------------------------------------------------- internos

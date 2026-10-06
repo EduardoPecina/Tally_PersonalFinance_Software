@@ -38,10 +38,14 @@ class Sesion:
     def poner_al_dia(self) -> bool:
         """Si los datos son de una versión anterior (o de un respaldo viejo), pone al día las categorías.
         Queda anotado en la bitácora como cualquier otro cambio. Devuelve True si cambió algo."""
-        if not catalogo.necesita_actualizar(self.libro):
+        actualizar, reclasificar = catalogo.necesita_actualizar(self.libro), catalogo.necesita_reclasificar(self.libro)
+        if not (actualizar or reclasificar):
             return False
         with self.cambio() as libro:
-            catalogo.actualizar(libro)
+            if actualizar:
+                catalogo.actualizar(libro)
+            if reclasificar:
+                catalogo.reclasificar(libro)
         return True
 
     @classmethod

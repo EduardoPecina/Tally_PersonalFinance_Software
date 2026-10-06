@@ -550,3 +550,28 @@ def test_cargo_temporal_vencido_avisa_y_se_pasa_a_gasto(raiz, con_datos):
     boton(at, "Pasar a gasto").click().run()
     sin_errores(at)
     assert temporales.pendientes(sesion_en(raiz).libro) == []
+
+
+def test_clasificaciones_como_cajas_con_sus_subcategorias(raiz, con_datos):
+    s = sesion_en(raiz)
+    grupo = {g.nombre: g.id for g in s.libro.grupos()}
+    snacks = next(c.id for c in s.libro.categorias() if c.nombre == "SNACKS Y ANTOJOS")
+    at = abrir(_pagina("categorias"))
+    sin_errores(at)
+
+    def caja(nombre):                       # la clave lleva una versión que cambia tras cada ajuste
+        return next(m for m in at.multiselect if m.key.startswith(f"clasif_{grupo[nombre]}_"))
+
+    assert snacks in caja("Antojos").value
+
+    # Ponerla en Disfrute sin quitarla de Antojos: no se deja y se explica.
+    caja("Disfrute").select(snacks).run()
+    assert any("ya está en «Antojos»" in e.value for e in at.error)
+    assert sesion_en(raiz).libro.categoria(snacks).grupo_id == grupo["Antojos"]
+
+    # Quitarla de Antojos y luego agregarla en Disfrute sí.
+    caja("Antojos").unselect(snacks).run()
+    assert sesion_en(raiz).libro.categoria(snacks).grupo_id is None
+    caja("Disfrute").select(snacks).run()
+    sin_errores(at)
+    assert sesion_en(raiz).libro.categoria(snacks).grupo_id == grupo["Disfrute"]

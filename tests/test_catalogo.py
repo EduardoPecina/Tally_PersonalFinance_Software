@@ -3,6 +3,7 @@
 import sqlite3
 from collections import Counter
 from contextlib import closing
+from dataclasses import replace
 from datetime import date
 
 import pytest
@@ -165,3 +166,64 @@ def test_sin_respaldo_no_se_borra_nada(tmp_path, monkeypatch):
     with pytest.raises(OSError):
         respaldos.empezar_de_cero(sesion)
     assert Sesion(tmp_path / "tally.db", reloj=reloj).libro.perfil.nombre == "Usuario Ficticio"
+
+
+# ------------------------------------------------------ clasificaciones 0.6
+
+
+def _libro_con_clasificaciones_anteriores():
+    """Un libro como lo dejaba TALLY 0.5: cinco clasificaciones y el reparto de entonces."""
+    from datetime import datetime
+
+    from motor import perfil as perfil_mod
+    from motor.libro import Libro
+
+    lib = Libro(reloj=lambda: datetime(2026, 7, 20, 12))
+    catalogo.cargar(lib)
+    perfil_mod.configurar(lib, "Usuario Ficticio")
+    nombres = {"Crecimiento": "Inversión", "Generosidad": "Dádivas"}
+    for g in lib.grupos():
+        if g.nombre in nombres:
+            lib.guardar_grupo(replace(g, nombre=nombres[g.nombre]))
+    por_nombre = {g.nombre: g for g in lib.grupos()}
+    for c in lib.categorias():
+        if c.nombre in catalogo.RECLASIFICACION_0_6:
+            antes = catalogo.RECLASIFICACION_0_6[c.nombre][0]
+            lib.guardar_categoria(replace(c, grupo_id=por_nombre[antes].id if antes else None))
+    for nuevo in catalogo.NUEVAS_0_6:
+        lib.quitar_grupo(por_nombre[nuevo].id)
+    lib.perfil = replace(lib.perfil, clasificaciones=1)
+    return lib
+
+
+def test_reclasificar_pone_al_dia_sin_pisar_lo_del_usuario():
+    lib = _libro_con_clasificaciones_anteriores()
+    grupo = {g.nombre: g.id for g in lib.grupos()}
+    cafe = next(c for c in lib.categorias() if c.nombre == "CAFETERIAS")
+    lib.guardar_categoria(replace(cafe, grupo_id=grupo["Necesidad"]))          # el usuario la había movido
+    assert catalogo.necesita_reclasificar(lib)
+
+    catalogo.reclasificar(lib)
+    nombres = [g.nombre for g in sorted(lib.grupos(), key=lambda g: g.orden)]
+    assert nombres == list(catalogo.GRUPOS_INICIALES)
+    de = {c.nombre: lib.grupo(c.grupo_id).nombre if c.grupo_id else None for c in lib.categorias()}
+    assert de["SNACKS Y ANTOJOS"] == "Antojos" and de["COMISIONES BANCARIAS"] == "Compromisos"
+    assert de["EDUCACION"] == "Crecimiento" and de["REGALOS"] == "Generosidad"
+    assert de["CAFETERIAS"] == "Necesidad"                                       # se respeta
+    assert not catalogo.necesita_reclasificar(lib)
+
+
+def test_un_libro_nuevo_ya_trae_las_clasificaciones_nuevas(libro):
+    from motor import perfil as perfil_mod
+
+    perfil_mod.configurar(libro, "Usuario Ficticio")
+    assert not catalogo.necesita_reclasificar(libro)
+    assert {g.nombre for g in libro.grupos()} == set(catalogo.GRUPOS_INICIALES)
+    assert set(catalogo.DESCRIPCIONES) == set(catalogo.GRUPOS_INICIALES)
+
+
+def test_perfil_anterior_se_lee_como_version_1():
+    from motor.serializacion import perfil_desde_dict
+
+    perfil = perfil_desde_dict({"nombre": "Usuario Ficticio", "creado_en": "2026-07-01T10:00:00"})
+    assert perfil.clasificaciones == 1

@@ -47,6 +47,22 @@ def eliminar_grupo(libro: Libro, grupo_id: str) -> None:
     libro.quitar_grupo(grupo_id)
 
 
+def clasificar(libro: Libro, categoria_id: str, grupo_id: str | None) -> Categoria:
+    """Pone una subcategoría en una clasificación (``None`` la deja sin clasificación).
+
+    Cada subcategoría está en una sola clasificación: si ya está en otra, no se mueve en silencio; hay que
+    quitarla de allá primero (o cambiarla desde «Modificar»).
+    """
+    categoria = _editable(libro, categoria_id)
+    if grupo_id is not None:
+        destino = libro.grupo(grupo_id)
+        if categoria.grupo_id not in (None, grupo_id):
+            actual = libro.grupo(categoria.grupo_id).nombre
+            raise ErrorValidacion(f"«{categoria.nombre}» ya está en «{actual}». Quítala de «{actual}» primero "
+                                  f"para ponerla en «{destino.nombre}».")
+    return libro.guardar_categoria(replace(categoria, grupo_id=grupo_id))
+
+
 # ------------------------------------------------------- categorías (rubros)
 
 

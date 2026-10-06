@@ -48,7 +48,7 @@ def test_pivot_otras_vistas(datos, ctas):
     solo_tdc = analisis.pivot(datos, filas="categoria", columnas="ninguna", cuentas={ctas.credito})
     assert solo_tdc.total_fila == {"DESPENSA": D(400), "RESTAURANTES": D(300)}
     rango = analisis.pivot(datos, filas="grupo", columnas="anio", desde=date(2026, 2, 1), hasta=date(2026, 2, 28))
-    assert rango.columnas == ["2026"] and rango.total_fila == {"Inversión": D(650), "Necesidad": D(400)}
+    assert rango.columnas == ["2026"] and rango.total_fila == {"Crecimiento": D(650), "Necesidad": D(400)}
     todo = analisis.pivot(datos, filas="clase", columnas="mes", medida="todo")
     assert todo.valor("INGRESOS", "Ene 2026") == D(10000) and todo.valor("GASTOS", "Ene 2026") == D(1100)
     balance = analisis.pivot(datos, filas="cuenta", columnas="trimestre", medida="balance")
