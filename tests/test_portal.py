@@ -361,3 +361,91 @@ def test_configuracion(raiz, con_datos):
     at.switch_page(_pagina("inicio")).run()
     assert at.title[0].value == "¡Hola, Apodo Ficticio!"
     assert at.segmented_control(key="_w_inicio_periodo").value == "anio"
+
+
+# ------------------------------------------------------------------ fase 4
+
+
+def test_tablas_dinamicas(raiz, con_datos):
+    at = abrir(_pagina("pivots"))
+    sin_errores(at)
+    tabla = at.dataframe[0].value
+    assert list(tabla.columns)[0] == "Categoría" and tabla.iloc[-1, 0] == "Suma total"
+    assert tabla.iloc[-1]["Total"] == "$380.00"                # 300 de comida + 80 de taxi; el pago de TDC no
+    for rapida in ("Total por categoría", "Ingresos y gastos por mes", "Gasto por cuenta", "Por clasificación"):
+        boton(at, rapida).click().run()
+        sin_errores(at)
+    assert at.dataframe[0].value.shape[0] >= 1
+
+
+def test_graficas_de_todos_los_tipos(raiz, con_datos):
+    from portal.paginas import graficas
+
+    at = abrir(_pagina("graficas"))
+    sin_errores(at)
+    for tipo in graficas.TIPOS:
+        at.selectbox[0].set_value(tipo)
+        boton(at, "Visualizar gráfica").click().run()
+        sin_errores(at)
+        assert at.subheader[0].value
+
+
+def test_presupuestos_y_aviso_en_el_resumen(raiz, con_datos):
+    from motor import categorias as cats
+
+    s = sesion_en(raiz)
+    with s.cambio() as lib:
+        cats.fijar_presupuesto(lib, cats.buscar_rubro(lib, "Alimentación").id, 250)
+    at = abrir(_pagina("presupuestos"))
+    sin_errores(at)
+    assert any("te pasaste por" in m.value and "ALIMENTACION" in m.value for m in at.markdown)
+    at = abrir()
+    assert any(s.value == "Presupuestos del mes" for s in at.subheader)
+
+
+def test_estado_de_cuenta_desde_cuentas(raiz, con_datos):
+    at = abrir(_pagina("cuentas"))
+    next(b for b in at.button if b.key == f"ver_{con_datos['debito']}").click().run()
+    sin_errores(at)
+    assert at.title[0].value == "Débito Ficticio"
+    tabla = at.dataframe[0].value
+    assert list(tabla.columns) == ["Fecha", "Descripción", "Subcategoría o cuenta", "Cargo", "Abono", "Saldo"]
+    assert tabla.iloc[0]["Saldo"] == "$7,620.00"                  # 5000 + 4000 − 80 − 1000 − 300, saldo corrido
+    assert boton(at, "Agregar movimiento")
+    boton(at, "← Todas mis cuentas").click().run()
+    assert at.title[0].value == "Cuentas"
+
+
+def test_registrar_a_meses_sin_intereses(raiz, con_datos):
+    from motor import tarjetas as tdc
+
+    at = abrir(_pagina("registrar"))
+    next(s for s in at.selectbox if s.label == "Subcategoría").set_value(con_datos["cat"]["CELULARES Y TABLETS"])
+    next(s for s in at.selectbox if s.label == "Pagado con").set_value(con_datos["tdc"])
+    next(n for n in at.number_input if n.label == "Importe").set_value(1200.0)
+    next(n for n in at.number_input if n.label == "Meses sin intereses").set_value(6)
+    boton(at, "Guardar").click().run()
+    sin_errores(at)
+    (compra,) = tdc.compras_a_msi(sesion_en(raiz).libro, con_datos["tdc"])
+    assert (compra.meses, compra.mensualidad) == (6, 200)
+
+
+def test_historial_ofrece_repetir_el_movimiento(raiz, con_datos):
+    """Al elegir un movimiento aparece la pestaña Repetir (la acción se prueba en tests/test_analisis.py)."""
+    at = abrir(_pagina("historial"))
+    at.session_state["historial_tabla"] = {"selection": {"rows": [0], "columns": []}}
+    at.run()
+    sin_errores(at)
+    assert boton(at, "Repetir este movimiento")
+    assert any(d.label == "Fecha del nuevo" for d in at.date_input)
+
+
+def test_apariencia_tema_oscuro_e_icono(raiz, con_datos):
+    at = abrir(_pagina("configuracion"))
+    at.radio(key="configuracion_tema").set_value("oscuro").run()
+    sin_errores(at)
+    assert sesion_en(raiz).libro.perfil.tema == "oscuro"
+    assert any("invert" in str(h.proto) for h in at.get("html"))
+    next(b for b in at.button if b.key == "configuracion_icono_acento").click().run()
+    sin_errores(at)
+    assert sesion_en(raiz).libro.perfil.icono == "acento"

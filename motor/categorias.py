@@ -67,6 +67,19 @@ def renombrar_rubro(libro: Libro, rubro_id: str, nombre: str) -> Rubro:
     return libro.guardar_rubro(replace(rubro, nombre=nombre))
 
 
+def fijar_presupuesto(libro: Libro, rubro_id: str, monto) -> Rubro:
+    """Presupuesto mensual de una categoría de gasto. ``None`` o 0 lo quita."""
+    from motor.dinero import a_centavos
+
+    rubro = libro.rubro(rubro_id)
+    if rubro.clase is not ClaseCategoria.GASTO:
+        raise ErrorValidacion("Los presupuestos son para categorías de gasto.")
+    centavos = a_centavos(monto) if monto not in (None, "") else 0
+    if centavos < 0:
+        raise ErrorValidacion("El presupuesto no puede ser negativo.")
+    return libro.guardar_rubro(replace(rubro, presupuesto=centavos or None))
+
+
 def subcategorias(libro: Libro, rubro_id: str) -> list[Categoria]:
     return [c for c in libro.categorias() if c.rubro_id == rubro_id]
 

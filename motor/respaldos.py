@@ -72,6 +72,18 @@ def crear(sesion: Sesion, destino: Path | str | None = None, *, prefijo: str = "
     return _crear_desde(sesion.almacen, sesion.libro.ahora(), destino, prefijo)
 
 
+def leer_perfil(ruta_datos: Path | str):
+    """El perfil (y sus preferencias) de un archivo de datos, sin modificarlo; ``None`` si no hay. Lo usa el
+    instalador para recrear el acceso directo con el ícono que eligió el usuario."""
+    ruta_datos = Path(ruta_datos)
+    if not ruta_datos.exists():
+        return None
+    with tempfile.TemporaryDirectory() as temporal:
+        copia = Path(temporal) / "copia.db"
+        _copia_de_lectura(ruta_datos, copia)
+        return Almacen(copia).cargar().perfil
+
+
 def respaldo_del_dia(sesion: Sesion, carpeta: Path | str | None = None) -> Path | None:
     """El respaldo automático diario (Configuración): uno por día, al abrir TALLY.
 

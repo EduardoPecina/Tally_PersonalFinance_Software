@@ -37,6 +37,7 @@ def validar_operacion(libro: Libro, op: Operacion, original: Operacion | None = 
         raise ErrorValidacion("Las partidas de la operación no cuadran (no suman cero).")
 
     _validar_referencias(libro, op, original)
+    _validar_msi(libro, op)
 
     cuentas = op.partidas_de_cuenta()
     categorias = op.partidas_de_categoria()
@@ -97,6 +98,20 @@ def _validar_referencias(libro: Libro, op: Operacion, original: Operacion | None
             categoria = libro.categoria(p.categoria_id)
             if not categoria.activa and categoria.id not in ya_usadas:
                 raise ErrorValidacion(f"La categoría «{categoria.nombre}» está archivada.")
+
+
+MSI_MINIMO, MSI_MAXIMO = 2, 60
+
+
+def _validar_msi(libro: Libro, op: Operacion) -> None:
+    if not op.msi:
+        return
+    if isinstance(op.msi, bool) or not isinstance(op.msi, int) or not MSI_MINIMO <= op.msi <= MSI_MAXIMO:
+        raise ErrorValidacion(f"Los meses sin intereses van de {MSI_MINIMO} a {MSI_MAXIMO}.")
+    cuentas = op.partidas_de_cuenta()
+    if op.tipo is not TipoOperacion.GASTO or len(cuentas) != 1 or \
+            libro.cuenta(cuentas[0].cuenta_id).tipo is not TipoCuenta.CREDITO:
+        raise ErrorValidacion("Los meses sin intereses solo aplican a compras con tarjeta de crédito.")
 
 
 def _una_cuenta(cuentas, signo: int | None = None) -> None:

@@ -55,3 +55,21 @@ def rango(desde: date, hasta: date) -> str:
 
 def mes(anio: int, numero: int) -> str:
     return f"{MESES[numero - 1].capitalize()} {anio}"
+
+
+def tabla_en_pesos(tabla, columnas, *, fijar: str | None = None):
+    """(tabla para mostrar, column_config): esas columnas como texto en pesos, alineado a la derecha, y las
+    celdas vacías en blanco (Streamlit pondría «None»). Para exportar se usa la tabla original, con números."""
+    import pandas as pd
+    import streamlit as st
+
+    def pesos(valor) -> str:
+        return "" if valor is None or pd.isna(valor) else formatear(Decimal(str(round(valor, 2))))
+
+    vista = tabla.copy()
+    for columna in columnas:
+        vista[columna] = vista[columna].map(pesos)
+    config = {c: st.column_config.TextColumn(alignment="right") for c in columnas}
+    if fijar:
+        config[fijar] = st.column_config.TextColumn(pinned=True)
+    return vista, config

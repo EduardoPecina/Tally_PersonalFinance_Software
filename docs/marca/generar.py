@@ -6,7 +6,8 @@ La fuente del wordmark es Montserrat Bold (licencia SIL OFL 1.1, @fontsource/mon
 dibujar los PNG; no se distribuye con el programa. Sin la fuente, se usa DejaVu Sans Bold.
 
 Salidas:
-  portal/recursos/  marca.png (favicon), logo.png (barra lateral), icono.png, tally.ico (acceso directo)
+  portal/recursos/  marca.png (favicon), logo.png (barra lateral), icono.png, tally.ico (acceso directo),
+                    tally_<variante>.ico y pestana_<variante>.png (Configuración → Ícono)
   docs/marca/       simbolo.svg y las variantes de color para la documentación
 """
 
@@ -114,6 +115,21 @@ def svg_simbolo(color: str = "#101014") -> str:
             + "\n    ".join(lineas) + "\n  </g>\n</svg>\n")
 
 
+VARIANTES = (("claro", BLANCO, TINTA, GRIS), ("oscuro", OSCURO, BLANCO, None),
+             ("acento", ACENTO, BLANCO, None), ("gris", GRIS, TINTA, None))
+TAMANOS_ICO = [(16, 16), (24, 24), (32, 32), (48, 48), (64, 64), (128, 128), (256, 256)]
+
+
+def iconos_de_acceso() -> None:
+    """Un .ico por variante de color (Configuración → Ícono) y su PNG para la pestaña del navegador.
+    La variante «claro» es tally.ico, la de siempre."""
+    for nombre, fondo, tinta, borde in VARIANTES:
+        icono = mosaico(256, fondo, tinta, borde)
+        if nombre != "claro":
+            icono.save(RECURSOS / f"tally_{nombre}.ico", sizes=TAMANOS_ICO)
+        icono.resize((64, 64), Image.LANCZOS).save(RECURSOS / f"pestana_{nombre}.png")
+
+
 def main() -> None:
     fuente = Path(sys.argv[1]) if len(sys.argv) > 1 else None
     RECURSOS.mkdir(parents=True, exist_ok=True)
@@ -123,13 +139,13 @@ def main() -> None:
     logotipo(64, fuente).save(RECURSOS / "logo.png")                  # barra lateral
     claro = mosaico(256, BLANCO, TINTA, borde=GRIS)
     claro.save(RECURSOS / "icono.png")
-    claro.save(RECURSOS / "tally.ico", sizes=[(16, 16), (24, 24), (32, 32), (48, 48), (64, 64), (128, 128), (256, 256)])
+    claro.save(RECURSOS / "tally.ico", sizes=TAMANOS_ICO)
 
     (DOCS / "simbolo.svg").write_text(svg_simbolo(), encoding="utf-8")
     logotipo(96, fuente).save(DOCS / "logotipo.png")
-    for nombre, fondo, tinta, borde in (("claro", BLANCO, TINTA, GRIS), ("oscuro", OSCURO, BLANCO, None),
-                                        ("acento", ACENTO, BLANCO, None), ("gris", GRIS, TINTA, None)):
+    for nombre, fondo, tinta, borde in VARIANTES:
         mosaico(256, fondo, tinta, borde).save(DOCS / f"icono_{nombre}.png")
+    iconos_de_acceso()
     print("Recursos de marca generados.")
 
 

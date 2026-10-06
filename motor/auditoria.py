@@ -78,11 +78,11 @@ ETIQUETA_ACCION = {CREAR: "Creó", EDITAR: "Editó", BORRAR: "Borró", RESTAURAR
 _CAMPOS = {
     "nombre": "nombre", "descripcion": "descripción", "notas": "notas", "fecha": "fecha",
     "partidas": "importe/cuenta/subcategoría", "tipo": "tipo", "activa": "activa/archivada",
-    "grupo_id": "clasificación", "rubro_id": "categoría", "principal": "ingreso principal", "orden": "orden",
+    "grupo_id": "clasificación", "rubro_id": "categoría", "presupuesto": "presupuesto mensual", "principal": "ingreso principal", "orden": "orden",
     "en_disponible": "cuenta como disponible", "institucion": "institución",
     "limite_credito": "límite", "dia_corte": "día de corte", "dia_pago": "día de pago",
     "dias_para_pagar": "días para pagar", "respaldo_diario": "respaldo diario",
-    "respaldos_a_conservar": "respaldos a conservar", "periodo_inicial": "periodo del resumen", "dias_habiles": "días hábiles", "recorrer_inhabil": "recorrer a día hábil",
+    "respaldos_a_conservar": "respaldos a conservar", "periodo_inicial": "periodo del resumen", "tema": "tema", "icono": "ícono", "dias_habiles": "días hábiles", "recorrer_inhabil": "recorrer a día hábil",
 }
 _IGNORAR = {"modificado_en", "secuencia", "creado_en"}
 

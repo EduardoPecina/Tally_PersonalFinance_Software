@@ -8,10 +8,11 @@ import sys
 import streamlit as st
 
 from motor import perfil, reportes, rutas
-from motor.config import VERSION
+from motor.config import LEMA, VERSION
 from motor.perfil import MAXIMO_RESPALDOS
+from portal import accesos
 from portal.componentes import respaldo
-from portal.componentes.sesion import ejecutar, libro, sesion
+from portal.componentes.sesion import avisar, ejecutar, libro, sesion
 from portal.navegacion import enlace
 
 
@@ -47,6 +48,31 @@ def _respaldos() -> None:
     enlace("respaldos", "Restaurar un respaldo o empezar de cero", "💾")
 
 
+def _apariencia() -> None:
+    actual = libro().perfil
+    st.subheader("Tema")
+    st.caption("El tema oscuro descansa la vista de noche o si te cansa el blanco (como Dark Reader).")
+    temas = list(perfil.TEMAS)
+    elegido = st.radio("Tema", temas, format_func=perfil.TEMAS.get, index=temas.index(actual.tema), horizontal=True,
+                       key="configuracion_tema", label_visibility="collapsed")
+    if elegido != actual.tema and ejecutar(lambda lib: perfil.ajustar(lib, tema=elegido), exito="Tema cambiado"):
+        st.rerun()
+
+    st.subheader("Ícono de TALLY")
+    st.caption("El color del ícono del acceso directo del Escritorio y de la pestaña del navegador.")
+    columnas = st.columns(len(perfil.ICONOS))
+    for columna, (variante, nombre) in zip(columnas, perfil.ICONOS.items()):
+        with columna, st.container(border=True):
+            st.image(str(accesos.imagen_pestana(variante)), width=56)
+            en_uso = variante == actual.icono
+            if st.button("En uso ✓" if en_uso else f"Usar {nombre.lower()}", disabled=en_uso,
+                         key=f"configuracion_icono_{variante}", width="stretch"):
+                if ejecutar(lambda lib: perfil.ajustar(lib, icono=variante)):
+                    cambiados, mensaje = accesos.cambiar_icono(variante)
+                    avisar(mensaje, "✅" if cambiados else "ℹ️")
+                    st.rerun()
+
+
 def _resumen() -> None:
     actual = libro().perfil
     st.subheader("Resumen")
@@ -67,7 +93,7 @@ def _acerca() -> None:
     st.subheader("Esta instalación")
     tamano = ruta.stat().st_size / 1024 if ruta.exists() else 0
     st.markdown(
-        f"- **TALLY {VERSION}**, software libre (licencia MIT).\n"
+        f"- **TALLY {VERSION}** · *{LEMA}* · software libre (licencia MIT).\n"
         f"- Tus datos: `{ruta}` ({tamano:,.0f} KB) · {len(lib.cuentas())} cuenta(s), "
         f"{len(lib.operaciones())} movimiento(s).\n"
         f"- Usuario desde el {lib.perfil.creado_en:%d/%m/%Y}.\n"
@@ -81,9 +107,12 @@ def _acerca() -> None:
 
 def mostrar() -> None:
     st.title("Configuración")
-    tu, respaldos, resumen, acerca = st.tabs(["Tu perfil", "Respaldos", "Resumen", "Acerca de TALLY"])
+    tu, apariencia, respaldos, resumen, acerca = st.tabs(
+        ["Tu perfil", "Apariencia", "Respaldos", "Resumen", "Acerca de TALLY"])
     with tu:
         _perfil()
+    with apariencia:
+        _apariencia()
     with respaldos:
         _respaldos()
     with resumen:

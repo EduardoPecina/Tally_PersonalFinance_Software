@@ -7,7 +7,7 @@ import streamlit as st
 
 from motor import categorias, consultas, cuentas, movimientos
 from motor.consultas import ETIQUETA_TIPO_OPERACION, ORDENES
-from motor.modelo import TipoOperacion
+from motor.modelo import TipoCuenta, TipoOperacion
 from portal.componentes import estado, formato
 from portal.componentes.sesion import ejecutar, libro
 
@@ -93,10 +93,11 @@ def mostrar() -> None:
     if not seleccion:
         st.caption("Selecciona un movimiento (casilla a la izquierda) para ver el detalle, editarlo o eliminarlo.")
         return
-    _detalle(filas[seleccion[0]].id)
+    detalle_movimiento(filas[seleccion[0]].id)
 
 
-def _detalle(operacion_id: str) -> None:
+def detalle_movimiento(operacion_id: str, tabla: str = TABLA) -> None:
+    """Detalle de un movimiento para verlo, editarlo, repetirlo o eliminarlo (Historial y estado de cuenta)."""
     lib = libro()
     try:
         detalle = movimientos.detalle(lib, operacion_id)
@@ -121,20 +122,28 @@ def _detalle(operacion_id: str) -> None:
         st.info("El saldo inicial se cambia desde **Cuentas → Saldo inicial**.")
         return
 
-    editar, eliminar = st.tabs(["Editar", "Eliminar"])
+    editar, repetir, eliminar = st.tabs(["Editar", "Repetir", "Eliminar"])
     with editar:
-        _editar(detalle)
+        _editar(detalle, tabla)
+    with repetir:
+        st.caption("Registra otra vez este mismo movimiento en otra fecha (la renta, una suscripción, la nómina…).")
+        fecha = st.date_input("Fecha del nuevo", value=lib.hoy(), format="DD/MM/YYYY", key=f"repetir_fecha_{operacion_id}")
+        if st.button("Repetir este movimiento", key=f"repetir_{operacion_id}"):
+            if ejecutar(lambda lib: movimientos.duplicar(lib, operacion_id, fecha),
+                        exito=f"Movimiento repetido el {formato.fecha(fecha)}"):
+                st.session_state.pop(tabla, None)
+                st.rerun()
     with eliminar:
         st.warning("Eliminar borra el movimiento completo (en una transferencia, los dos lados). "
                    "La bitácora conserva una copia.")
         confirmar = st.checkbox("Sí, quiero eliminar este movimiento", key=f"confirmar_{operacion_id}")
         if st.button("Eliminar movimiento", type="primary", disabled=not confirmar, key=f"eliminar_{operacion_id}"):
             if ejecutar(lambda lib: movimientos.eliminar(lib, operacion_id), exito="Movimiento eliminado"):
-                st.session_state.pop(TABLA, None)
+                st.session_state.pop(tabla, None)
                 st.rerun()
 
 
-def _editar(detalle: movimientos.Detalle) -> None:
+def _editar(detalle: movimientos.Detalle, tabla: str = TABLA) -> None:
     lib = libro()
     ids = [c.id for c in cuentas.listar(lib)]
     for cuenta_id in (detalle.cuenta_id, detalle.cuenta_destino_id):
@@ -170,6 +179,11 @@ def _editar(detalle: movimientos.Detalle) -> None:
         if repartido:
             st.caption("Este movimiento está repartido en varias subcategorías: aquí puedes cambiar fecha, cuenta "
                        "y textos.")
+        msi = None
+        original = lib.operacion(detalle.id)
+        if detalle.tipo is TipoOperacion.GASTO and (original.msi or lib.cuenta(detalle.cuenta_id).tipo is TipoCuenta.CREDITO):
+            msi = derecha.number_input("Meses sin intereses", min_value=0, max_value=60, value=original.msi, step=1,
+                                       help="0 = de contado. Solo para compras con tarjeta de crédito.")
         descripcion = st.text_input("Descripción", value=detalle.descripcion, max_chars=120)
         notas = st.text_input("Notas", value=detalle.notas, max_chars=300)
         if st.form_submit_button("Guardar cambios", type="primary"):
@@ -181,8 +195,10 @@ def _editar(detalle: movimientos.Detalle) -> None:
             cambios = {k: v for k, v in propuestos.items() if v is not None and v != actuales[k]}
             if monto is not None and round(monto, 2) != float(detalle.monto):
                 cambios["monto"] = monto
+            if msi is not None and int(msi) != original.msi:
+                cambios["msi"] = int(msi)
             if not cambios:
                 st.info("No cambiaste nada.")
             elif ejecutar(lambda lib: movimientos.editar(lib, detalle.id, **cambios), exito="Movimiento actualizado"):
-                st.session_state.pop(TABLA, None)  # el orden pudo cambiar: no dejar seleccionado otro renglón
+                st.session_state.pop(tabla, None)  # el orden pudo cambiar: no dejar seleccionado otro renglón
                 st.rerun()

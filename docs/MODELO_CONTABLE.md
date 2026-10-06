@@ -202,7 +202,8 @@ Dentro de un mismo día, el orden de las operaciones es el de su captura.
 | Reembolsos | Restan del gasto de su categoría en la fecha en que llegan |
 | Gastos de terceros | Cuenta `POR_COBRAR` (transferencias), no ingreso ni gasto |
 | Inversiones | Cuenta `INVERSION`. Su valor se actualiza con "Actualizar saldo" → `RENDIMIENTO` |
-| Meses sin intereses | El gasto completo cuenta en la fecha de compra. El seguimiento de mensualidades queda para después |
+| Meses sin intereses | El gasto completo cuenta en la fecha de compra (`Operacion.msi`). La tarjeta solo exige una mensualidad por corte, desde el corte que cierra el ciclo de la compra; la primera mensualidad lleva los centavos que no dividen exacto. «Por liquidar» = deuda al corte − mensualidades futuras − pagos posteriores |
+| Presupuestos | Tope mensual por categoría de gasto (`Rubro.presupuesto`); se compara con el gasto neto del mes |
 | Fecha | Reloj del sistema; nunca se consulta Internet |
 | Perfil | Nombre del usuario (bienvenida "¡Hola!") opcional, guardado localmente |
 | Importación | Texto pegado desde Excel (TSV) o CSV, con vista previa y mapeo de categorías (Fase 5) |

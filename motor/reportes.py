@@ -137,6 +137,32 @@ def gastos_por_rubro(libro: Libro, desde: date, hasta: date) -> dict[str, Decima
     return dict(sorted(totales.items(), key=lambda kv: -kv[1]))
 
 
+@dataclass(frozen=True, slots=True)
+class AvancePresupuesto:
+    rubro_id: str
+    nombre: str
+    presupuesto: Decimal
+    gastado: Decimal
+
+    @property
+    def restante(self) -> Decimal:
+        return self.presupuesto - self.gastado
+
+    @property
+    def avance(self) -> Decimal:
+        """Fracción usada (1 = todo el presupuesto; puede pasar de 1)."""
+        return (self.gastado / self.presupuesto).quantize(Decimal("0.0001")) if self.presupuesto else Decimal(0)
+
+
+def presupuestos(libro: Libro, desde: date, hasta: date) -> list[AvancePresupuesto]:
+    """Cuánto se ha gastado de cada categoría con presupuesto, en el periodo (normalmente el mes)."""
+    gastado = gastos_por_rubro(libro, desde, hasta)
+    return [
+        AvancePresupuesto(r.id, r.nombre, a_pesos(r.presupuesto), gastado.get(r.nombre, Decimal("0.00")))
+        for r in libro.rubros() if r.presupuesto
+    ]
+
+
 def gastos_por_grupo(libro: Libro, desde: date, hasta: date) -> dict[str, Decimal]:
     totales: dict[str, Decimal] = defaultdict(Decimal)
     for t in gastos_por_categoria(libro, desde, hasta):

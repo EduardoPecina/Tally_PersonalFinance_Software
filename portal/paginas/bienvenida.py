@@ -5,6 +5,7 @@ from __future__ import annotations
 import streamlit as st
 
 from motor import cuentas, perfil, tarjetas
+from motor.config import LEMA
 from motor.consultas import ETIQUETA_TIPO_CUENTA
 from motor.modelo import TipoCuenta
 from portal.componentes import formato, respaldo
@@ -33,7 +34,7 @@ def _ya_usaba() -> None:
 def mostrar() -> None:
     st.title("¡Hola! 👋")
     st.markdown(
-        "Te damos la bienvenida a **TALLY**: tus finanzas, tus números, tu PC, tus datos.  \n"
+        f"Te damos la bienvenida a **TALLY** · *{LEMA}*  \n"
         "Todo se guarda solo en esta computadora. No hay cuentas de usuario, ni nube, ni bancos conectados."
     )
     eleccion = st.segmented_control("¿Ya usabas TALLY?", [NUEVO, YA_USABA], default=NUEVO, required=True,

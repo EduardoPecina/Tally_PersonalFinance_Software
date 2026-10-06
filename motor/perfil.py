@@ -29,6 +29,8 @@ def configurar(libro: Libro, nombre: str) -> Perfil:
 
 
 MAXIMO_RESPALDOS = 100
+TEMAS = {"claro": "Claro", "oscuro": "Oscuro"}
+ICONOS = {"claro": "Claro", "oscuro": "Oscuro", "acento": "Acento", "gris": "Gris"}
 
 
 def ajustar(
@@ -38,6 +40,8 @@ def ajustar(
     respaldo_diario: bool | None = None,
     respaldos_a_conservar: int | None = None,
     periodo_inicial: str | None = None,
+    tema: str | None = None,
+    icono: str | None = None,
 ) -> Perfil:
     """Cambia las preferencias (página Configuración). Solo cambia lo que se indique."""
     from motor.reportes import PERIODOS
@@ -57,5 +61,13 @@ def ajustar(
         if periodo_inicial not in PERIODOS:
             raise ErrorValidacion("Ese periodo no existe.")
         cambios["periodo_inicial"] = periodo_inicial
+    if tema is not None:
+        if tema not in TEMAS:
+            raise ErrorValidacion("Ese tema no existe.")
+        cambios["tema"] = tema
+    if icono is not None:
+        if icono not in ICONOS:
+            raise ErrorValidacion("Ese ícono no existe.")
+        cambios["icono"] = icono
     libro.perfil = replace(libro.perfil, **cambios)
     return libro.perfil

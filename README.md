@@ -1,7 +1,7 @@
 <p align="center"><img src="docs/marca/logotipo.png" alt="TALLY" width="360"></p>
 
-<p align="center"><b>Mis finanzas, mis números, mi PC, mis datos.</b><br>
-<i>Your money. Your computer. Your data.</i></p>
+<p align="center"><b>Your money. Your computer. Your data.</b><br>
+<i>Tus finanzas, en tu PC, con tus datos.</i></p>
 
 TALLY es una aplicación de finanzas personales **local-first**, gratuita y de
 código abierto. Está pensada para una sola persona y corre únicamente en su
@@ -57,14 +57,17 @@ el acceso directo **Mis datos de TALLY**, dentro de `Escritorio\TALLY`.
 
 | Página | Responde a |
 |---|---|
-| Resumen | ¿Cuánto dinero tengo? ¿Cuánto gasté este periodo y en qué? ¿Cuánto debo en mis tarjetas? |
-| Registrar | Anotar un gasto, ingreso, transferencia, pago de tarjeta o reembolso, rápido |
-| Historial | Buscar, filtrar, ordenar, ver, editar o eliminar movimientos |
-| Cuentas | ¿Cuánto tengo en cada cuenta? Crear, editar, actualizar saldo, archivar |
+| Resumen | ¿Cuánto dinero tengo? ¿Cuánto gasté y en qué? ¿Tengo pagos de tarjeta por vencer? ¿Cómo voy con mis presupuestos? |
+| Registrar | Anotar un gasto (también a meses sin intereses o repartido), ingreso, transferencia, pago de tarjeta o reembolso |
+| Historial | Buscar, filtrar, editar, repetir o eliminar movimientos |
+| Cuentas | Saldo de cada cuenta, estado de cuenta con saldo corrido y estado de cada tarjeta (línea, disponible, pago) |
+| Presupuestos | Tope mensual por categoría y cuánto llevas |
+| Tablas dinámicas | Pivots por categoría, mes, cuenta… exportables a Excel |
+| Gráficas | Dona, barras, tendencias, ingresos vs. gastos y patrimonio |
 | Categorías | Categorías (SALUD, TECNOLOGIA…) con sus subcategorías y clasificaciones, a tu manera |
 | Cargar datos | Subir tu historial de Excel de una vez con una plantilla `.txt` |
 | Respaldos y bitácora | Descargar o restaurar respaldos, ver qué cambió o empezar de cero |
-| Configuración ⚙️ | Tu nombre, respaldo automático diario, periodo del Resumen y datos de la instalación |
+| Configuración ⚙️ | Tu nombre, tema claro u oscuro, color del ícono, respaldo automático diario, periodo del Resumen y datos de la instalación |
 
 ### Cambiar de PC sin perder nada
 

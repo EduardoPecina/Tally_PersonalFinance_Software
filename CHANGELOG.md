@@ -2,7 +2,49 @@
 
 Todos los cambios relevantes de TALLY se documentan aquí.
 
-## [0.4.2] — Sin publicar
+## [0.5.0] — Sin publicar
+
+**Fase 4: análisis.**
+
+- **Tablas dinámicas** (pivots), como en Excel:
+  - filas por categoría, subcategoría, clasificación, cuenta o ingreso/gasto;
+  - columnas por mes, trimestre, año u otra dimensión;
+  - suma de gastos, ingresos, los dos o el balance;
+  - todo el historial o un rango de meses, de todas o algunas cuentas;
+  - fila opcional con lo apartado a ahorro, como la fila AHORRO de tu Excel;
+  - atajos rápidos y exportación a Excel (con la hoja de movimientos) o CSV.
+- **Gráficas** a elegir, con el botón «Visualizar gráfica»: dona, barras de
+  mayor a menor, barras por mes, líneas de tendencia, ingresos vs. gastos y
+  evolución del patrimonio. Tienen tooltips y colores fijos por grupo,
+  legibles con daltonismo.
+- **Estado de cuenta** en Cuentas → «Ver movimientos»:
+  - los movimientos de la cuenta con el saldo después de cada uno, como el
+    Excel;
+  - botón «Agregar movimiento» y filtro por periodo;
+  - editar, repetir o eliminar cada movimiento;
+  - exportar a Excel.
+- **Meses sin intereses:** la compra cuenta completa como gasto el día que la
+  haces, pero el «pagar para no generar intereses» de la tarjeta solo suma la
+  mensualidad de cada corte. Lista de compras a MSI con lo que falta y la
+  última mensualidad.
+- **Presupuestos** mensuales por categoría, con barras de avance en su página
+  y en el Resumen.
+- **Avisos** en el Resumen si un pago de tarjeta está vencido o vence en los
+  próximos días.
+- Registrar: **repartir un gasto** entre varias subcategorías; también se abre
+  desde cada cuenta.
+- Historial: **repetir** un movimiento en otra fecha.
+- Configuración → Apariencia:
+  - **tema oscuro**;
+  - **color del ícono** del acceso directo y de la pestaña (claro, oscuro,
+    acento o gris). Se conserva al actualizar.
+- Lema en inglés: *Your money. Your computer. Your data.*
+- Menú agrupado en Tu dinero, Análisis y Ajustes.
+- Pruebas automáticas en **Windows** (GitHub Actions) en cada pull request.
+- Nueva dependencia: `openpyxl` (exportar a Excel), fijada con su hash en el
+  lock.
+
+## [0.4.2]
 
 - **Descargar respaldo** en un clic, en Respaldos y en Configuración. Es un
   `.zip` con todo: cuentas, movimientos, categorías, configuración y
