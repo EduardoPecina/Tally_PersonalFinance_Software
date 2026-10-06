@@ -2,7 +2,20 @@
 
 Todos los cambios relevantes de TALLY se documentan aquí.
 
-## [0.7.2] — Sin publicar
+## [0.7.3] — Sin publicar
+
+- **Instalador a prueba de «lo corrí desde dentro del ZIP»**:
+  - Antes, si se corría `INSTALAR.bat` sin extraer el ZIP, Windows podía borrar su copia temporal mientras se
+    instalaban las librerías, y el respaldo previo fallaba con «No module named 'motor.respaldos'». No se
+    cambiaba nada, pero no se podía actualizar.
+  - Ahora `INSTALAR.bat` detecta que está dentro de un ZIP, copia el programa a `%TEMP%\TALLY_instalador` y se
+    vuelve a lanzar desde ahí.
+  - El instalador revisa que el programa esté completo antes de empezar. Si falta algo, explica que hay que
+    usar «Extraer todo» y no toca nada.
+  - El motor que hace el respaldo previo se carga desde el principio, antes de la instalación de librerías
+    (que tarda).
+
+## [0.7.2]
 
 - **Gráficas: ¿qué hay en «OTROS»?**
   - La dona y las barras muestran los 7 grupos más grandes y juntan el resto en OTROS. Debajo de la gráfica,
