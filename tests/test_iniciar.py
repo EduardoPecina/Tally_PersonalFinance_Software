@@ -93,3 +93,14 @@ def test_inicia_streamlit_solo_en_localhost(iniciar, monkeypatch, tmp_path):
     assert comando[comando.index("--browser.gatherUsageStats") + 1] == "false"
     assert lanzado["cwd"] == RAIZ_REPO  # ahí está .streamlit/config.toml
     assert (tmp_path / "portal.log").read_text().startswith("=====")
+
+
+def test_portal_log_vive_junto_a_los_datos_fuera_de_onedrive(monkeypatch, tmp_path):
+    from motor import rutas
+
+    from portal import iniciar
+
+    monkeypatch.delenv("TALLY_RAIZ", raising=False)
+    monkeypatch.setenv("TALLY_DATOS", str(tmp_path / "Usuario" / "TALLY"))
+    monkeypatch.setattr(rutas, "_PROGRAMA", tmp_path / "OneDrive" / "Escritorio" / "TALLY" / "_Programa")
+    assert iniciar.bitacora() == tmp_path / "Usuario" / "TALLY" / "portal.log"

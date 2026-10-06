@@ -9,6 +9,7 @@ Instalado en cualquier PC con Windows::
     C:\\Users\\<usuario>\\TALLY\\        tus datos, SIEMPRE en esta PC
       Datos\\tally.db                 tus finanzas (las actualizaciones nunca lo tocan)
       Respaldos\\                     respaldos manuales y automáticos
+      portal.log                     lo que va pasando mientras TALLY está abierto
 
 Los datos van en la carpeta del perfil del usuario porque:
 

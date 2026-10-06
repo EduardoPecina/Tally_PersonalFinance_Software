@@ -109,6 +109,14 @@ def test_actualizar_mueve_los_datos_fuera_del_escritorio(instalador, tmp_path):
     assert "Datos movidos y verificados" in log
 
 
+def test_actualizar_quita_portal_log_del_escritorio(instalador, tmp_path):
+    instalador.instalar(sin_librerias=True, sin_accesos=True)
+    raiz = carpeta(tmp_path)
+    (raiz / "portal.log").write_text("===== iniciando TALLY =====")      # lo dejaba la 0.3.5
+    assert instalador.instalar(sin_librerias=True, sin_accesos=True) == 0
+    assert not (raiz / "portal.log").exists()
+
+
 def _datos_que_usa_el_programa(programa, base):
     """Lo que resuelve motor/rutas.py del programa instalado (en otro proceso, como en la PC del usuario)."""
     import os

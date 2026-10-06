@@ -509,6 +509,17 @@ def crear_estructura(raiz, base):
     (raiz / "LEEME.txt").write_text(LEEME.format(datos=base), encoding="utf-8-sig")
 
 
+def quitar_log_del_escritorio(raiz, base):
+    """Hasta la 0.3.5 portal.log vivía en Escritorio\\TALLY y OneDrive lo resincronizaba mientras TALLY estaba
+    abierto. Ahora vive junto a tus datos; el viejo se borra (si OneDrive no deja, no pasa nada)."""
+    if raiz.resolve() == base.resolve():
+        return
+    try:
+        (raiz / "portal.log").unlink(missing_ok=True)
+    except OSError:
+        pass
+
+
 def portal_disponible(programa):
     return (programa / "portal" / "iniciar.py").exists()
 
@@ -649,6 +660,7 @@ def _instalar(raiz, sin_librerias, sin_accesos):
     try:
         crear_estructura(raiz, base)
         copiar_programa(programa)
+        quitar_log_del_escritorio(raiz, base)
     except PermissionError:
         avisar("Windows no dejó reemplazar la carpeta _Programa: algún archivo está abierto (TALLY, una "
                "ventana de esa carpeta u OneDrive sincronizando).\n\nCiérralos y vuelve a correr "

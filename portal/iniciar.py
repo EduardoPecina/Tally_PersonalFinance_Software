@@ -2,7 +2,8 @@
 
 Lo usan el acceso directo del Escritorio (con ``pythonw``) y ``EJECUTAR PORTAL.bat``. El servidor escucha solo
 en ``localhost``: nadie más en la red puede verlo. Si algo falla, muestra una ventana de Windows con el motivo;
-el detalle queda en ``portal.log`` (carpeta TALLY).
+el detalle queda en ``portal.log``, junto a tus datos (fuera de OneDrive: TALLY escribe en él mientras está
+abierto y OneDrive intentaría subirlo sin parar).
 
 Clics de más (doble clic varias veces): solo un lanzador a la vez trabaja. Los que llegan mientras otro arranca
 el portal (o acaba de abrir la pestaña) se retiran sin hacer nada, así que nunca se arranca más de un servidor ni
@@ -43,7 +44,7 @@ CANDADO = Path(tempfile.gettempdir()) / f"tally-{PUERTO_PORTAL}.lock"   # en TEM
 
 
 def bitacora() -> Path:
-    return rutas.raiz() / "portal.log"
+    return rutas.carpeta_usuario() / "portal.log"
 
 
 def abierto() -> bool:

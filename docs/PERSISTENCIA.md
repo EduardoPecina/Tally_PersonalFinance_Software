@@ -14,6 +14,7 @@ Escritorio\TALLY\                el Escritorio que diga Windows (con o sin OneDr
 C:\Users\<usuario>\TALLY\         tus datos, siempre en esta PC
   Datos\tally.db                  tus finanzas (las actualizaciones nunca lo tocan)
   Respaldos\                      respaldos manuales y automáticos (.zip)
+  portal.log                      lo que va pasando mientras TALLY está abierto
 ```
 
 Los datos van en la carpeta del perfil del usuario porque:
