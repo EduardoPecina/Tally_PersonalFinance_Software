@@ -68,6 +68,7 @@ def cuenta_a_dict(c: Cuenta) -> dict:
         "en_disponible": c.en_disponible, "moneda": c.moneda, "activa": c.activa,
         "institucion": c.institucion, "notas": c.notas, "orden": c.orden,
         "limite_credito": c.limite_credito, "dia_corte": c.dia_corte, "dia_pago": c.dia_pago,
+        "dias_para_pagar": c.dias_para_pagar, "dias_habiles": c.dias_habiles, "recorrer_inhabil": c.recorrer_inhabil,
     }
 
 
@@ -106,6 +107,8 @@ def cuenta_desde_dict(d: dict) -> Cuenta:
         en_disponible=d["en_disponible"], moneda=d.get("moneda", "MXN"), activa=d.get("activa", True),
         institucion=d.get("institucion", ""), notas=d.get("notas", ""), orden=d.get("orden", 0),
         limite_credito=d.get("limite_credito"), dia_corte=d.get("dia_corte"), dia_pago=d.get("dia_pago"),
+        dias_para_pagar=d.get("dias_para_pagar"), dias_habiles=d.get("dias_habiles", False),
+        recorrer_inhabil=d.get("recorrer_inhabil", True),
     )
 
 

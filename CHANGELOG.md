@@ -2,7 +2,17 @@
 
 Todos los cambios relevantes de TALLY se documentan aquí.
 
-## [0.3.3] — Sin publicar
+## [0.3.4] — Sin publicar
+
+- **Fecha límite de pago de tarjetas según su contrato:** un día fijo del mes
+  o N días después del corte, naturales o hábiles. Si cae en día inhábil, se
+  recorre al siguiente día hábil (opcional por tarjeta). El portal deja elegir
+  la regla y la muestra en palabras en Cuentas.
+- Nuevo `motor/calendario.py`: días inhábiles bancarios de México para
+  cualquier año (Pascua calculada, lunes festivos y cambio de Poder
+  Ejecutivo cada seis años).
+
+## [0.3.3]
 
 - Instalador: si pip pasa 30 s sin escribir nada (instalando Streamlit mientras
   el antivirus revisa sus archivos), muestra «...sigue trabajando (N min). No

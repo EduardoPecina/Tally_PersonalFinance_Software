@@ -78,7 +78,12 @@ class Cuenta:
     # Solo para cuentas de crédito; todos opcionales. Importes en centavos.
     limite_credito: int | None = None
     dia_corte: int | None = None
+    # Fecha límite de pago: un día fijo del mes (dia_pago) O N días después del corte (dias_para_pagar),
+    # contados como naturales o hábiles. Si cae en día inhábil, se recorre al siguiente hábil.
     dia_pago: int | None = None
+    dias_para_pagar: int | None = None
+    dias_habiles: bool = False
+    recorrer_inhabil: bool = True
 
 
 @dataclass(frozen=True, slots=True)
