@@ -2,7 +2,17 @@
 
 Todos los cambios relevantes de TALLY se documentan aquí.
 
-## [0.3.2] — Sin publicar
+## [0.3.3] — Sin publicar
+
+- Instalador: si pip pasa 30 s sin escribir nada (instalando Streamlit mientras
+  el antivirus revisa sus archivos), muestra «...sigue trabajando (N min). No
+  cierres esta ventana.» Antes la ventana parecía congelada y, al cerrarla,
+  la instalación quedaba a medias.
+- Instalador: antes de instalar, borra los restos `~paquete` que deja una
+  instalación interrumpida («Ignoring invalid distribution ~treamlit»).
+- Aviso previo de que la primera instalación puede tardar hasta 10 minutos.
+
+## [0.3.2]
 
 - Acceso directo **TALLY** más confiable: el instalador lo crea con pywin32,
   como el Portal de Honorarios, y si falla usa PowerShell (restringido en

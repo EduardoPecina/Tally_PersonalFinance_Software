@@ -229,3 +229,37 @@ def test_acceso_directo_que_no_se_pudo_crear(instalador, tmp_path, monkeypatch, 
     monkeypatch.setattr(instalador.subprocess, "run", powershell_bloqueado)
     assert not instalador.crear_accesos(raiz, programa)
     assert "No se pudo crear el acceso directo" in capsys.readouterr().out
+
+
+def test_avisa_que_sigue_trabajando_si_no_hay_salida(instalador, monkeypatch, capsys):
+    """Una ventana quieta parece congelada: la gente la cierra y deja la instalación a medias."""
+    import sys
+
+    monkeypatch.setattr(instalador, "AVISO_SILENCIO", 0.3)
+    codigo = instalador.ejecutar([sys.executable, "-c", "import time; time.sleep(1.2); print('listo')"])
+    salida = capsys.readouterr().out
+    assert codigo == 0
+    assert "sigue trabajando" in salida and "No cierres esta ventana" in salida
+    assert salida.rstrip().endswith("listo")
+
+
+def test_limpia_restos_de_una_instalacion_interrumpida(instalador, tmp_path):
+    librerias = tmp_path / "site-packages"
+    (librerias / "~treamlit").mkdir(parents=True)
+    (librerias / "~treamlit" / "app.py").write_text("x")
+    (librerias / "~umpy-2.5.3.dist-info").mkdir()
+    (librerias / "~resto.pth").write_text("x")
+    (librerias / "streamlit").mkdir()
+    (librerias / "pandas-3.0.6.dist-info").mkdir()
+    borrados = instalador.limpiar_restos_de_pip([librerias])
+    assert sorted(borrados) == ["~resto.pth", "~treamlit", "~umpy-2.5.3.dist-info"]
+    assert sorted(p.name for p in librerias.iterdir()) == ["pandas-3.0.6.dist-info", "streamlit"]
+
+
+def test_instalar_librerias_limpia_y_avisa_antes(instalador, monkeypatch, capsys):
+    pasos = []
+    monkeypatch.setattr(instalador, "limpiar_restos_de_pip", lambda: pasos.append("limpiar"))
+    monkeypatch.setattr(instalador, "ejecutar", lambda comando: pasos.append("pip") or 0)
+    assert instalador.instalar_librerias()
+    assert pasos == ["limpiar", "pip"]
+    assert "hasta 10 minutos" in capsys.readouterr().out

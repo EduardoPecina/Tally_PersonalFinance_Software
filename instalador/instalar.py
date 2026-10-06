@@ -21,12 +21,16 @@ La variable TALLY_ESCRITORIO permite instalar en otra carpeta (pruebas).
 import argparse
 import os
 import platform
+import queue
 import re
 import shutil
+import site
 import socket
 import stat
 import subprocess
 import sys
+import sysconfig
+import threading
 import time
 import traceback
 from datetime import datetime
@@ -167,14 +171,69 @@ def pasos_de_instalar_bat():
         return ""
 
 
+AVISO_SILENCIO = 30                                   # segundos sin salida antes de decir «sigue trabajando»
+
+
 def ejecutar(comando):
-    """Corre un comando mostrando su salida en la ventana y en la bitácora. Devuelve el código de salida."""
+    """Corre un comando mostrando su salida en la ventana y en la bitácora. Devuelve el código de salida.
+
+    Si el comando pasa un rato sin imprimir nada (pip instalando miles de archivos mientras el antivirus los
+    revisa), se avisa que sigue trabajando: una ventana quieta parece congelada y la gente la cierra, lo que
+    deja la instalación a medias."""
     entorno = {**os.environ, "PYTHONIOENCODING": "utf-8", "PYTHONUTF8": "1"}
     with subprocess.Popen(comando, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL,
                           text=True, encoding="utf-8", errors="replace", env=entorno) as proceso:
-        for linea in proceso.stdout:
+        lineas = queue.Queue()
+
+        def leer():
+            for linea in proceso.stdout:
+                lineas.put(linea)
+            lineas.put(None)
+
+        threading.Thread(target=leer, daemon=True).start()
+        inicio = time.monotonic()
+        while True:
+            try:
+                linea = lineas.get(timeout=AVISO_SILENCIO)
+            except queue.Empty:
+                minutos, segundos = divmod(int(time.monotonic() - inicio), 60)
+                print(f"   ...sigue trabajando ({minutos} min {segundos:02d} s). No cierres esta ventana.")
+                continue
+            if linea is None:
+                break
             print(linea, end="")
         return proceso.wait()
+
+
+def carpetas_de_librerias():
+    """Carpetas donde pip instala para este Python (la del usuario y la general)."""
+    carpetas = {Path(sysconfig.get_paths()["purelib"])}
+    try:
+        carpetas.add(Path(site.getusersitepackages()))
+    except Exception:  # noqa: BLE001 - algunos Python empaquetados no la tienen
+        pass
+    return [c for c in carpetas if c.is_dir()]
+
+
+def limpiar_restos_de_pip(carpetas=None):
+    """Borra lo que deja una instalación interrumpida: pip renombra a «~nombre» mientras reemplaza un paquete y,
+    si se cierra la ventana a la mitad, ahí se queda («Ignoring invalid distribution ~treamlit»). Solo toca
+    entradas que empiezan con «~» dentro de las carpetas de librerías."""
+    borrados = []
+    for carpeta in carpetas if carpetas is not None else carpetas_de_librerias():
+        for resto in carpeta.glob("~*"):
+            if resto.is_dir():
+                if borrar_carpeta(resto, intentos=3):
+                    borrados.append(resto.name)
+            else:
+                try:
+                    resto.unlink()
+                    borrados.append(resto.name)
+                except OSError:
+                    pass
+    if borrados:
+        print(f"Se limpiaron restos de una instalación anterior interrumpida: {', '.join(borrados)}")
+    return borrados
 
 
 # ------------------------------------------------------------------ Windows
@@ -224,7 +283,10 @@ def portal_abierto():
 def instalar_librerias():
     """pip install del árbol completo de requirements-lock.txt: versiones EXACTAS y verificadas con su huella
     (--require-hashes). Si ya están, solo lo confirma. Solo instaladores precompilados: nunca intenta compilar."""
+    limpiar_restos_de_pip()
     print("Revisando librerías en las versiones probadas...")
+    print("La primera vez puede tardar hasta 10 minutos (el antivirus revisa miles de archivos). "
+          "No cierres esta ventana aunque parezca quieta.")
     comando = [sys.executable, "-m", "pip", "install", "-r", str(ORIGEN / "requirements-lock.txt"),
                "--require-hashes", "--only-binary=:all:",
                "--disable-pip-version-check", "--progress-bar", "off", "--retries", "10", "--timeout", "60"]
