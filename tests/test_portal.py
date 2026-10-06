@@ -167,7 +167,7 @@ def test_crear_cuenta_desde_cuentas(raiz, con_datos):
 def test_crear_respaldo_desde_el_portal(raiz, con_datos):
     at = abrir()
     at.switch_page(_pagina("respaldos")).run()
-    boton(at, "Crear respaldo ahora").click().run()
+    boton(at, "Guardar respaldo en la carpeta").click().run()
     sin_errores(at)
     (respaldo,) = (raiz / "Respaldos").glob("TALLY_respaldo_*.zip")
     assert respaldos.inspeccionar(respaldo).movimientos == 6
@@ -297,3 +297,67 @@ def test_estado_de_tarjeta_en_resumen_y_cuentas(raiz, con_datos):
         assert metricas["Línea de crédito"] == "$2,000.00"
         assert metricas["Disponible"] == "$1,500.00"
         assert any("Usas el 25% de tu línea" in str(p.proto) for p in at.get("progress"))
+
+
+def test_descargar_respaldo_en_un_clic(raiz, con_datos):
+    at = abrir(_pagina("respaldos"))
+    sin_errores(at)
+    (descarga,) = [b for b in at.get("download_button") if "Descargar respaldo" in str(b.proto)]
+    assert ".zip" in str(descarga.proto)
+
+
+def test_el_respaldo_automatico_del_dia(raiz, con_datos):
+    abrir()
+    (automatico,) = (raiz / "Respaldos").glob("TALLY_automatico_*.zip")
+    assert respaldos.inspeccionar(automatico).movimientos == 6
+    abrir()
+    assert len(list((raiz / "Respaldos").glob("TALLY_automatico_*.zip"))) == 1   # uno por día
+
+
+@pytest.mark.parametrize("formato", ["zip", "db"])
+def test_instalacion_nueva_recupera_un_respaldo_o_un_tally_db(raiz, tmp_path, formato):
+    """Lo que hace la bienvenida con «Ya usaba TALLY»: sirve el .zip descargado o el tally.db de la otra PC."""
+    from motor.respaldos import copiar_archivo_de_datos
+    from portal.componentes import respaldo
+
+    otra = Sesion(tmp_path / "otra_pc" / "tally.db")
+    with otra.cambio() as lib:
+        perfil.configurar(lib, "Usuario Ficticio")
+        cuentas.crear(lib, "Débito de la otra PC", "debito", saldo_inicial=777)
+    archivo = (respaldos.crear(otra, tmp_path / "usb") if formato == "zip"
+               else copiar_archivo_de_datos(otra.almacen.ruta, tmp_path / "usb" / "tally.db"))
+    assert formato in respaldo.TIPOS
+
+    nueva = sesion_en(raiz)
+    assert perfil.necesita_bienvenida(nueva.libro)
+    assert respaldos.inspeccionar(archivo).perfil == "Usuario Ficticio"
+    respaldos.restaurar(nueva, archivo)
+    lib = sesion_en(raiz).libro
+    assert not perfil.necesita_bienvenida(lib)
+    assert cuentas.saldo(lib, cuentas.buscar(lib, "Débito de la otra PC").id) == 777
+
+
+def test_bienvenida_ofrece_ya_usaba_tally(raiz):
+    at = abrir()
+    at.segmented_control(key="bienvenida_eleccion").set_value("Ya usaba TALLY: tengo un respaldo").run()
+    sin_errores(at)
+    assert at.subheader[0].value == "Recupera tus datos"
+    assert not [t for t in at.text_input if t.key == "bienvenida_nombre"]
+
+
+def test_configuracion(raiz, con_datos):
+    at = abrir(_pagina("configuracion"))
+    sin_errores(at)
+    next(t for t in at.text_input if t.label == "Nombre").input("Apodo Ficticio")
+    next(b for b in at.button if b.label == "Guardar").click().run()
+    sin_errores(at)
+    lib = sesion_en(raiz).libro
+    assert lib.perfil.nombre == "Apodo Ficticio"
+
+    at.selectbox[0].set_value("anio")
+    [b for b in at.button if b.label == "Guardar"][-1].click().run()
+    sin_errores(at)
+    assert sesion_en(raiz).libro.perfil.periodo_inicial == "anio"
+    at.switch_page(_pagina("inicio")).run()
+    assert at.title[0].value == "¡Hola, Apodo Ficticio!"
+    assert at.segmented_control(key="_w_inicio_periodo").value == "anio"

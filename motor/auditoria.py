@@ -81,7 +81,8 @@ _CAMPOS = {
     "grupo_id": "clasificación", "rubro_id": "categoría", "principal": "ingreso principal", "orden": "orden",
     "en_disponible": "cuenta como disponible", "institucion": "institución",
     "limite_credito": "límite", "dia_corte": "día de corte", "dia_pago": "día de pago",
-    "dias_para_pagar": "días para pagar", "dias_habiles": "días hábiles", "recorrer_inhabil": "recorrer a día hábil",
+    "dias_para_pagar": "días para pagar", "respaldo_diario": "respaldo diario",
+    "respaldos_a_conservar": "respaldos a conservar", "periodo_inicial": "periodo del resumen", "dias_habiles": "días hábiles", "recorrer_inhabil": "recorrer a día hábil",
 }
 _IGNORAR = {"modificado_en", "secuencia", "creado_en"}
 

@@ -58,9 +58,14 @@ CATEGORIA_SALDO_INICIAL = "sistema-saldo-inicial"
 
 @dataclass(frozen=True, slots=True)
 class Perfil:
+    """El usuario de esta PC y sus preferencias (Configuración)."""
+
     nombre: str
     creado_en: datetime
     moneda: str = MONEDA
+    respaldo_diario: bool = True       # al abrir TALLY, un respaldo automático por día
+    respaldos_a_conservar: int = 10    # cuántos respaldos automáticos se guardan
+    periodo_inicial: str = "mes_actual"  # el periodo que muestra el Resumen al abrir
 
 
 @dataclass(frozen=True, slots=True)

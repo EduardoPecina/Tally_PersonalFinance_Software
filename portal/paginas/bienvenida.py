@@ -7,9 +7,27 @@ import streamlit as st
 from motor import cuentas, perfil, tarjetas
 from motor.consultas import ETIQUETA_TIPO_CUENTA
 from motor.modelo import TipoCuenta
-from portal.componentes import formato
+from portal.componentes import formato, respaldo
 from portal.componentes.sesion import ejecutar, libro
 from portal.paginas.cuentas import formulario_nueva_cuenta
+
+
+NUEVO, YA_USABA = "Soy nuevo", "Ya usaba TALLY: tengo un respaldo"
+
+
+def _ya_usaba() -> None:
+    st.subheader("Recupera tus datos")
+    st.markdown(
+        "Sube el respaldo que descargaste (**TALLY_respaldo_….zip**) y TALLY quedará exactamente como lo tenías: "
+        "tu nombre, cuentas, movimientos, categorías y configuración.  \n"
+        "¿No lo encuentras? En tu otra PC está en `C:\\Users\\<tu usuario>\\TALLY\\Respaldos` (si hiciste "
+        "respaldos automáticos) o puedes usar directamente su archivo de datos, `…\\TALLY\\Datos\\tally.db`."
+    )
+    archivo = st.file_uploader("Tu respaldo (.zip) o archivo de datos (.db)", type=respaldo.TIPOS,
+                               key="bienvenida_respaldo")
+    if archivo is not None:
+        respaldo.revisar_y_restaurar(respaldo.subido(archivo), "bienvenida", nombre=archivo.name,
+                                     pedir_confirmacion=bool(cuentas.listar(libro())))
 
 
 def mostrar() -> None:
@@ -18,6 +36,11 @@ def mostrar() -> None:
         "Te damos la bienvenida a **TALLY**: tus finanzas, tus números, tu PC, tus datos.  \n"
         "Todo se guarda solo en esta computadora. No hay cuentas de usuario, ni nube, ni bancos conectados."
     )
+    eleccion = st.segmented_control("¿Ya usabas TALLY?", [NUEVO, YA_USABA], default=NUEVO, required=True,
+                                    key="bienvenida_eleccion")
+    if eleccion == YA_USABA:
+        _ya_usaba()
+        return
 
     st.subheader("1. ¿Cómo te llamas?")
     nombre = st.text_input("Tu nombre", key="bienvenida_nombre", placeholder="Así te saludará TALLY",

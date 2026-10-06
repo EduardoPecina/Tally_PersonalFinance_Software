@@ -18,6 +18,8 @@ def paginas() -> dict[str, st.Page]:
             categorias=st.Page("vistas/categorias.py", title="Categorías", icon="🏷️", url_path="categorias"),
             cargar=st.Page("vistas/cargar.py", title="Cargar datos", icon="📥", url_path="cargar"),
             respaldos=st.Page("vistas/respaldos.py", title="Respaldos y bitácora", icon="💾", url_path="respaldos"),
+            configuracion=st.Page("vistas/configuracion.py", title="Configuración", icon="⚙️",
+                                  url_path="configuracion"),
         )
     return _PAGINAS
 

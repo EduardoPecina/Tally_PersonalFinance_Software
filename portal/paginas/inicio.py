@@ -19,7 +19,8 @@ PERIODOS = {**reportes.PERIODOS, PERSONALIZADO: "Elegir fechas"}
 
 def _periodo() -> tuple[date, date]:
     lib = libro()
-    clave = estado.control("inicio", "periodo", "mes_actual", lambda k: st.segmented_control(
+    preferido = lib.perfil.periodo_inicial if lib.perfil else "mes_actual"
+    clave = estado.control("inicio", "periodo", preferido, lambda k: st.segmented_control(
         "Periodo", list(PERIODOS), format_func=PERIODOS.get, key=k, required=True, label_visibility="collapsed"))
     if clave == PERSONALIZADO:
         inicial = reportes.rango_periodo(lib, "mes_actual")
