@@ -487,3 +487,45 @@ def test_cuenta_eliminada_se_ve_sin_agregar_movimientos(raiz, con_datos):
     sin_errores(at)
     assert at.title[0].value == "Ahorro Ficticio"
     assert not any(b.label == "Agregar movimiento" for b in at.button)
+
+
+def test_cargo_temporal_se_registra_y_se_devuelve(raiz, con_datos):
+    from motor import reportes, temporales
+
+    at = abrir(_pagina("registrar"))
+    at.toggle(key="registrar_temporal").set_value(True).run()
+    sin_errores(at)
+    assert not any(s.label == "Subcategoría" for s in at.selectbox)
+    next(s for s in at.selectbox if s.label == "¿Dónde te lo cobraron?").set_value(con_datos["tdc"])
+    next(n for n in at.number_input if n.label == "Importe").set_value(1.0)
+    next(t for t in at.text_input if t.label == "Descripción").input("Verificación ficticia")
+    boton(at, "Guardar").click().run()
+    sin_errores(at)
+    lib = sesion_en(raiz).libro
+    (cargo,) = temporales.pendientes(lib)
+    assert reportes.resumen(lib, *reportes.rango_periodo(lib, "mes_actual")).gastos == 380
+
+    at.switch_page(_pagina("inicio")).run()
+    sin_errores(at)
+    assert any(s.value == "Por recuperar" for s in at.subheader)
+    next(b for b in at.button if b.key == f"devuelto_{cargo.operacion_id}").click().run()
+    sin_errores(at)
+    boton(at, "Guardar").click().run()
+    sin_errores(at)
+    assert temporales.pendientes(sesion_en(raiz).libro) == []
+
+
+def test_cargo_temporal_vencido_avisa_y_se_pasa_a_gasto(raiz, con_datos):
+    from datetime import timedelta
+
+    from motor import temporales
+
+    s = sesion_en(raiz)
+    with s.cambio() as lib:
+        cargo = temporales.registrar(lib, lib.hoy() - timedelta(days=60), con_datos["debito"], 50, "Depósito ficticio")
+    at = abrir(_pagina("inicio"))
+    assert any("Conviene reclamarlo" in w.value for w in at.warning)
+    next(b for b in at.button if b.key == f"no_devuelto_{cargo.id}").click().run()
+    boton(at, "Pasar a gasto").click().run()
+    sin_errores(at)
+    assert temporales.pendientes(sesion_en(raiz).libro) == []

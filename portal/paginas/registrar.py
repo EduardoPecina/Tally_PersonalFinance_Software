@@ -5,7 +5,7 @@ from __future__ import annotations
 import pandas as pd
 import streamlit as st
 
-from motor import categorias, consultas, cuentas, movimientos, tarjetas
+from motor import categorias, consultas, cuentas, movimientos, tarjetas, temporales
 from motor.consultas import ETIQUETA_TIPO_OPERACION
 from motor.modelo import TipoCuenta, TipoOperacion
 from motor.transferencias import registrar_pago_tarjeta, registrar_transferencia
@@ -70,9 +70,17 @@ def formulario(clave: str = "registrar", cuenta_fija: str | None = None) -> bool
         if cuenta_fija in tdc_ids:
             recordadas["tarjeta"] = cuenta_fija
 
-    repartir = False
+    repartir = temporal = False
     etiquetas: dict[str, str] = {}
-    if tipo in CON_CATEGORIA:
+    if tipo is TipoOperacion.GASTO:
+        temporal = st.toggle("Cargo temporal: me lo van a devolver", key=f"{clave}_temporal",
+                             help="Lo que te cobran para verificar tu tarjeta (Amazon, Uber, un hotel…) y te "
+                                  "regresan después. No cuenta como gasto: queda en «Te deben» hasta que vuelva.")
+    if temporal:
+        ids_temporal = [i for i in ids if i != getattr(temporales.cuenta(lib), "id", None)]
+        st.caption("Se guarda en la cuenta **POR RECUPERAR** (se crea sola). Cuando te lo devuelvan, márcalo en "
+                   "el Resumen con «Ya me lo devolvieron».")
+    elif tipo in CON_CATEGORIA:
         etiquetas = {c.id: categorias.etiqueta(lib, c.id) for c in categorias.para_tipo(lib, tipo)}
         repartir = st.toggle("Repartir entre varias subcategorías", key=f"{clave}_repartir",
                              help="Por ejemplo, una compra del súper que fue despensa y artículos de limpieza.")
@@ -96,6 +104,9 @@ def formulario(clave: str = "registrar", cuenta_fija: str | None = None) -> bool
                 origenes, recordado_origen = ids, recordadas.get("origen")
             origen = derecha.selectbox("Desde la cuenta", origenes, format_func=nombre.get,
                                        index=_indice(origenes, recordado_origen))
+        elif temporal:
+            origen = izquierda.selectbox("¿Dónde te lo cobraron?", ids_temporal, format_func=nombre.get,
+                                         index=_indice(ids_temporal, recordadas.get("cuenta")))
         else:
             if repartir:
                 with izquierda:
@@ -111,11 +122,12 @@ def formulario(clave: str = "registrar", cuenta_fija: str | None = None) -> bool
             monto = izquierda.number_input("Importe", min_value=0.0, value=None, step=1.0, format="%.2f",
                                            placeholder="0.00")
         fecha = derecha.date_input("Fecha", value=lib.hoy(), format="DD/MM/YYYY")
-        if tipo is TipoOperacion.GASTO and tdc_ids:
+        if tipo is TipoOperacion.GASTO and tdc_ids and not temporal:
             msi = derecha.number_input("Meses sin intereses", min_value=0, max_value=60, value=0, step=1,
                                        help="Solo para compras con tarjeta de crédito. 0 = de contado. El gasto "
                                             "cuenta completo hoy; tu tarjeta solo te pedirá una mensualidad por corte.")
-        descripcion = st.text_input("Descripción", placeholder="Ej. Pizza, Uber, Nómina…", max_chars=120)
+        descripcion = st.text_input("Descripción", max_chars=120, placeholder="Ej. Verificación de Amazon"
+                                    if temporal else "Ej. Pizza, Uber, Nómina…")
         notas = st.text_input("Notas (opcional)", max_chars=300)
         guardar = st.form_submit_button("Guardar", type="primary")
 
@@ -131,6 +143,10 @@ def formulario(clave: str = "registrar", cuenta_fija: str | None = None) -> bool
         return False
 
     memoria = st.session_state["_registrar_ultimas"]
+    if temporal:
+        memoria.update(cuenta=origen)
+        return ejecutar(lambda lib: temporales.registrar(lib, fecha, origen, monto, descripcion, notas),
+                        exito=f"Cargo temporal de {formato.dinero(monto)} guardado: no cuenta como gasto")
     if tipo is TipoOperacion.TRANSFERENCIA:
         memoria.update(origen=origen, destino=destino)
 

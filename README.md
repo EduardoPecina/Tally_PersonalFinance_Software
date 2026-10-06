@@ -57,8 +57,8 @@ el acceso directo **Mis datos de TALLY**, dentro de `Escritorio\TALLY`.
 
 | Página | Responde a |
 |---|---|
-| Resumen | ¿Cuánto dinero tengo? ¿Cuánto gasté y en qué? ¿Tengo pagos de tarjeta por vencer? ¿Cómo voy con mis presupuestos? |
-| Registrar | Anotar un gasto (también a meses sin intereses o repartido), ingreso, transferencia, pago de tarjeta o reembolso |
+| Resumen | ¿Cuánto dinero tengo? ¿Cuánto gasté y en qué? ¿Tengo pagos de tarjeta por vencer? ¿Cómo voy con mis presupuestos? ¿Qué cargos temporales me deben devolver? |
+| Registrar | Anotar un gasto (también a meses sin intereses, repartido o como cargo temporal que te van a devolver), ingreso, transferencia, pago de tarjeta o reembolso |
 | Historial | Buscar, filtrar, editar, repetir o eliminar movimientos |
 | Cuentas | Saldo de cada cuenta, estado de cuenta con saldo corrido y estado de cada tarjeta (línea, disponible, pago) |
 | Presupuestos | Tope mensual por categoría y cuánto llevas |

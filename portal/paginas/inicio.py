@@ -8,7 +8,7 @@ import streamlit as st
 
 from motor import cuentas, reportes, tarjetas
 from motor.modelo import TipoCuenta
-from portal.componentes import estado, formato, graficas
+from portal.componentes import estado, formato, graficas, por_recuperar
 from portal.componentes import tarjeta as estado_tarjeta
 from portal.componentes.sesion import libro
 from portal.navegacion import enlace
@@ -113,8 +113,10 @@ def mostrar() -> None:
         return
 
     _avisos()
+    por_recuperar.avisos()
     st.subheader("Tu situación hoy")
     _situacion()
+    por_recuperar.mostrar()
 
     st.divider()
     desde, hasta = _periodo()

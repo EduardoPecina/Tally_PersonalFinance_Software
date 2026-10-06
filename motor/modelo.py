@@ -68,6 +68,7 @@ class Perfil:
     periodo_inicial: str = "mes_actual"  # el periodo que muestra el Resumen al abrir
     tema: str = "claro"                # claro u oscuro (para descansar la vista)
     icono: str = "claro"               # color del ícono del acceso directo: claro, oscuro, acento o gris
+    dias_para_reclamar: int = 45       # cargos temporales: avisar si no te los devuelven en estos días
 
 
 @dataclass(frozen=True, slots=True)
@@ -164,6 +165,8 @@ class Operacion:
     # Compra con tarjeta de crédito a meses sin intereses (0 = de contado). El gasto cuenta completo en la
     # fecha de compra; la tarjeta solo exige una mensualidad en cada corte (motor/tarjetas.py).
     msi: int = 0
+    # Devolución (o paso a gasto) de un cargo temporal: el id del cargo que liquida (motor/temporales.py).
+    liquida: str = ""
 
     def partidas_de_cuenta(self) -> tuple[Partida, ...]:
         return tuple(p for p in self.partidas if p.cuenta_id is not None)

@@ -289,7 +289,7 @@ def editar(
             )
     if op.tipo is TipoOperacion.GASTO:
         nueva = replace(nueva, msi=nuevo_msi)
-    return libro.reemplazar_operacion(operacion_id, nueva)
+    return libro.reemplazar_operacion(operacion_id, replace(nueva, liquida=op.liquida))
 
 
 def duplicar(libro: Libro, operacion_id: str, fecha: date) -> Operacion:
@@ -297,7 +297,8 @@ def duplicar(libro: Libro, operacion_id: str, fecha: date) -> Operacion:
     op = libro.operacion(operacion_id)
     if op.tipo is TipoOperacion.SALDO_INICIAL:
         raise ErrorValidacion("El saldo inicial no se puede repetir.")
-    return libro.agregar_operacion(replace(op, id="", fecha=fecha, secuencia=0, creado_en=None, modificado_en=None))
+    return libro.agregar_operacion(replace(op, id="", fecha=fecha, secuencia=0, creado_en=None, modificado_en=None,
+                                              liquida=""))
 
 
 def reemplazar(libro: Libro, operacion_id: str, nueva: Operacion) -> Operacion:

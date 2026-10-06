@@ -80,8 +80,13 @@ def _resumen() -> None:
         periodos = list(reportes.PERIODOS)
         periodo = st.selectbox("Periodo que se muestra al abrir", periodos, format_func=reportes.PERIODOS.get,
                                index=periodos.index(actual.periodo_inicial) if actual.periodo_inicial in periodos else 0)
+        dias = st.number_input("Avisarme de un cargo temporal sin devolver después de (días)", min_value=1,
+                               max_value=perfil.MAXIMO_DIAS_PARA_RECLAMAR, value=actual.dias_para_reclamar, step=1,
+                               help="Cargos temporales: lo que te cobran para verificar tu tarjeta y te devuelven "
+                                    "después. Pasado este plazo, el Resumen te avisa para que lo reclames.")
         if st.form_submit_button("Guardar", type="primary"):
-            if ejecutar(lambda lib: perfil.ajustar(lib, periodo_inicial=periodo), exito="Preferencia guardada"):
+            if ejecutar(lambda lib: perfil.ajustar(lib, periodo_inicial=periodo, dias_para_reclamar=int(dias)),
+                        exito="Preferencia guardada"):
                 st.session_state.pop("_mem_inicio", None)          # el Resumen toma el nuevo periodo
                 st.session_state.pop("_w_inicio_periodo", None)
                 st.rerun()

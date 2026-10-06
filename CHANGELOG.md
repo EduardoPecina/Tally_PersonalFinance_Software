@@ -2,7 +2,22 @@
 
 Todos los cambios relevantes de TALLY se documentan aquí.
 
-## [0.5.2] — Sin publicar
+## [0.5.3] — Sin publicar
+
+- **Cargos temporales**: lo que te cobran para verificar tu tarjeta y te
+  devuelven después (Amazon, Uber, un hotel…). **No cuentan como gasto.**
+  - En Registrar → Gasto, activa «Cargo temporal: me lo van a devolver».
+    Se guarda como transferencia a la cuenta **POR RECUPERAR** (tipo Por
+    cobrar, suma en «Te deben»), que se crea sola.
+  - El Resumen muestra la lista «Por recuperar» con dos botones:
+    «Ya me lo devolvieron» (regresa el dinero a la cuenta que elijas) y
+    «No me lo devolvieron» (lo pasa a gasto en la fecha que elijas).
+  - Si pasan más de 45 días sin devolución, el Resumen te avisa para que
+    lo reclames. Los días se cambian en Configuración → Resumen.
+  - En la plantilla de carga, escribe POR RECUPERAR en SUBCATEGORIA, en el
+    cargo y en su devolución.
+
+## [0.5.2]
 
 - **Eliminar cuenta o tarjeta**: botón «Eliminar» en cada cuenta.
   - Si tiene movimientos, desaparece de tus cuentas y de los formularios,
