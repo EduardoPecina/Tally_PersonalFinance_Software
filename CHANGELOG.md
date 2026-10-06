@@ -2,7 +2,13 @@
 
 Todos los cambios relevantes de TALLY se documentan aquí.
 
-## [0.3.5] — Sin publicar
+## [0.3.6] — Sin publicar
+
+- `portal.log` pasa del Escritorio a `C:\Users\<tu usuario>\TALLY`, junto a
+  tus datos. TALLY escribe en él mientras está abierto y OneDrive lo
+  resincronizaba sin parar. Al actualizar se borra el del Escritorio.
+
+## [0.3.5]
 
 - **Tus datos ya no viven en el Escritorio:** ahora están en
   `C:\Users\<tu usuario>\TALLY` (`Datos\tally.db` y `Respaldos\`). Así
