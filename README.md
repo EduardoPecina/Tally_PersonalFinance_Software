@@ -53,7 +53,11 @@ Detalle en [`docs/MODELO_CONTABLE.md`](docs/MODELO_CONTABLE.md) y
 ## Instalar y usar
 
 1. Descarga el proyecto (en GitHub: **Code → Download ZIP**) y descomprímelo
-   en cualquier carpeta que no sea el Escritorio (por ejemplo, Descargas).
+   (clic derecho en el ZIP → **Extraer todo**) en cualquier carpeta que no sea
+   el Escritorio (por ejemplo, Descargas). Si corres `INSTALAR.bat` desde
+   dentro del ZIP sin extraerlo, el instalador primero copia el programa a una
+   carpeta temporal propia, porque Windows puede borrar su copia a media
+   instalación.
 2. Doble clic en `INSTALAR.bat`. Instala lo necesario y crea
    `Escritorio\TALLY` y el acceso directo **TALLY**. Funciona en cualquier
    PC con Windows, personal o de trabajo, con el Escritorio en OneDrive o no.

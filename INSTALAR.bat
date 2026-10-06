@@ -7,8 +7,26 @@ cd /d "%~dp0"
 chcp 65001 >nul
 title Instalador de TALLY
 set "TALLY_BITACORA_BAT=%TEMP%\tally_instalar_bat.log"
-echo INSTALAR.bat %DATE% %TIME% > "%TALLY_BITACORA_BAT%"
+if not defined TALLY_DESDE_COPIA echo INSTALAR.bat %DATE% %TIME% > "%TALLY_BITACORA_BAT%"
+if defined TALLY_DESDE_COPIA echo Sigue desde la copia: %~dp0 >> "%TALLY_BITACORA_BAT%"
 set "PY="
+
+REM Si se corre desde DENTRO del ZIP, Windows usa una copia temporal que puede borrar a media instalacion
+REM (incluso este mismo archivo). Primero se copia todo a una carpeta temporal propia y se vuelve a lanzar
+REM INSTALAR.bat desde ahi.
+if defined TALLY_DESDE_COPIA goto origen_listo
+echo "%~dp0" | findstr /i /c:".zip" >nul
+if errorlevel 1 goto origen_listo
+set "TALLY_COPIA=%TEMP%\TALLY_instalador"
+echo Se esta corriendo desde dentro del ZIP: se copia a %TALLY_COPIA% >> "%TALLY_BITACORA_BAT%"
+echo Copiando el programa desde el ZIP a una carpeta temporal...
+if exist "%TALLY_COPIA%" rmdir /s /q "%TALLY_COPIA%"
+xcopy "%~dp0." "%TALLY_COPIA%" /E /I /Q /Y /H >> "%TALLY_BITACORA_BAT%" 2>&1
+if not exist "%TALLY_COPIA%\motor\respaldos.py" goto zip_incompleto
+if not exist "%TALLY_COPIA%\INSTALAR.bat" goto zip_incompleto
+set "TALLY_DESDE_COPIA=1"
+"%TALLY_COPIA%\INSTALAR.bat"
+:origen_listo
 
 echo Buscando Python 3.13...
 call :buscar_python
@@ -44,6 +62,16 @@ echo No se pudo instalar Python 3.13 automaticamente.
 echo Se abrira la pagina de descarga: instala Python 3.13 y vuelve a correr INSTALAR.bat.
 echo.
 start "" "https://www.python.org/downloads/"
+pause
+exit /b 1
+
+:zip_incompleto
+echo No se pudo copiar el programa desde el ZIP >> "%TALLY_BITACORA_BAT%"
+echo.
+echo No se pudo leer el programa completo desde el ZIP. No se cambio nada.
+echo Descomprime el ZIP primero: clic derecho en el archivo .zip, "Extraer todo",
+echo abre la carpeta que se crea y corre INSTALAR.bat desde ahi.
+echo.
 pause
 exit /b 1
 

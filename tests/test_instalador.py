@@ -448,3 +448,47 @@ def test_cambiar_icono_fuera_de_windows_no_hace_nada():
         assert accesos.cambiar_icono("acento")[0] == 0
     for variante in ("claro", "oscuro", "acento", "gris"):
         assert accesos.archivo_icono(variante).exists() and accesos.imagen_pestana(variante).exists()
+
+
+def test_programa_incompleto_no_toca_nada_y_explica_que_hay_que_extraer_el_zip(instalador, tmp_path, monkeypatch,
+                                                                               capsys):
+    """Como al correr INSTALAR.bat desde DENTRO del ZIP: Windows borró parte de su copia temporal."""
+    instalador.instalar(sin_librerias=True, sin_accesos=True)
+    raiz, base = carpeta(tmp_path), datos(tmp_path)
+    with Sesion(base / "Datos" / "tally.db").cambio() as libro:
+        cuentas.crear(libro, "Débito Ficticio", "debito", saldo_inicial=100, fecha_creacion=date(2026, 7, 1))
+    datos_antes = huella(base / "Datos" / "tally.db")
+    (raiz / "_Programa" / "marca.txt").write_text("versión anterior")
+    incompleto = tmp_path / "zip_a_medias"
+    shutil.copytree(RAIZ_REPO, incompleto, ignore=shutil.ignore_patterns(".git", "respaldos.py", "__pycache__"))
+    monkeypatch.setattr(instalador, "ORIGEN", incompleto.resolve())
+    assert instalador.programa_incompleto() == ["motor/respaldos.py"]
+    assert instalador.instalar(sin_librerias=True, sin_accesos=True) == 1
+    salida = capsys.readouterr().out
+    assert "incompleto" in salida and "Extraer todo" in salida
+    assert (raiz / "_Programa" / "marca.txt").exists()                   # no se tocó nada
+    assert huella(base / "Datos" / "tally.db") == datos_antes
+
+
+def test_el_respaldo_no_depende_de_que_el_origen_siga_ahi(instalador, tmp_path, monkeypatch):
+    """El motor que hace el respaldo se carga antes de instalar las librerías (que tarda minutos)."""
+    instalador.instalar(sin_librerias=True, sin_accesos=True)
+    cargados = []
+    original = instalador._motor
+
+    def registrar(modulo):
+        cargados.append(modulo)
+        return original(modulo)
+
+    monkeypatch.setattr(instalador, "_motor", registrar)
+    monkeypatch.setattr(instalador, "instalar_librerias", lambda: cargados.append("pip") or True)
+    monkeypatch.setattr(instalador, "PYTHON_PROBADO", sys.version_info[:2])
+    assert instalador.instalar(sin_librerias=False, sin_accesos=True) == 0
+    assert cargados.index("respaldos") < cargados.index("pip")
+
+
+def test_instalar_bat_se_copia_fuera_del_zip_antes_de_seguir():
+    texto = (RAIZ_REPO / "INSTALAR.bat").read_text(encoding="utf-8")
+    assert 'findstr /i /c:".zip"' in texto and "TALLY_DESDE_COPIA" in texto
+    assert texto.index("TALLY_instalador") < texto.index("call :buscar_python")   # antes de cualquier otra cosa
+    assert "\r\n" in (RAIZ_REPO / "INSTALAR.bat").read_bytes().decode("utf-8")   # CRLF: cmd lo exige

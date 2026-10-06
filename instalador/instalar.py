@@ -307,6 +307,20 @@ def instalar_librerias():
     return False
 
 
+# Lo mínimo que debe traer el programa para instalarse. Si falta algo, casi siempre es porque se corrió
+# INSTALAR.bat desde DENTRO del ZIP y Windows borró su copia temporal (o la extracción quedó a medias).
+ARCHIVOS_NECESARIOS = ("motor/respaldos.py", "motor/persistencia.py", "motor/rutas.py", "portal/app.py",
+                       "requirements-lock.txt", "INSTALAR.bat")
+AVISO_ZIP = ("Descomprime el ZIP primero: clic derecho en el archivo .zip → «Extraer todo», abre la carpeta que se "
+             "crea y corre INSTALAR.bat desde ahí. (Si lo corres desde dentro del ZIP, Windows puede borrar su copia "
+             "temporal a media instalación.)")
+
+
+def programa_incompleto():
+    """Los archivos necesarios que faltan en el origen (lista vacía si está completo)."""
+    return [a for a in ARCHIVOS_NECESARIOS if not (ORIGEN / a).exists()]
+
+
 def _motor(modulo):
     """Un módulo del motor de la versión NUEVA (la del ZIP), sin dejarlo en sys.path."""
     import importlib
@@ -647,6 +661,14 @@ def _instalar(raiz, sin_librerias, sin_accesos):
                "Descomprime el ZIP en otra carpeta (por ejemplo, Descargas) y corre INSTALAR.bat desde ahí.",
                error=True)
         return 1
+    faltan = programa_incompleto()
+    if faltan:
+        avisar(f"El programa que intentas instalar está incompleto (falta {', '.join(faltan)}).\n\n{AVISO_ZIP}\n\n"
+               "No se cambió nada.", error=True)
+        return 1
+    # El respaldo previo usa el motor NUEVO: se carga ya, antes de instalar las librerías (que tarda), para no
+    # depender de que la carpeta de origen siga ahí minutos después.
+    _motor("respaldos")
     if sys.version_info[:2] != PYTHON_PROBADO and not sin_librerias:
         version = ".".join(map(str, PYTHON_PROBADO))
         avisar(f"Este instalador debe correr con Python {version} (se está usando "
@@ -664,6 +686,10 @@ def _instalar(raiz, sin_librerias, sin_accesos):
     actualizacion = programa.exists()
     try:
         respaldo = respaldar_datos(raiz, base)
+    except ModuleNotFoundError as error:              # el origen desapareció (ZIP) a media instalación
+        avisar(f"No se pudo respaldar tus datos antes de actualizar ({error}).\n\n{AVISO_ZIP}\n\n"
+               "No se cambió nada.", error=True)
+        return 1
     except Exception as error:                        # noqa: BLE001 - sin respaldo no se actualiza
         avisar(f"No se pudo respaldar tus datos antes de actualizar ({error}).\n\n"
                "No se cambió nada. Revisa que la carpeta Datos esté completa.", error=True)
