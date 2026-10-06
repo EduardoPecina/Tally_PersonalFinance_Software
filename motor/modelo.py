@@ -66,6 +66,8 @@ class Perfil:
     respaldo_diario: bool = True       # al abrir TALLY, un respaldo automático por día
     respaldos_a_conservar: int = 10    # cuántos respaldos automáticos se guardan
     periodo_inicial: str = "mes_actual"  # el periodo que muestra el Resumen al abrir
+    tema: str = "claro"                # claro u oscuro (para descansar la vista)
+    icono: str = "claro"               # color del ícono del acceso directo: claro, oscuro, acento o gris
 
 
 @dataclass(frozen=True, slots=True)

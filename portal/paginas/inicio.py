@@ -6,12 +6,13 @@ from datetime import date, timedelta
 
 import streamlit as st
 
-from motor import cuentas, reportes
+from motor import cuentas, reportes, tarjetas
 from motor.modelo import TipoCuenta
 from portal.componentes import estado, formato, graficas
 from portal.componentes import tarjeta as estado_tarjeta
 from portal.componentes.sesion import libro
 from portal.navegacion import enlace
+from portal.paginas import presupuestos
 
 PERSONALIZADO = "personalizado"
 PERIODOS = {**reportes.PERIODOS, PERSONALIZADO: "Elegir fechas"}
@@ -66,6 +67,18 @@ def _periodo_resumen(desde: date, hasta: date) -> None:
                    "(no cuentan como ingreso ni gasto).")
 
 
+def _avisos() -> None:
+    """Pagos de tarjeta vencidos o que vencen en los próximos días, hasta arriba."""
+    for tarjeta, actual in tarjetas.pagos_proximos(libro()):
+        monto, limite = formato.dinero_md(actual.corte.por_liquidar), formato.fecha(actual.corte.fecha_limite_pago)
+        if actual.situacion == tarjetas.VENCIDA:
+            st.error(f"**{formato.md(tarjeta.nombre)}**: el pago de {monto} venció el {limite}.", icon="🔴")
+        else:
+            dias = actual.dias_para_pagar
+            cuando = "hoy" if dias == 0 else "mañana" if dias == 1 else f"en {dias} días"
+            st.warning(f"**{formato.md(tarjeta.nombre)}**: paga {monto} antes del {limite} ({cuando}).", icon="⏳")
+
+
 def _tarjetas() -> None:
     lib = libro()
     lista = cuentas.listar(lib, tipo=TipoCuenta.CREDITO)
@@ -99,6 +112,7 @@ def mostrar() -> None:
         enlace("cuentas", "Ir a Cuentas", "🏦")
         return
 
+    _avisos()
     st.subheader("Tu situación hoy")
     _situacion()
 
@@ -126,6 +140,7 @@ def mostrar() -> None:
     st.markdown(f"**Evolución de tu patrimonio** · {formato.rango(desde_grafica, hasta_grafica)}")
     graficas.linea([(p.fecha, p.patrimonio_neto) for p in reportes.evolucion(lib, desde_grafica, hasta_grafica)])
 
+    presupuestos.avance(*reportes.rango_periodo(libro(), "mes_actual"))
     _tarjetas()
     _quincenas()
     st.divider()

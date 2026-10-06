@@ -12,9 +12,10 @@ if str(RAIZ) not in sys.path:
 import streamlit as st  # noqa: E402
 
 from motor import perfil, respaldos  # noqa: E402
-from motor.config import VERSION  # noqa: E402
+from motor.config import LEMA, VERSION  # noqa: E402
 from motor.errores import ErrorDatos  # noqa: E402
-from portal import navegacion  # noqa: E402
+from portal import accesos, navegacion  # noqa: E402
+from portal.componentes import tema  # noqa: E402
 from portal.apagado import cerrar_portal, vigilar_inactividad  # noqa: E402
 from portal.componentes.cierre import pagina_cerrado  # noqa: E402
 from portal.componentes.sesion import mostrar_avisos, sesion  # noqa: E402
@@ -48,7 +49,7 @@ def _respaldo_del_dia(actual) -> None:
 def _barra_lateral() -> None:
     with st.sidebar:
         nombre = sesion().libro.perfil.nombre
-        st.caption(f"Sesión de **{nombre}** · TALLY {VERSION}  \nTus datos se quedan en esta PC.")
+        st.caption(f"Sesión de **{nombre}** · TALLY {VERSION}  \n*{LEMA}*")
         if st.button("Cerrar TALLY", icon=":material/power_settings_new:", width="stretch",
                      help="Cierra TALLY por completo. Todo queda guardado. Para volver a abrirlo: acceso "
                           "directo TALLY de tu Escritorio."):
@@ -57,8 +58,19 @@ def _barra_lateral() -> None:
             st.stop()
 
 
+def _preferencias():
+    """El perfil (tema e ícono), o None si aún no hay o los datos no abren."""
+    try:
+        return sesion().libro.perfil
+    except ErrorDatos:
+        return None
+
+
 def main() -> None:
-    st.set_page_config(page_title="TALLY", page_icon=str(MARCA) if MARCA.exists() else "💰", layout="wide")
+    preferencias = _preferencias()
+    icono = accesos.imagen_pestana(preferencias.icono if preferencias else "claro")
+    st.set_page_config(page_title="TALLY", page_icon=str(icono) if icono.exists() else "💰", layout="wide")
+    tema.aplicar(preferencias.tema if preferencias else "claro")
     if LOGO.exists():
         st.logo(str(LOGO), size="large", icon_image=str(MARCA) if MARCA.exists() else None)
     _vigilante()
@@ -75,7 +87,9 @@ def main() -> None:
         return
 
     _respaldo_del_dia(actual)
-    pagina = st.navigation(list(navegacion.paginas().values()))
+    pagina = st.navigation(navegacion.por_seccion())
+    if pagina.url_path != "cuentas":
+        st.session_state.pop("cuenta_abierta", None)       # al volver a Cuentas se ve la lista
     _barra_lateral()
     pagina.run()
 

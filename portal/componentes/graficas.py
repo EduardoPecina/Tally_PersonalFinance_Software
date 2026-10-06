@@ -58,3 +58,110 @@ def linea(puntos: list[tuple[date, Decimal]], titulo_valor: str = "Patrimonio") 
                  alt.Tooltip("Texto:N", title=titulo_valor)],
     ).add_params(cercano)
     st.altair_chart((trazo + puntos_ocultos).properties(height=260), width="stretch")
+
+
+# ------------------------------------------------------------ varias series
+# Paleta categórica validada (8 tonos en orden fijo, legibles con daltonismo en pares contiguos). Más de 7
+# grupos se juntan en OTROS (gris): nunca se inventan colores.
+PALETA = ("#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4", "#008300", "#4a3aa7", "#e34948")
+OTROS = "OTROS"
+GRIS = "#9b9a95"
+MAXIMO_GRUPOS = 7
+INGRESOS_COLOR, GASTOS_COLOR = PALETA[2], PALETA[1]
+
+
+def _escala(grupos: list[str]) -> alt.Scale:
+    """Cada grupo con su color, decidido por su nombre (no por su lugar): filtrar no repinta los demás."""
+    propios = sorted(g for g in grupos if g != OTROS)
+    dominio = propios + ([OTROS] if OTROS in grupos else [])
+    colores = [PALETA[i % len(PALETA)] for i in range(len(propios))] + ([GRIS] if OTROS in grupos else [])
+    return alt.Scale(domain=dominio, range=colores)
+
+
+def plegar(totales: dict[str, Decimal], maximo: int = MAXIMO_GRUPOS) -> dict[str, str]:
+    """Nombre → grupo que se dibuja: los ``maximo`` más grandes por su nombre y el resto como OTROS."""
+    grandes = sorted(totales, key=lambda k: -abs(totales[k]))[:maximo]
+    return {k: (k if k in grandes else OTROS) for k in totales}
+
+
+def _leyenda() -> alt.Legend:
+    return alt.Legend(orient="bottom", title=None, labelLimit=260, columns=4, symbolType="circle")
+
+
+def dona(filas: list[tuple[str, Decimal]], titulo_valor: str = "Importe", titulo_nombre: str = "Grupo") -> None:
+    """¿Qué parte del total es cada grupo? Dona con leyenda y porcentaje en el tooltip."""
+    filas = [(n, v) for n, v in filas if v > 0]
+    if not filas:
+        st.caption("Sin datos en este periodo.")
+        return
+    grupos = plegar(dict(filas))
+    datos = pd.DataFrame({"Nombre": [grupos[n] for n, _ in filas], "Valor": [float(v) for _, v in filas]})
+    datos = datos.groupby("Nombre", as_index=False)["Valor"].sum()
+    total = datos["Valor"].sum()
+    datos["Texto"] = [dinero(Decimal(str(round(v, 2)))) for v in datos["Valor"]]
+    datos["Parte"] = datos["Valor"] / total
+    grafica = alt.Chart(datos).mark_arc(innerRadius=70, stroke="white", strokeWidth=2).encode(
+        theta=alt.Theta("Valor:Q", stack=True),
+        color=alt.Color("Nombre:N", scale=_escala(list(datos["Nombre"])), legend=_leyenda()),
+        order=alt.Order("Valor:Q", sort="descending"),
+        tooltip=[alt.Tooltip("Nombre:N", title=titulo_nombre), alt.Tooltip("Texto:N", title=titulo_valor),
+                 alt.Tooltip("Parte:Q", title="Del total", format=".1%")],
+    )
+    st.altair_chart(grafica.properties(height=360), width="stretch")
+
+
+def barras_por_periodo(datos: pd.DataFrame, orden: list[str], titulo_valor: str = "Importe",
+                       titulo_grupo: str = "Grupo") -> None:
+    """Barras apiladas por periodo (``Periodo``, ``Grupo``, ``Valor``): cuánto y en qué, mes a mes."""
+    if datos.empty:
+        st.caption("Sin datos en este periodo.")
+        return
+    datos = datos.assign(Texto=[dinero(Decimal(str(round(v, 2)))) for v in datos["Valor"]])
+    grafica = alt.Chart(datos).mark_bar(stroke="white", strokeWidth=1, cornerRadiusTopLeft=2,
+                                        cornerRadiusTopRight=2).encode(
+        x=alt.X("Periodo:N", sort=orden, title=None, axis=alt.Axis(labelAngle=0, labelColor=TEXTO_SECUNDARIO)),
+        y=alt.Y("sum(Valor):Q", title=None, axis=alt.Axis(format="$,.0f", labelColor=TEXTO_SECUNDARIO,
+                                                          gridOpacity=0.4)),
+        color=alt.Color("Grupo:N", scale=_escala(list(datos["Grupo"].unique())), legend=_leyenda()),
+        order=alt.Order("Valor:Q", sort="descending"),
+        tooltip=[alt.Tooltip("Periodo:N", title="Periodo"), alt.Tooltip("Grupo:N", title=titulo_grupo),
+                 alt.Tooltip("Texto:N", title=titulo_valor)],
+    )
+    st.altair_chart(grafica.properties(height=380), width="stretch")
+
+
+def lineas_por_periodo(datos: pd.DataFrame, orden: list[str], titulo_valor: str = "Importe",
+                       titulo_grupo: str = "Grupo") -> None:
+    """Una línea por grupo a lo largo de los periodos, con tooltip al pasar el cursor."""
+    if datos.empty or datos["Periodo"].nunique() < 2:
+        st.caption("Hacen falta al menos dos periodos con datos para ver la tendencia.")
+        return
+    datos = datos.assign(Texto=[dinero(Decimal(str(round(v, 2)))) for v in datos["Valor"]])
+    escala = _escala(list(datos["Grupo"].unique()))
+    base = alt.Chart(datos).encode(
+        x=alt.X("Periodo:N", sort=orden, title=None, axis=alt.Axis(labelAngle=0, labelColor=TEXTO_SECUNDARIO)),
+        y=alt.Y("Valor:Q", title=None, axis=alt.Axis(format="$,.0f", labelColor=TEXTO_SECUNDARIO, gridOpacity=0.4)),
+        color=alt.Color("Grupo:N", scale=escala, legend=_leyenda()),
+    )
+    puntos = base.mark_point(size=70, filled=True).encode(
+        tooltip=[alt.Tooltip("Periodo:N", title="Periodo"), alt.Tooltip("Grupo:N", title=titulo_grupo),
+                 alt.Tooltip("Texto:N", title=titulo_valor)])
+    st.altair_chart((base.mark_line(strokeWidth=2) + puntos).properties(height=360), width="stretch")
+
+
+def ingresos_y_gastos(datos: pd.DataFrame, orden: list[str]) -> None:
+    """Barras lado a lado de ingresos y gastos por periodo (``Periodo``, ``Grupo`` = INGRESOS/GASTOS, ``Valor``)."""
+    if datos.empty:
+        st.caption("Sin datos en este periodo.")
+        return
+    datos = datos.assign(Texto=[dinero(Decimal(str(round(v, 2)))) for v in datos["Valor"]])
+    escala = alt.Scale(domain=["INGRESOS", "GASTOS"], range=[INGRESOS_COLOR, GASTOS_COLOR])
+    grafica = alt.Chart(datos).mark_bar(cornerRadiusTopLeft=3, cornerRadiusTopRight=3).encode(
+        x=alt.X("Periodo:N", sort=orden, title=None, axis=alt.Axis(labelAngle=0, labelColor=TEXTO_SECUNDARIO)),
+        xOffset=alt.XOffset("Grupo:N", sort=["INGRESOS", "GASTOS"]),
+        y=alt.Y("Valor:Q", title=None, axis=alt.Axis(format="$,.0f", labelColor=TEXTO_SECUNDARIO, gridOpacity=0.4)),
+        color=alt.Color("Grupo:N", scale=escala, legend=_leyenda()),
+        tooltip=[alt.Tooltip("Periodo:N", title="Periodo"), alt.Tooltip("Grupo:N", title="Qué"),
+                 alt.Tooltip("Texto:N", title="Importe")],
+    )
+    st.altair_chart(grafica.properties(height=360), width="stretch")

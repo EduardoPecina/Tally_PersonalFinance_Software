@@ -10,6 +10,7 @@ from motor.modelo import TIPOS_DISPONIBLES_POR_DEFECTO, Cuenta, TipoCuenta
 from portal.componentes import formato
 from portal.componentes import tarjeta as estado_tarjeta
 from portal.componentes.sesion import aplicar, avisar, ejecutar, libro
+from portal.paginas import estado_cuenta
 
 TIPOS = list(TipoCuenta)
 SIN_CAMBIOS = "sin cambios"
@@ -116,6 +117,9 @@ def _tarjeta_de_cuenta(cuenta: Cuenta) -> None:
         if not cuenta.activa:
             detalle += " · archivada"
         izquierda.markdown(f"**{cuenta.nombre}**  \n:gray[{detalle}]")
+        if izquierda.button("Ver movimientos", icon=":material/receipt_long:", key=f"ver_{cuenta.id}"):
+            estado_cuenta.abrir(cuenta.id)
+            st.rerun()
         if cuenta.tipo is not TipoCuenta.CREDITO:
             derecha.metric("Saldo", formato.dinero(saldo))
             return
@@ -230,6 +234,10 @@ def _archivar_o_borrar(cuenta: Cuenta) -> None:
 
 
 def mostrar() -> None:
+    abierta = estado_cuenta.abierta()
+    if abierta:
+        estado_cuenta.mostrar(abierta)
+        return
     st.title("Cuentas")
     st.caption("¿Cuánto tengo en cada cuenta?")
 

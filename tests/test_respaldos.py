@@ -228,3 +228,19 @@ def test_ajustes_del_perfil(sesion):
         with pytest.raises(ErrorValidacion):
             with sesion.cambio() as libro:
                 perfil.ajustar(libro, **malo)
+
+
+def test_tema_e_icono_y_leer_perfil_sin_tocar_el_archivo(sesion):
+    from motor.errores import ErrorValidacion
+
+    with sesion.cambio() as libro:
+        perfil.ajustar(libro, tema="oscuro", icono="acento")
+    antes = sesion.almacen.ruta.read_bytes()
+    leido = respaldos.leer_perfil(sesion.almacen.ruta)
+    assert (leido.tema, leido.icono) == ("oscuro", "acento")
+    assert sesion.almacen.ruta.read_bytes() == antes
+    assert respaldos.leer_perfil(sesion.almacen.ruta.with_name("no_existe.db")) is None
+    for malo in (dict(tema="morado"), dict(icono="dorado")):
+        with pytest.raises(ErrorValidacion):
+            with sesion.cambio() as libro:
+                perfil.ajustar(libro, **malo)

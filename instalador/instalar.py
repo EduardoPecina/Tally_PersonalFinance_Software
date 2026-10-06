@@ -63,7 +63,7 @@ NOMBRE_ACCESO_DATOS = "Mis datos de TALLY"
 
 LEEME = """TALLY
 =====
-Mis finanzas, mis números, mi PC, mis datos.
+Your money. Your computer. Your data.
 
 ABRIR TALLY
   Doble clic en el acceso directo "TALLY" (en el Escritorio o en esta carpeta).
@@ -584,10 +584,24 @@ def crear_lnk(rutas, destino, argumentos, trabajo, icono, descripcion):
     return not faltan
 
 
+def icono_elegido(programa, base):
+    """El .ico del color que eligió el usuario en Configuración (el claro si no eligió o no se puede leer)."""
+    recursos = programa / "portal" / "recursos"
+    variante = "claro"
+    if base is not None:
+        try:
+            perfil = _motor("respaldos").leer_perfil(base / DATOS / ARCHIVO_DATOS)
+            variante = perfil.icono if perfil else "claro"
+        except Exception as error:  # noqa: BLE001 - un ícono nunca detiene la instalación
+            print(f"No se pudo leer el ícono elegido ({error}); se usa el claro.")
+    elegido = recursos / f"tally_{variante}.ico"
+    return elegido if variante != "claro" and elegido.exists() else recursos / "tally.ico"
+
+
 def crear_accesos(raiz, programa, base=None):
     """Acceso directo «TALLY» en el Escritorio y en la carpeta TALLY, y «Mis datos de TALLY» en la carpeta."""
     destino, argumentos = destino_del_acceso(programa)
-    icono = programa / "portal" / "recursos" / "tally.ico"
+    icono = icono_elegido(programa, base)
     icono = str(icono) if icono.exists() else ""
     print("Creando el acceso directo TALLY...")
     listo = crear_lnk(rutas_de_accesos(raiz), destino, argumentos, programa, icono, "Abre TALLY en el navegador")

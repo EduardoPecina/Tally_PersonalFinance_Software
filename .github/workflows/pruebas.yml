@@ -1,0 +1,28 @@
+# Corre todas las pruebas en Windows (como la PC del usuario) en cada pull request y en main.
+# Usa exactamente las librerías del lock verificado, igual que INSTALAR.bat.
+name: Pruebas
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  windows:
+    name: Windows · Python 3.13
+    runs-on: windows-latest
+    timeout-minutes: 25
+    env:
+      PYTHONUTF8: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Instalar librerías (lock verificado)
+        run: python -m pip install --require-hashes --only-binary=:all: -r requirements-lock.txt
+      - name: Pruebas
+        run: python -m pytest -q

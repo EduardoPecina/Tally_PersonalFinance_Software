@@ -3,6 +3,7 @@
 import hashlib
 import importlib.util
 import shutil
+import sys
 from datetime import date
 from pathlib import Path
 
@@ -423,3 +424,27 @@ def test_acceso_directo_a_mis_datos(instalador, tmp_path, monkeypatch):
     (tally, mis_datos) = llamados
     assert tally[-2:] == [str(raiz.parent / "TALLY.lnk"), str(raiz / "TALLY.lnk")]
     assert mis_datos[3] == str(base) and mis_datos[-1] == str(raiz / "Mis datos de TALLY.lnk")
+
+
+def test_al_actualizar_conserva_el_icono_elegido(instalador, tmp_path):
+    from motor import perfil
+
+    instalador.instalar(sin_librerias=True, sin_accesos=True)
+    raiz, base = carpeta(tmp_path), datos(tmp_path)
+    programa = raiz / "_Programa"
+    assert instalador.icono_elegido(programa, base).name == "tally.ico"           # sin elegir: el claro
+    sesion = Sesion(base / "Datos" / "tally.db")
+    with sesion.cambio() as libro:
+        perfil.configurar(libro, "Usuario Ficticio")
+        perfil.ajustar(libro, icono="oscuro")
+    assert instalador.icono_elegido(programa, base).name == "tally_oscuro.ico"
+    assert instalador.icono_elegido(programa, None).name == "tally.ico"
+
+
+def test_cambiar_icono_fuera_de_windows_no_hace_nada():
+    from portal import accesos
+
+    if sys.platform != "win32":
+        assert accesos.cambiar_icono("acento")[0] == 0
+    for variante in ("claro", "oscuro", "acento", "gris"):
+        assert accesos.archivo_icono(variante).exists() and accesos.imagen_pestana(variante).exists()
