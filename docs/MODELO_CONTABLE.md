@@ -203,6 +203,7 @@ Dentro de un mismo día, el orden de las operaciones es el de su captura.
 | Gastos de terceros | Cuenta `POR_COBRAR` (transferencias), no ingreso ni gasto |
 | Inversiones | Cuenta `INVERSION`. Su valor se actualiza con "Actualizar saldo" → `RENDIMIENTO` |
 | Meses sin intereses | El gasto completo cuenta en la fecha de compra (`Operacion.msi`). La tarjeta solo exige una mensualidad por corte, desde el corte que cierra el ciclo de la compra; la primera mensualidad lleva los centavos que no dividen exacto. «Por liquidar» = deuda al corte − mensualidades futuras − pagos posteriores |
+| Cargos temporales | Verificaciones de tarjeta y depósitos que te devuelven: transferencia de tu cuenta a la cuenta `POR RECUPERAR` (tipo `POR_COBRAR`), nunca gasto. La devolución es la transferencia de regreso y guarda en `Operacion.liquida` el cargo que liquida; si no te lo devuelven, un gasto desde `POR RECUPERAR` con `liquida`. Las devoluciones sin liga (carga masiva) se emparejan con el cargo pendiente más antiguo del mismo importe (`motor/temporales.py`) |
 | Presupuestos | Tope mensual por categoría de gasto (`Rubro.presupuesto`); se compara con el gasto neto del mes |
 | Fecha | Reloj del sistema; nunca se consulta Internet |
 | Perfil | Nombre del usuario (bienvenida "¡Hola!") opcional, guardado localmente |

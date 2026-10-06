@@ -42,7 +42,7 @@ from dataclasses import dataclass, field
 from datetime import date
 from decimal import Decimal, InvalidOperation
 
-from motor import categorias, cuentas
+from motor import categorias, cuentas, temporales
 from motor.dinero import a_centavos, a_pesos
 from motor.errores import ErrorTally, ErrorValidacion
 from motor.libro import Libro
@@ -305,6 +305,7 @@ def clave_destino(linea: Linea) -> str:
 def desconocidos(libro: Libro, archivo: Archivo) -> list[Desconocido]:
     """Nombres que hay que resolver (mapear) antes de cargar, del más usado al menos usado."""
     conocidos = set(_cuentas_por_clave(libro, archivo)) | {clave(c.nombre) for c in libro.categorias()}
+    conocidos.add(clave(temporales.NOMBRE_CUENTA))      # se crea sola al cargar
     cuenta: dict[str, list[Linea]] = defaultdict(list)
     for bloque in archivo.bloques:
         for linea in bloque.lineas:
@@ -379,6 +380,7 @@ def _cargar_en(libro: Libro, archivo: Archivo, mapeo: dict[str, Destino]) -> Res
     sin_reconocer = desconocidos(libro, archivo)
     resultado.pendientes = [d for d in sin_reconocer if d.clave not in mapeo]
 
+    _preparar_por_recuperar(libro, archivo, resultado)
     cuentas_por_nombre = _preparar_cuentas(libro, archivo, resultado)
     nombres = {d.clave: d.nombre for d in sin_reconocer}
     destinos = _preparar_destinos(libro, {k: v for k, v in mapeo.items() if k in nombres}, nombres, resultado)
@@ -444,6 +446,22 @@ def _cuentas_por_clave(libro: Libro, archivo: Archivo) -> dict[str, str]:
     for bloque in archivo.bloques:
         nombres.setdefault(clave(bloque.cuenta), bloque.cuenta)
     return nombres
+
+
+def _preparar_por_recuperar(libro: Libro, archivo: Archivo, resultado: Resultado) -> None:
+    """Si el archivo usa POR RECUPERAR (cargos temporales) y la cuenta no existe, la crea."""
+    k = clave(temporales.NOMBRE_CUENTA)
+    fechas = [ln.fecha for b in archivo.bloques for ln in b.lineas if clave_destino(ln) == k]
+    if not fechas or k in {clave(b.cuenta) for b in archivo.bloques}:
+        return
+    nueva = temporales.cuenta(libro) is None
+    try:
+        cuenta = temporales.asegurar_cuenta(libro, min(fechas))
+    except ErrorTally as error:
+        resultado.errores.append(str(error))
+        return
+    if nueva:
+        resultado.cuentas_nuevas.append(cuenta.nombre)
 
 
 def _preparar_cuentas(libro: Libro, archivo: Archivo, resultado: Resultado) -> dict[str, Cuenta]:
@@ -621,6 +639,9 @@ _INSTRUCCIONES = """\
 #     Pagar una tarjeta de crédito es «pago de tarjeta»: el gasto ya se contó
 #     al comprar con ella. Si la misma transferencia viene también en la otra
 #     cuenta, TALLY la carga una sola vez.
+#   · POR RECUPERAR ............................ cargo temporal: lo que te
+#     cobran para verificar tu tarjeta y te devuelven después (Amazon, hotel…).
+#     El cargo y su devolución llevan POR RECUPERAR; NO es gasto.
 #{extra}#   · Lo que ya esté en TALLY no se vuelve a cargar: subir el mismo archivo
 #     dos veces no duplica nada.
 #

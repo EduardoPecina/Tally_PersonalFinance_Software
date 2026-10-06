@@ -15,7 +15,7 @@ from motor import perfil, respaldos  # noqa: E402
 from motor.config import LEMA, VERSION  # noqa: E402
 from motor.errores import ErrorDatos  # noqa: E402
 from portal import accesos, navegacion  # noqa: E402
-from portal.componentes import tema  # noqa: E402
+from portal.componentes import por_recuperar, tema  # noqa: E402
 from portal.apagado import cerrar_portal, vigilar_inactividad  # noqa: E402
 from portal.componentes.cierre import pagina_cerrado  # noqa: E402
 from portal.componentes.sesion import mostrar_avisos, sesion  # noqa: E402
@@ -90,6 +90,8 @@ def main() -> None:
     pagina = st.navigation(navegacion.por_seccion())
     if pagina.url_path != "cuentas":
         st.session_state.pop("cuenta_abierta", None)       # al volver a Cuentas se ve la lista
+    if pagina.url_path not in ("", "inicio"):
+        por_recuperar.cerrar()                              # la ventana de un cargo temporal no te sigue
     _barra_lateral()
     pagina.run()
 
