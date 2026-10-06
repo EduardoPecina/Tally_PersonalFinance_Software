@@ -181,3 +181,50 @@ def test_copia_que_no_coincide_no_toma_el_nombre_final(sesion, tmp_path, monkeyp
     with pytest.raises(ErrorDatos, match="no coincide"):
         respaldos.copiar_archivo_de_datos(sesion.almacen.ruta, destino)
     assert list(destino.parent.iterdir()) == []
+
+
+def test_restaurar_desde_un_archivo_de_datos(sesion, tmp_path):
+    """El tally.db de otra PC también sirve para restaurar."""
+    from motor.respaldos import copiar_archivo_de_datos
+
+    otra_pc = copiar_archivo_de_datos(sesion.almacen.ruta, tmp_path / "otra_pc" / "tally.db")
+    info = respaldos.inspeccionar(otra_pc)
+    assert (info.perfil, info.cuentas, info.movimientos) == ("Usuario Ficticio", 1, 2)
+
+    nueva = Sesion(tmp_path / "nueva" / "tally.db", reloj=reloj)
+    respaldos.restaurar(nueva, otra_pc, carpeta_seguridad=tmp_path / "seguridad")
+    assert instantanea(nueva.libro) == instantanea(sesion.libro)
+    assert len(nueva.almacen.bitacora()) == len(sesion.almacen.bitacora()) + 1      # + la restauración
+
+
+def test_archivo_que_no_es_respaldo(tmp_path):
+    falso = tmp_path / "foto.db"
+    falso.write_bytes(b"SQLite format 3\x00" + b"basura" * 100)
+    with pytest.raises(ErrorDatos):
+        respaldos.inspeccionar(falso)
+
+
+def test_respaldo_del_dia(sesion, tmp_path):
+    carpeta = tmp_path / "Respaldos"
+    primero = respaldos.respaldo_del_dia(sesion, carpeta)
+    assert primero.name.startswith("TALLY_automatico_2026-07-20_")
+    assert respaldos.respaldo_del_dia(sesion, carpeta) is None            # uno por día
+    with sesion.cambio() as libro:
+        perfil.ajustar(libro, respaldo_diario=False)
+    primero.unlink()
+    assert respaldos.respaldo_del_dia(sesion, carpeta) is None            # desactivado
+
+
+def test_ajustes_del_perfil(sesion):
+    from motor.errores import ErrorValidacion
+
+    with sesion.cambio() as libro:
+        perfil.ajustar(libro, nombre="  Apodo   Ficticio ", respaldos_a_conservar=30, periodo_inicial="quincena")
+    ajustes = Sesion(sesion.almacen.ruta, reloj=reloj).libro.perfil
+    assert (ajustes.nombre, ajustes.respaldos_a_conservar, ajustes.periodo_inicial, ajustes.respaldo_diario) == (
+        "Apodo Ficticio", 30, "quincena", True)
+    for malo in (dict(respaldos_a_conservar=0), dict(respaldos_a_conservar=500), dict(periodo_inicial="siglo"),
+                 dict(nombre="  ")):
+        with pytest.raises(ErrorValidacion):
+            with sesion.cambio() as libro:
+                perfil.ajustar(libro, **malo)

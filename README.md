@@ -63,7 +63,16 @@ el acceso directo **Mis datos de TALLY**, dentro de `Escritorio\TALLY`.
 | Cuentas | ¿Cuánto tengo en cada cuenta? Crear, editar, actualizar saldo, archivar |
 | Categorías | Categorías (SALUD, TECNOLOGIA…) con sus subcategorías y clasificaciones, a tu manera |
 | Cargar datos | Subir tu historial de Excel de una vez con una plantilla `.txt` |
-| Respaldos y bitácora | Crear o restaurar respaldos, ver qué cambió o empezar de cero |
+| Respaldos y bitácora | Descargar o restaurar respaldos, ver qué cambió o empezar de cero |
+| Configuración ⚙️ | Tu nombre, respaldo automático diario, periodo del Resumen y datos de la instalación |
+
+### Cambiar de PC sin perder nada
+
+1. En la PC de antes: **Configuración → Respaldos → Descargar respaldo**.
+   Guarda el `.zip` en una memoria USB o donde quieras.
+2. En la PC nueva: instala TALLY y, en la bienvenida, elige **«Ya usaba
+   TALLY»** y sube el `.zip`. También sirve el archivo `tally.db` de la otra
+   PC.
 
 ### Pasar tu historial de Excel a TALLY
 

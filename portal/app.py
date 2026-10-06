@@ -11,7 +11,7 @@ if str(RAIZ) not in sys.path:
 
 import streamlit as st  # noqa: E402
 
-from motor import perfil  # noqa: E402
+from motor import perfil, respaldos  # noqa: E402
 from motor.config import VERSION  # noqa: E402
 from motor.errores import ErrorDatos  # noqa: E402
 from portal import navegacion  # noqa: E402
@@ -32,6 +32,17 @@ def _vigilante() -> bool:
     vigilar_inactividad()
     limpiar_copias()
     return True
+
+
+def _respaldo_del_dia(actual) -> None:
+    """Una vez por sesión del navegador: el respaldo automático del día (Configuración → Respaldos)."""
+    if st.session_state.get("_respaldo_del_dia"):
+        return
+    st.session_state["_respaldo_del_dia"] = True
+    try:
+        respaldos.respaldo_del_dia(actual)
+    except Exception as error:  # noqa: BLE001 - un respaldo fallido nunca impide usar TALLY
+        st.toast(f"No se pudo hacer el respaldo automático de hoy: {error}", icon="⚠️")
 
 
 def _barra_lateral() -> None:
@@ -63,6 +74,7 @@ def main() -> None:
                       position="hidden").run()
         return
 
+    _respaldo_del_dia(actual)
     pagina = st.navigation(list(navegacion.paginas().values()))
     _barra_lateral()
     pagina.run()

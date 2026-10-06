@@ -72,6 +72,21 @@ def crear(sesion: Sesion, destino: Path | str | None = None, *, prefijo: str = "
     return _crear_desde(sesion.almacen, sesion.libro.ahora(), destino, prefijo)
 
 
+def respaldo_del_dia(sesion: Sesion, carpeta: Path | str | None = None) -> Path | None:
+    """El respaldo automático diario (Configuración): uno por día, al abrir TALLY.
+
+    No hace nada si el usuario lo desactivó, si aún no hay perfil o si ya existe el de hoy. Conserva los
+    últimos ``respaldos_a_conservar``.
+    """
+    perfil = sesion.libro.perfil
+    if perfil is None or not perfil.respaldo_diario:
+        return None
+    carpeta = Path(carpeta or rutas.carpeta_respaldos())
+    if any(carpeta.glob(f"TALLY_automatico_{sesion.libro.hoy():%Y-%m-%d}_*.zip")):
+        return None
+    return respaldo_automatico(sesion, carpeta, conservar=perfil.respaldos_a_conservar)
+
+
 def respaldo_automatico(
     sesion: Sesion, carpeta: Path | str | None = None, *, conservar: int = 10, prefijo: str = "automatico"
 ) -> Path:
@@ -211,6 +226,9 @@ def inspeccionar(ruta: Path | str) -> InfoRespaldo:
 def _leer(ruta: Path, reloj=None) -> tuple[InfoRespaldo, Libro, list[auditoria.Registro]]:
     if not ruta.is_file():
         raise ErrorDatos("No se encontró el archivo de respaldo.")
+    with open(ruta, "rb") as archivo:
+        if archivo.read(len(_FIRMA_SQLITE)) == _FIRMA_SQLITE:
+            return _leer_archivo_de_datos(ruta, reloj)
     try:
         with zipfile.ZipFile(ruta) as zz:
             nombres = set(zz.namelist())
@@ -250,6 +268,28 @@ def _leer(ruta: Path, reloj=None) -> tuple[InfoRespaldo, Libro, list[auditoria.R
         cuentas=resumen["cuentas"],
         movimientos=resumen["movimientos"],
         primera_fecha=resumen["primera_fecha"],
+        ultima_fecha=resumen["ultima_fecha"],
+    )
+    return info, libro, bitacora
+
+
+_FIRMA_SQLITE = b"SQLite format 3\x00"
+
+
+def _leer_archivo_de_datos(ruta: Path, reloj=None) -> tuple[InfoRespaldo, Libro, list[auditoria.Registro]]:
+    """Un ``tally.db`` también sirve para restaurar (por ejemplo, el de otra PC). Se lee en solo lectura, sobre
+    una copia, y se valida igual que al abrirlo."""
+    with tempfile.TemporaryDirectory() as temporal:
+        copia = Path(temporal) / "copia.db"
+        _copia_de_lectura(ruta, copia)
+        almacen = Almacen(copia)
+        libro = almacen.cargar(reloj=reloj)
+        bitacora = almacen.bitacora(mas_recientes_primero=False)
+    resumen = _resumen(libro)
+    info = InfoRespaldo(
+        ruta=ruta, creado_en=datetime.fromtimestamp(ruta.stat().st_mtime).isoformat(timespec="seconds"),
+        version_app="(archivo de datos)", perfil=resumen["perfil"], cuentas=resumen["cuentas"],
+        movimientos=resumen["movimientos"], primera_fecha=resumen["primera_fecha"],
         ultima_fecha=resumen["ultima_fecha"],
     )
     return info, libro, bitacora

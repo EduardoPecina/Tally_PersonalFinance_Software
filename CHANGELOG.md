@@ -2,7 +2,25 @@
 
 Todos los cambios relevantes de TALLY se documentan aquí.
 
-## [0.4.1] — Sin publicar
+## [0.4.2] — Sin publicar
+
+- **Descargar respaldo** en un clic, en Respaldos y en Configuración. Es un
+  `.zip` con todo: cuentas, movimientos, categorías, configuración y
+  bitácora. También queda una copia en la carpeta Respaldos.
+- **«Ya usaba TALLY»** en la bienvenida: subes tu respaldo y TALLY queda como
+  lo tenías, sin capturar nada.
+- Restaurar acepta un respaldo `.zip` o el archivo de datos `tally.db` de
+  otra PC. Se lee en solo lectura y se valida antes de reemplazar nada.
+- **⚙️ Configuración**:
+  - tu nombre o apodo;
+  - descargar respaldo;
+  - respaldo automático diario (activarlo o no y cuántos conservar);
+  - periodo que muestra el Resumen al abrir;
+  - datos de la instalación y botón para abrir la carpeta de tus datos.
+- Respaldo automático: uno por día al abrir TALLY. Conserva los últimos 10
+  (configurable).
+
+## [0.4.1]
 
 - **Estado de cada tarjeta de crédito** en Resumen y en Cuentas:
   - cuánto debes, tu disponible y tu línea de crédito;

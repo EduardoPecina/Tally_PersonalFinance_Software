@@ -49,7 +49,9 @@ def _iso(valor: date | datetime | None) -> str | None:
 
 
 def perfil_a_dict(p: Perfil) -> dict:
-    return {"nombre": p.nombre, "moneda": p.moneda, "creado_en": _iso(p.creado_en)}
+    return {"nombre": p.nombre, "moneda": p.moneda, "creado_en": _iso(p.creado_en),
+            "respaldo_diario": p.respaldo_diario, "respaldos_a_conservar": p.respaldos_a_conservar,
+            "periodo_inicial": p.periodo_inicial}
 
 
 def grupo_a_dict(g: Grupo) -> dict:
@@ -92,7 +94,10 @@ def operacion_a_dict(op: Operacion) -> dict:
 
 
 def perfil_desde_dict(d: dict) -> Perfil:
-    return Perfil(nombre=d["nombre"], moneda=d.get("moneda", "MXN"), creado_en=_momento(d["creado_en"]))
+    return Perfil(nombre=d["nombre"], moneda=d.get("moneda", "MXN"), creado_en=_momento(d["creado_en"]),
+                  respaldo_diario=d.get("respaldo_diario", True),
+                  respaldos_a_conservar=d.get("respaldos_a_conservar", 10),
+                  periodo_inicial=d.get("periodo_inicial", "mes_actual"))
 
 
 def grupo_desde_dict(d: dict) -> Grupo:
