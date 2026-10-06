@@ -87,6 +87,41 @@ def hechos(libro: Libro, desde: date | None = None, hasta: date | None = None, c
     Gastos e ingresos son positivos; un reembolso resta del gasto. Con ``incluir_apartado``, las
     transferencias netas hacia ahorro/inversión salen como filas de clase ``None``.
     """
+    return [(op.fecha, dims, clase, monto)
+            for op, dims, clase, monto in _recorrer(libro, desde, hasta, cuentas, incluir_apartado)]
+
+
+@dataclass(frozen=True, slots=True)
+class FilaDetalle:
+    """Un renglón del desglose de una gráfica: de qué movimiento sale cada peso."""
+
+    operacion_id: str
+    fecha: date
+    descripcion: str
+    rubro: str
+    categoria: str
+    grupo: str
+    cuenta: str
+    monto: Decimal            # en sentido natural: gasto o ingreso positivo; un reembolso, negativo
+
+
+def detalle(libro: Libro, dimension: str, valores: set[str], *, medida: str = "gastos", desde: date | None = None,
+            hasta: date | None = None, cuentas: set[str] | None = None) -> list[FilaDetalle]:
+    """Las partidas que forman uno o varios grupos (``valores``) de ``dimension`` en una gráfica o tabla: de la
+    más reciente a la más antigua. Sirve para responder «¿y esto de qué es?»."""
+    if dimension not in FILAS or medida not in ("gastos", "ingresos"):
+        raise ValueError("Opción de desglose no válida.")
+    clase = ClaseCategoria.GASTO if medida == "gastos" else ClaseCategoria.INGRESO
+    filas = [
+        FilaDetalle(op.id, op.fecha, op.descripcion, dims["rubro"], dims["categoria"], dims["grupo"], dims["cuenta"],
+                    a_pesos(monto))
+        for op, dims, clase_partida, monto in _recorrer(libro, desde, hasta, cuentas, False)
+        if clase_partida is clase and dims[dimension] in valores
+    ]
+    return sorted(filas, key=lambda f: (f.fecha, f.operacion_id), reverse=True)
+
+
+def _recorrer(libro, desde, hasta, cuentas, incluir_apartado):
     resultado = []
     for op in libro.operaciones(desde, hasta):
         de_cuenta = op.partidas_de_cuenta()
@@ -102,7 +137,7 @@ def hechos(libro: Libro, desde: date | None = None, hasta: date | None = None, c
                     "grupo": grupo, "cuenta": cuenta,
                     "clase": "GASTOS" if categoria.clase is ClaseCategoria.GASTO else "INGRESOS"}
             monto = p.importe if categoria.clase is ClaseCategoria.GASTO else -p.importe
-            resultado.append((op.fecha, dims, categoria.clase, monto))
+            resultado.append((op, dims, categoria.clase, monto))
         if incluir_apartado and len(de_cuenta) == 2 and not op.partidas_de_categoria():
             tipos = [libro.cuenta(p.cuenta_id).tipo in TIPOS_AHORRO for p in de_cuenta]
             if any(tipos) and not all(tipos):
@@ -112,7 +147,7 @@ def hechos(libro: Libro, desde: date | None = None, hasta: date | None = None, c
                     continue
                 dims = {"rubro": APARTADO, "categoria": APARTADO, "grupo": APARTADO,
                         "cuenta": libro.cuenta(origen.cuenta_id).nombre, "clase": APARTADO}
-                resultado.append((op.fecha, dims, None, ahorro.importe))
+                resultado.append((op, dims, None, ahorro.importe))
     return resultado
 
 

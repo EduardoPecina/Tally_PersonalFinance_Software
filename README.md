@@ -79,7 +79,7 @@ el acceso directo **Mis datos de TALLY**, dentro de `Escritorio\TALLY`.
 | Cuentas | Saldo de cada cuenta, estado de cuenta con saldo corrido, estado de cada tarjeta (línea, disponible, pago) y, en las de inversión, tus títulos (acciones, ETFs, cripto) y CETES o pagarés con su valor aproximado |
 | Presupuestos | Tope mensual por categoría y cuánto llevas |
 | Tablas dinámicas | Pivots por categoría, mes, cuenta… exportables a Excel |
-| Gráficas | Dona, barras, tendencias, ingresos vs. gastos y patrimonio |
+| Gráficas | Dona, barras, tendencias, ingresos vs. gastos y patrimonio; clic en una rebanada o barra para ver de qué movimientos se compone |
 | Categorías | Categorías (SALUD, TECNOLOGIA…) con sus subcategorías y clasificaciones, a tu manera |
 | Cargar datos | Subir tu historial de Excel de una vez con una plantilla `.txt` |
 | Respaldos y bitácora | Descargar o restaurar respaldos, ver qué cambió o empezar de cero |

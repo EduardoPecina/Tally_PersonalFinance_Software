@@ -13,13 +13,34 @@ from portal.componentes.formato import dinero
 
 COLOR = "#6B53F1"  # acento de la marca (.streamlit/config.toml)
 TEXTO_SECUNDARIO = "#52514e"
+SELECCION = "eleccion"
 
 
-def barras(filas: list[tuple[str, Decimal]], titulo_valor: str = "Importe", titulo_nombre: str = "Categoría") -> None:
-    """Barras horizontales de magnitud, de mayor a menor (p. ej. gasto por categoría)."""
+def _clic(campo: str) -> alt.Parameter:
+    """Selección por clic en una barra o rebanada (para el desglose); un clic en el vacío la quita."""
+    return alt.selection_point(name=SELECCION, fields=[campo], on="click", clear="dblclick")
+
+
+def _mostrar(grafica, clave: str | None, campo: str) -> str | None:
+    """Dibuja la gráfica. Con ``clave``, se le puede dar clic y devuelve el nombre elegido (o ``None``)."""
+    if clave is None:
+        st.altair_chart(grafica, width="stretch")
+        return None
+    evento = st.altair_chart(grafica, width="stretch", key=clave, on_select="rerun", selection_mode=SELECCION)
+    try:
+        puntos = evento["selection"][SELECCION]
+    except (KeyError, TypeError):
+        return None
+    return puntos[0].get(campo) if puntos else None
+
+
+def barras(filas: list[tuple[str, Decimal]], titulo_valor: str = "Importe", titulo_nombre: str = "Categoría",
+           clave: str | None = None) -> str | None:
+    """Barras horizontales de magnitud, de mayor a menor (p. ej. gasto por categoría). Con ``clave`` se les puede
+    dar clic: devuelve la barra elegida."""
     if not filas:
         st.caption("Sin datos en este periodo.")
-        return
+        return None
     datos = pd.DataFrame(
         {"Nombre": [n for n, _ in filas], "Valor": [float(v) for _, v in filas],
          "Texto": [dinero(v) for _, v in filas]}
@@ -30,10 +51,12 @@ def barras(filas: list[tuple[str, Decimal]], titulo_valor: str = "Importe", titu
                                                     labelColor=TEXTO_SECUNDARIO)),
         tooltip=[alt.Tooltip("Nombre:N", title=titulo_nombre), alt.Tooltip("Texto:N", title=titulo_valor)],
     )
-    grafica = base.mark_bar(color=COLOR, cornerRadiusEnd=4, height={"band": 0.7}) + base.mark_text(
-        align="left", dx=4, color=TEXTO_SECUNDARIO, fontSize=11
-    ).encode(text="Texto:N")
-    st.altair_chart(grafica.properties(height=max(120, 28 * len(filas))), width="stretch")
+    barra = base.mark_bar(color=COLOR, cornerRadiusEnd=4, height={"band": 0.7})
+    if clave is not None:
+        clic = _clic("Nombre")
+        barra = barra.add_params(clic).encode(opacity=alt.condition(clic, alt.value(1.0), alt.value(0.45)))
+    grafica = barra + base.mark_text(align="left", dx=4, color=TEXTO_SECUNDARIO, fontSize=11).encode(text="Texto:N")
+    return _mostrar(grafica.properties(height=max(120, 28 * len(filas))), clave, "Nombre")
 
 
 def linea(puntos: list[tuple[date, Decimal]], titulo_valor: str = "Patrimonio") -> None:
@@ -88,12 +111,14 @@ def _leyenda() -> alt.Legend:
     return alt.Legend(orient="bottom", title=None, labelLimit=260, columns=4, symbolType="circle")
 
 
-def dona(filas: list[tuple[str, Decimal]], titulo_valor: str = "Importe", titulo_nombre: str = "Grupo") -> None:
-    """¿Qué parte del total es cada grupo? Dona con leyenda y porcentaje en el tooltip."""
+def dona(filas: list[tuple[str, Decimal]], titulo_valor: str = "Importe", titulo_nombre: str = "Grupo",
+         clave: str | None = None) -> str | None:
+    """¿Qué parte del total es cada grupo? Dona con leyenda y porcentaje en el tooltip. Con ``clave`` se le puede
+    dar clic a una rebanada: devuelve el grupo elegido (puede ser OTROS)."""
     filas = [(n, v) for n, v in filas if v > 0]
     if not filas:
         st.caption("Sin datos en este periodo.")
-        return
+        return None
     grupos = plegar(dict(filas))
     datos = pd.DataFrame({"Nombre": [grupos[n] for n, _ in filas], "Valor": [float(v) for _, v in filas]})
     datos = datos.groupby("Nombre", as_index=False)["Valor"].sum()
@@ -107,15 +132,19 @@ def dona(filas: list[tuple[str, Decimal]], titulo_valor: str = "Importe", titulo
         tooltip=[alt.Tooltip("Nombre:N", title=titulo_nombre), alt.Tooltip("Texto:N", title=titulo_valor),
                  alt.Tooltip("Parte:Q", title="Del total", format=".1%")],
     )
-    st.altair_chart(grafica.properties(height=360), width="stretch")
+    if clave is not None:
+        clic = _clic("Nombre")
+        grafica = grafica.add_params(clic).encode(opacity=alt.condition(clic, alt.value(1.0), alt.value(0.45)))
+    return _mostrar(grafica.properties(height=360), clave, "Nombre")
 
 
 def barras_por_periodo(datos: pd.DataFrame, orden: list[str], titulo_valor: str = "Importe",
-                       titulo_grupo: str = "Grupo") -> None:
-    """Barras apiladas por periodo (``Periodo``, ``Grupo``, ``Valor``): cuánto y en qué, mes a mes."""
+                       titulo_grupo: str = "Grupo", clave: str | None = None) -> str | None:
+    """Barras apiladas por periodo (``Periodo``, ``Grupo``, ``Valor``): cuánto y en qué, mes a mes. Con ``clave``
+    se le puede dar clic a un pedazo: devuelve su grupo."""
     if datos.empty:
         st.caption("Sin datos en este periodo.")
-        return
+        return None
     datos = datos.assign(Texto=[dinero(Decimal(str(round(v, 2)))) for v in datos["Valor"]])
     grafica = alt.Chart(datos).mark_bar(stroke="white", strokeWidth=1, cornerRadiusTopLeft=2,
                                         cornerRadiusTopRight=2).encode(
@@ -127,7 +156,10 @@ def barras_por_periodo(datos: pd.DataFrame, orden: list[str], titulo_valor: str 
         tooltip=[alt.Tooltip("Periodo:N", title="Periodo"), alt.Tooltip("Grupo:N", title=titulo_grupo),
                  alt.Tooltip("Texto:N", title=titulo_valor)],
     )
-    st.altair_chart(grafica.properties(height=380), width="stretch")
+    if clave is not None:
+        clic = _clic("Grupo")
+        grafica = grafica.add_params(clic).encode(opacity=alt.condition(clic, alt.value(1.0), alt.value(0.45)))
+    return _mostrar(grafica.properties(height=380), clave, "Grupo")
 
 
 def lineas_por_periodo(datos: pd.DataFrame, orden: list[str], titulo_valor: str = "Importe",

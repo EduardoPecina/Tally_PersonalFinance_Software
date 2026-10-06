@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+from collections import defaultdict
 from datetime import timedelta
+from decimal import Decimal
 
 import pandas as pd
 import streamlit as st
@@ -53,6 +55,78 @@ def _largo(pivot: analisis.Pivot) -> pd.DataFrame:
     return datos.groupby(["Periodo", "Grupo"], as_index=False)["Valor"].sum() if not datos.empty else datos
 
 
+# Al desglosar un grupo, en qué se parte: una categoría en sus subcategorías, una cuenta en categorías…
+SUBDIVISION = {"rubro": ("categoria", "Subcategoría"), "grupo": ("categoria", "Subcategoría"),
+               "cuenta": ("rubro", "Categoría"), "categoria": ("cuenta", "Cuenta")}
+DETALLE = "grafica_detalle"
+
+
+def _desglose(config: dict, totales: dict, desde, hasta, cuentas, clic: str | None) -> None:
+    """Todos los importes (también lo que la gráfica junta en OTROS) y el detalle de lo que el usuario elija, con
+    un clic en la gráfica o en la lista."""
+    lib = libro()
+    totales = {k: v for k, v in totales.items() if v}
+    if not totales:
+        return
+    agrupar, medida = config["agrupar"], config["medida"]
+    nombre = AGRUPAR[agrupar]
+    orden = sorted(totales, key=lambda k: (-totales[k], k))
+    plegado = graficas.plegar(totales)
+    en_otros = [k for k in orden if plegado[k] == graficas.OTROS]
+    total = sum(totales.values())
+    with st.expander(f"Todos los importes ({len(orden)})" + (f" · OTROS junta {len(en_otros)}" if en_otros else ""),
+                     expanded=bool(en_otros)):
+        st.dataframe(pd.DataFrame({
+            nombre: orden,
+            "Importe": [formato.dinero(totales[k]) for k in orden],
+            "% del total": [f"{totales[k] / total:.1%}" if total else "" for k in orden],
+            "En la gráfica": ["dentro de OTROS" if k in en_otros else k for k in orden],
+        }), hide_index=True, width="stretch", height=min(38 + 35 * len(orden), 420))
+
+    opciones = ([graficas.OTROS] if en_otros else []) + orden
+    if clic is not None and clic != st.session_state.get("_grafica_ultimo_clic"):
+        st.session_state["_grafica_ultimo_clic"] = clic            # un clic nuevo en la gráfica manda
+        if clic in opciones:
+            st.session_state[DETALLE] = clic
+    if st.session_state.get(DETALLE) not in opciones:
+        st.session_state.pop(DETALLE, None)
+    elegido = st.selectbox(
+        "Ver el detalle de", opciones, index=None, key=DETALLE,
+        placeholder="Da clic en la gráfica o elige aquí qué quieres desglosar",
+        format_func=lambda n: f"OTROS ({len(en_otros)} juntas)" if n == graficas.OTROS else n)
+    if elegido is None:
+        st.caption("Tip: da clic en una rebanada o barra para ver de qué se compone.")
+        return
+
+    miembros = set(en_otros) if elegido == graficas.OTROS else {elegido}
+    filas = analisis.detalle(lib, agrupar, miembros, medida=medida, desde=desde, hasta=hasta, cuentas=cuentas)
+    subtotal = sum((f.monto for f in filas), Decimal(0))
+    st.markdown(f"#### Detalle de {elegido}")
+    st.caption(f"{formato.dinero_md(subtotal)} en {len(filas)} movimiento(s) · {filtros.describir(lib, config)}")
+    campo, titulo = (agrupar, nombre) if elegido == graficas.OTROS else SUBDIVISION[agrupar]
+    partes: dict[str, Decimal] = defaultdict(Decimal)
+    for f in filas:
+        partes[getattr(f, campo) or "—"] += f.monto
+    nombres = sorted(partes, key=lambda k: (-partes[k], k))
+    izquierda, derecha = st.columns([2, 3])
+    with izquierda:
+        st.markdown(f"**Por {titulo.lower()}**")
+        st.dataframe(pd.DataFrame({
+            titulo: nombres,
+            "Importe": [formato.dinero(partes[k]) for k in nombres],
+            "%": [f"{partes[k] / subtotal:.0%}" if subtotal else "" for k in nombres],
+        }), hide_index=True, width="stretch")
+    with derecha:
+        st.markdown("**Movimientos**")
+        st.dataframe(pd.DataFrame({
+            "Fecha": [formato.fecha(f.fecha) for f in filas],
+            "Descripción": [f.descripcion for f in filas],
+            "Subcategoría": [f"{f.rubro} › {f.categoria}" for f in filas],
+            "Cuenta": [f.cuenta for f in filas],
+            "Importe": [formato.dinero(f.monto) for f in filas],
+        }), hide_index=True, width="stretch", height=min(38 + 35 * len(filas), 420))
+
+
 def mostrar() -> None:
     st.title("Gráficas")
     st.caption("Elige el tipo de gráfica y qué quieres ver; se arma con tus datos más recientes. Pasa el cursor "
@@ -75,14 +149,21 @@ def mostrar() -> None:
                                hasta=hasta, cuentas=cuentas)
         filas = [(f, pivot.total_fila[f]) for f in pivot.filas]
         if tipo == "dona":
-            graficas.dona(filas, SUMAR[medida], AGRUPAR[config["agrupar"]])
+            clic = graficas.dona(filas, SUMAR[medida], AGRUPAR[config["agrupar"]], clave="grafica_clic")
         else:
-            graficas.barras([(n, v) for n, v in filas if v > 0], SUMAR[medida], AGRUPAR[config["agrupar"]])
+            clic = graficas.barras([(n, v) for n, v in filas if v > 0], SUMAR[medida], AGRUPAR[config["agrupar"]],
+                                   clave="grafica_clic")
+        _desglose(config, pivot.total_fila, desde, hasta, cuentas, clic)
     elif tipo in ("apiladas", "lineas"):
         pivot = analisis.pivot(lib, filas=config["agrupar"], columnas="mes", medida=medida, desde=desde,
                                hasta=hasta, cuentas=cuentas)
-        dibujar = graficas.barras_por_periodo if tipo == "apiladas" else graficas.lineas_por_periodo
-        dibujar(_largo(pivot), pivot.columnas, SUMAR[medida], AGRUPAR[config["agrupar"]])
+        if tipo == "apiladas":
+            clic = graficas.barras_por_periodo(_largo(pivot), pivot.columnas, SUMAR[medida],
+                                               AGRUPAR[config["agrupar"]], clave="grafica_clic")
+        else:
+            clic = None
+            graficas.lineas_por_periodo(_largo(pivot), pivot.columnas, SUMAR[medida], AGRUPAR[config["agrupar"]])
+        _desglose(config, pivot.total_fila, desde, hasta, cuentas, clic)
     elif tipo == "ingresos_gastos":
         pivot = analisis.pivot(lib, filas="clase", columnas="mes", medida="todo", desde=desde, hasta=hasta,
                                cuentas=cuentas)

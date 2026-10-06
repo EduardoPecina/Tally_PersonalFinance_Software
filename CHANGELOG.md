@@ -2,7 +2,17 @@
 
 Todos los cambios relevantes de TALLY se documentan aquí.
 
-## [0.7.1] — Sin publicar
+## [0.7.2] — Sin publicar
+
+- **Gráficas: ¿qué hay en «OTROS»?**
+  - La dona y las barras muestran los 7 grupos más grandes y juntan el resto en OTROS. Debajo de la gráfica,
+    «Todos los importes» lista **cada** grupo con su importe y su %, y marca cuáles van dentro de OTROS.
+  - **Clic en una rebanada o barra** (o elígela en «Ver el detalle de») para **desglosarla**: en qué se reparte
+    (una categoría en sus subcategorías, una cuenta en categorías; OTROS en lo que junta) y la lista de los
+    movimientos que la forman.
+  - Funciona en dona, barras y barras por mes. En líneas, se elige en la lista.
+
+## [0.7.1]
 
 - **Precios de títulos, más transparentes y a prueba de fallas**:
   - Nota visible: «⚡ Precios obtenidos desde Yahoo Finance. La consulta solo envía los símbolos bursátiles…».
