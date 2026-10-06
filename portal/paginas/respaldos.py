@@ -101,6 +101,13 @@ def _bitacora() -> None:
 
 def mostrar() -> None:
     st.title("Respaldos y bitácora")
+    if rutas.datos_sin_mover():
+        st.warning(f"Tus datos siguen en **{rutas.carpeta_usuario()}**, porque al actualizar Windows no dejó "
+                   "moverlos. Para pasarlos a tu carpeta de usuario (fuera de OneDrive), cierra TALLY y vuelve a "
+                   "correr INSTALAR.bat.")
+    else:
+        st.caption(f"Tus datos viven solo en esta PC, en **{rutas.carpeta_usuario()}** (fuera de OneDrive y de "
+                   "cualquier nube).")
     crear, restaurar, bitacora = st.tabs(["Crear respaldo", "Restaurar", "Bitácora"])
     with crear:
         _crear()

@@ -131,3 +131,53 @@ def test_respaldar_archivo_sin_modificarlo(sesion, tmp_path):
     assert respaldos.inspeccionar(respaldo).movimientos == 2
     assert ruta.read_bytes() == antes
     assert respaldos.respaldar_archivo_de_datos(tmp_path / "no_hay.db", tmp_path / "Respaldos") is None
+
+
+def test_copiar_archivo_de_datos_identico(sesion, tmp_path):
+    origen = sesion.almacen.ruta
+    antes = origen.read_bytes()
+    destino = respaldos.copiar_archivo_de_datos(origen, tmp_path / "Nueva" / "Datos" / "tally.db")
+    copia = Sesion(destino, reloj=reloj)
+    assert instantanea(copia.libro) == instantanea(sesion.libro)
+    assert len(copia.almacen.bitacora()) == len(sesion.almacen.bitacora())
+    assert origen.read_bytes() == antes                           # el original no se toca
+    assert [p.name for p in destino.parent.iterdir()] == ["tally.db"]
+
+
+def test_copiar_archivo_de_datos_no_sobrescribe(sesion, tmp_path):
+    destino = tmp_path / "Nueva" / "tally.db"
+    destino.parent.mkdir()
+    destino.write_bytes(b"otros datos")
+    with pytest.raises(ErrorDatos, match="no se sobrescribe"):
+        respaldos.copiar_archivo_de_datos(sesion.almacen.ruta, destino)
+    assert destino.read_bytes() == b"otros datos"
+
+
+def test_copiar_archivo_danado_no_deja_nada(tmp_path):
+    origen = tmp_path / "danado.db"
+    origen.write_bytes(b"esto no es una base de datos" * 50)
+    destino = tmp_path / "Nueva" / "tally.db"
+    with pytest.raises(ErrorDatos):
+        respaldos.copiar_archivo_de_datos(origen, destino)
+    assert list(destino.parent.iterdir()) == []
+
+
+def test_copia_que_no_coincide_no_toma_el_nombre_final(sesion, tmp_path, monkeypatch):
+    import sqlite3
+    from contextlib import closing
+
+    copiar = respaldos._copia_de_lectura
+    llamadas = []
+
+    def copiar_y_perder_un_registro(origen, destino):
+        copiar(origen, destino)
+        llamadas.append(destino)
+        if len(llamadas) == 1:                               # la copia que se iba a quedar sale incompleta
+            with closing(sqlite3.connect(destino)) as conexion, conexion:
+                conexion.execute("DELETE FROM bitacora WHERE id = (SELECT MAX(id) FROM bitacora)")
+
+    monkeypatch.setattr(respaldos, "_copia_de_lectura", copiar_y_perder_un_registro)
+    destino = tmp_path / "Nueva" / "tally.db"
+    with pytest.raises(ErrorDatos, match="no coincide"):
+        respaldos.copiar_archivo_de_datos(sesion.almacen.ruta, destino)
+    assert list(destino.parent.iterdir()) == []

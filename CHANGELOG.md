@@ -2,7 +2,25 @@
 
 Todos los cambios relevantes de TALLY se documentan aquí.
 
-## [0.3.4] — Sin publicar
+## [0.3.5] — Sin publicar
+
+- **Tus datos ya no viven en el Escritorio:** ahora están en
+  `C:\Users\<tu usuario>\TALLY` (`Datos\tally.db` y `Respaldos\`). Así
+  OneDrive (personal o de la empresa) no los sube a la nube ni pelea con
+  SQLite mientras TALLY guarda. El programa y el acceso directo siguen en el
+  Escritorio que diga Windows, esté o no dentro de OneDrive.
+- Al actualizar, el instalador **mueve solo** los datos de una versión
+  anterior: respalda, copia, comprueba que la copia sea idéntica (cuentas,
+  movimientos y bitácora) y hasta entonces quita la del Escritorio. Si algo
+  falla, no cambia nada. Si encuentra datos en los dos lugares, no mezcla
+  ni borra: aparta los viejos en `Datos_anterior_<fecha>` y lo avisa.
+- Acceso directo **Mis datos de TALLY** dentro de la carpeta TALLY del
+  Escritorio, para encontrar tus datos y respaldos. La página Respaldos
+  muestra dónde están.
+- Si Windows no deja escribir en el Escritorio (PC de trabajo con
+  restricciones), TALLY se instala completo en `C:\Users\<tu usuario>\TALLY`.
+
+## [0.3.4]
 
 - **Fecha límite de pago de tarjetas según su contrato:** un día fijo del mes
   o N días después del corte, naturales o hábiles. Si cae en día inhábil, se
