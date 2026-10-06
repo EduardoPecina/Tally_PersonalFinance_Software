@@ -5,17 +5,21 @@ tus finanzas y tus respaldos no se tocan).
 
     1. Instala las librerías que faltan, en las versiones exactas de requirements-lock.txt.
     2. Si ya hay datos, crea un respaldo automático ANTES de actualizar (en Respaldos).
-    3. Crea en el Escritorio del usuario (el de OneDrive, si Windows lo tiene ahí) la carpeta:
+    3. Crea en el Escritorio del usuario (el que diga Windows, esté o no en OneDrive) la carpeta:
            TALLY\\
-             LEEME.txt          instrucciones cortas
-             Datos\\             tus finanzas (tally.db). Nunca se toca al actualizar
-             Respaldos\\         respaldos manuales y automáticos
-             _Programa\\         el programa (se reemplaza completo al actualizar)
-             instalacion.log    todo lo que pasó en cada instalación
-    4. Crea el acceso directo "TALLY" en el Escritorio y dentro de la carpeta (cuando exista el portal).
+             TALLY.lnk                  abre TALLY
+             Mis datos de TALLY.lnk     abre la carpeta de tus datos
+             LEEME.txt                  instrucciones cortas
+             _Programa\\                 el programa (se reemplaza completo al actualizar)
+             instalacion.log            todo lo que pasó en cada instalación
+       Si no se puede escribir en el Escritorio, instala en C:\\Users\\<usuario>\\TALLY.
+    4. Tus datos viven SIEMPRE en esta PC, en C:\\Users\\<usuario>\\TALLY (Datos y Respaldos): fuera de
+       OneDrive y de cualquier nube. Si una versión anterior los tenía en el Escritorio, se mueven ahí
+       (copia verificada; el original se quita solo después de comprobar la copia).
+    5. Crea el acceso directo "TALLY" en el Escritorio y dentro de la carpeta.
 
 Uso manual (pruebas):  python instalador/instalar.py [--sin-librerias] [--sin-accesos]
-La variable TALLY_ESCRITORIO permite instalar en otra carpeta (pruebas).
+Las variables TALLY_ESCRITORIO y TALLY_DATOS permiten usar otras carpetas (pruebas).
 """
 
 import argparse
@@ -55,20 +59,26 @@ TAMANO_MAXIMO = 2_000_000                         # bytes; si crece más, se con
 PIDE_BITACORA = (f"\n\nSi necesitas ayuda, comparte el archivo {BITACORA} (carpeta TALLY de tu Escritorio): "
                  "ahí quedó el detalle de lo que pasó. No contiene tus datos financieros.")
 
-LEEME = f"""TALLY
+NOMBRE_ACCESO_DATOS = "Mis datos de TALLY"
+
+LEEME = """TALLY
 =====
 Mis finanzas, mis números, mi PC, mis datos.
 
 ABRIR TALLY
-  Doble clic en el acceso directo "{NOMBRE_ACCESO}" (en el Escritorio o en esta carpeta).
+  Doble clic en el acceso directo "TALLY" (en el Escritorio o en esta carpeta).
   Se abre en tu navegador, pero todo se queda en esta computadora: no usa Internet.
   Para cerrarlo: botón "Cerrar TALLY" en el menú de la izquierda.
   Si el acceso directo no funciona: _Programa\\EJECUTAR PORTAL.bat
 
-CARPETAS
-  Datos       tus finanzas (tally.db). No la borres ni la edites a mano.
-  Respaldos   respaldos manuales y automáticos (archivos .zip).
-              Copia alguno a una memoria USB o a tu nube de vez en cuando.
+TUS DATOS
+  Viven en esta PC, en la carpeta {datos}
+  (acceso directo "Mis datos de TALLY" en esta carpeta). Nunca se suben a OneDrive ni a ninguna nube.
+    Datos       tus finanzas (tally.db). No la borres ni la edites a mano.
+    Respaldos   respaldos manuales y automáticos (archivos .zip).
+                Copia alguno a una memoria USB o a donde quieras de vez en cuando.
+
+ESTA CARPETA
   _Programa   el programa. No modifiques nada aquí.
 
 ACTUALIZAR
@@ -297,15 +307,131 @@ def instalar_librerias():
     return False
 
 
-def respaldar_datos(raiz):
-    """Antes de actualizar, respalda los datos con el motor de la versión NUEVA (en solo lectura: el archivo
-    original no se modifica). Devuelve la ruta del respaldo o None si aún no hay datos."""
+def _motor(modulo):
+    """Un módulo del motor de la versión NUEVA (la del ZIP), sin dejarlo en sys.path."""
+    import importlib
+
     sys.path.insert(0, str(ORIGEN))
     try:
-        from motor.respaldos import respaldar_archivo_de_datos
+        return importlib.import_module(f"motor.{modulo}")
     finally:
         sys.path.remove(str(ORIGEN))
-    return respaldar_archivo_de_datos(raiz / DATOS / ARCHIVO_DATOS, raiz / RESPALDOS, prefijo="antes_de_actualizar")
+
+
+def carpeta_de_datos():
+    """C:\\Users\\<usuario>\\TALLY: la misma regla que usa el programa instalado (motor/rutas.py)."""
+    return _motor("rutas").carpeta_local_del_usuario()
+
+
+def archivo_de_datos_actual(raiz, base):
+    """Dónde están hoy los datos: en su lugar (base) o donde los dejó una versión anterior (Escritorio)."""
+    for carpeta in (base, raiz):
+        ruta = carpeta / DATOS / ARCHIVO_DATOS
+        if ruta.exists():
+            return ruta
+    return None
+
+
+def respaldar_datos(raiz, base):
+    """Antes de actualizar, respalda los datos con el motor de la versión NUEVA (en solo lectura: el archivo
+    original no se modifica). Devuelve la ruta del respaldo o None si aún no hay datos."""
+    actual = archivo_de_datos_actual(raiz, base)
+    if actual is None:
+        return None
+    return _motor("respaldos").respaldar_archivo_de_datos(actual, base / RESPALDOS, prefijo="antes_de_actualizar")
+
+
+def migrar_datos(raiz, base):
+    """Mueve los datos que una versión anterior dejó en el Escritorio (raiz) a su lugar (base).
+
+    1. Copia tally.db y comprueba que la copia sea idéntica (motor.respaldos.copiar_archivo_de_datos).
+    2. Solo entonces aparta el original («Datos_movido_<fecha>») y lo borra. Si Windows no deja apartarlo,
+       se quita la copia nueva y se lanza el error: los datos se quedan donde estaban y el programa los sigue
+       usando ahí (motor/rutas.py) hasta la próxima actualización. Nunca quedan dos versiones en uso.
+    3. Mueve los respaldos .zip.
+
+    Se llama DESPUÉS de instalar el programa nuevo: si se moviera antes y luego fallara la copia del programa,
+    la versión anterior (que busca los datos en el Escritorio) abriría vacía.
+
+    Si ya había datos en los dos lugares (no debería pasar), se usan los de su lugar y los del Escritorio se
+    conservan sin tocar como «Datos_anterior_<fecha>». Devuelve un aviso para el usuario, o "".
+    """
+    if raiz.resolve() == base.resolve():
+        return ""
+    aviso = ""
+    sello = datetime.now().strftime("%Y-%m-%d_%H%M%S")
+    viejos, nuevos = raiz / DATOS, base / DATOS
+    if (viejos / ARCHIVO_DATOS).exists():
+        if (nuevos / ARCHIVO_DATOS).exists():
+            apartados = raiz / f"Datos_anterior_{sello}"
+            try:
+                renombrar(viejos, apartados)
+            except OSError:
+                apartados = viejos
+            aviso = (f"Había datos en dos lugares. TALLY usa los de {nuevos}. Los del Escritorio se conservaron "
+                     f"sin tocar en {apartados}.")
+            print(aviso)
+        else:
+            print(f"Moviendo tus datos a {nuevos} (fuera de OneDrive y de cualquier nube)...")
+            copia = _motor("respaldos").copiar_archivo_de_datos(viejos / ARCHIVO_DATOS, nuevos / ARCHIVO_DATOS)
+            try:
+                renombrar(viejos, raiz / f"Datos_movido_{sello}")
+            except OSError:
+                copia.unlink(missing_ok=True)          # el original sigue mandando: no dejar dos versiones
+                raise
+            if not borrar_carpeta(raiz / f"Datos_movido_{sello}", intentos=3):
+                print("OneDrive todavía usa la copia anterior de tus datos: se borrará al abrir TALLY.")
+            print("Datos movidos y verificados.")
+    elif viejos.is_dir() and not any(viejos.iterdir()):
+        try:
+            viejos.rmdir()
+        except OSError:
+            pass
+    return "\n\n".join(filter(None, [aviso, mover_respaldos(raiz / RESPALDOS, base / RESPALDOS)]))
+
+
+def mover_respaldos(viejos, destino):
+    """Mueve los respaldos .zip de la versión anterior. Si alguno no se puede mover, se queda donde estaba (no
+    detiene la instalación). Devuelve un aviso, o ""."""
+    if not viejos.is_dir() or viejos.resolve() == destino.resolve():
+        return ""
+    destino.mkdir(parents=True, exist_ok=True)
+    pendientes = 0
+    for archivo in sorted(viejos.iterdir()):
+        final, n = destino / archivo.name, 2
+        while final.exists():
+            final, n = destino / f"{archivo.stem}_{n}{archivo.suffix}", n + 1
+        try:
+            shutil.move(str(archivo), str(final))
+        except OSError as error:
+            print(f"No se pudo mover el respaldo {archivo.name} ({error}).")
+            pendientes += 1
+    if pendientes:
+        return f"{pendientes} respaldo(s) no se pudieron mover y siguen en {viejos}."
+    borrar_carpeta(viejos, intentos=3)
+    return ""
+
+
+def puede_escribir(carpeta):
+    """True si se puede crear y borrar un archivo en la carpeta (la crea si hace falta)."""
+    try:
+        carpeta.mkdir(parents=True, exist_ok=True)
+        prueba = carpeta / ".tally_prueba"
+        prueba.write_text("ok")
+        prueba.unlink()
+        return True
+    except OSError:
+        return False
+
+
+def carpeta_de_instalacion():
+    """Escritorio\\TALLY; si Windows no deja escribir en el Escritorio, la carpeta del usuario."""
+    raiz = escritorio() / NOMBRE_CARPETA
+    if puede_escribir(raiz):
+        return raiz
+    respaldo = carpeta_de_datos()
+    print(f"No se puede escribir en el Escritorio ({raiz}). Se instala en {respaldo}.")
+    return respaldo
 
 
 ESPERA_BLOQUEO = 1.0                              # segundos entre reintentos si Windows tiene archivos ocupados
@@ -377,10 +503,10 @@ def copiar_programa(destino):
         print(f"OneDrive todavía usa {anterior.name}: se borrará en la próxima actualización.")
 
 
-def crear_estructura(raiz):
-    for carpeta in (raiz / DATOS, raiz / RESPALDOS):
+def crear_estructura(raiz, base):
+    for carpeta in (base / DATOS, base / RESPALDOS):
         carpeta.mkdir(parents=True, exist_ok=True)
-    (raiz / "LEEME.txt").write_text(LEEME, encoding="utf-8-sig")
+    (raiz / "LEEME.txt").write_text(LEEME.format(datos=base), encoding="utf-8-sig")
 
 
 def portal_disponible(programa):
@@ -388,8 +514,12 @@ def portal_disponible(programa):
 
 
 def rutas_de_accesos(raiz):
-    """Dónde va el acceso directo: en el Escritorio y dentro de la carpeta TALLY."""
-    return [raiz.parent / f"{NOMBRE_ACCESO}.lnk", raiz / f"{NOMBRE_ACCESO}.lnk"]
+    """Dónde va el acceso directo: en el Escritorio (si se puede escribir ahí) y dentro de la carpeta TALLY."""
+    rutas = [raiz / f"{NOMBRE_ACCESO}.lnk"]
+    escritorio_real = escritorio()
+    if escritorio_real.resolve() != raiz.resolve() and puede_escribir(escritorio_real):
+        rutas.insert(0, escritorio_real / f"{NOMBRE_ACCESO}.lnk")
+    return rutas
 
 
 def destino_del_acceso(programa):
@@ -403,11 +533,11 @@ def destino_del_acceso(programa):
 _CON_PYWIN32 = (
     "import sys, win32com.client\n"
     "shell = win32com.client.Dispatch('WScript.Shell')\n"
-    "for ruta in sys.argv[5:]:\n"
+    "for ruta in sys.argv[6:]:\n"
     "    acceso = shell.CreateShortcut(ruta)\n"
     "    acceso.TargetPath, acceso.Arguments, acceso.WorkingDirectory = sys.argv[1], sys.argv[2], sys.argv[3]\n"
     "    if sys.argv[4]: acceso.IconLocation = sys.argv[4]\n"
-    "    acceso.Description = 'Abre TALLY en el navegador'\n"
+    "    acceso.Description = sys.argv[5]\n"
     "    acceso.Save()\n"
 )
 
@@ -415,31 +545,23 @@ _CON_POWERSHELL = (
     "foreach ($ruta in $env:TALLY_LNK.Split('|')) { "
     "$s = (New-Object -ComObject WScript.Shell).CreateShortcut($ruta); "
     "$s.TargetPath = $env:TALLY_DESTINO; $s.Arguments = $env:TALLY_ARGUMENTOS; "
-    "$s.WorkingDirectory = $env:TALLY_TRABAJO; $s.Description = 'Abre TALLY en el navegador'; "
+    "$s.WorkingDirectory = $env:TALLY_TRABAJO; $s.Description = $env:TALLY_DESCRIPCION; "
     "if ($env:TALLY_ICONO) { $s.IconLocation = $env:TALLY_ICONO }; $s.Save() }"
 )
 
 
-def crear_accesos(raiz, programa):
-    """Crea el acceso directo «TALLY» en el Escritorio y en la carpeta TALLY.
-
-    Primero con pywin32, como el Portal de Honorarios (en otro proceso: pywin32 se acaba de instalar y en este
-    todavía no se puede importar). Si falla, con PowerShell, que en algunas PC de trabajo está restringido.
-    Al final se comprueba que los archivos .lnk existan de verdad."""
-    destino, argumentos = destino_del_acceso(programa)
-    icono = programa / "portal" / "recursos" / "tally.ico"
-    icono = str(icono) if icono.exists() else ""
-    rutas = rutas_de_accesos(raiz)
-
-    print("Creando el acceso directo TALLY (con pywin32)...")
-    ejecutar([sys.executable, "-c", _CON_PYWIN32, str(destino), argumentos, str(programa), icono,
+def crear_lnk(rutas, destino, argumentos, trabajo, icono, descripcion):
+    """Crea accesos directos .lnk. Primero con pywin32, como el Portal de Honorarios (en otro proceso: pywin32
+    se acaba de instalar y en este todavía no se puede importar); si falla, con PowerShell, que en algunas PC
+    de trabajo está restringido. Al final comprueba que los archivos existan de verdad."""
+    ejecutar([sys.executable, "-c", _CON_PYWIN32, str(destino), argumentos, str(trabajo), icono, descripcion,
               *map(str, rutas)])
     if all(ruta.exists() for ruta in rutas):
         return True
-
     print("Intentando crear el acceso directo con PowerShell...")
     entorno = {**os.environ, "TALLY_LNK": "|".join(map(str, rutas)), "TALLY_DESTINO": str(destino),
-               "TALLY_ARGUMENTOS": argumentos, "TALLY_TRABAJO": str(programa), "TALLY_ICONO": icono}
+               "TALLY_ARGUMENTOS": argumentos, "TALLY_TRABAJO": str(trabajo), "TALLY_ICONO": icono,
+               "TALLY_DESCRIPCION": descripcion}
     try:
         subprocess.run(["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", _CON_POWERSHELL],
                        env=entorno, stdin=subprocess.DEVNULL, timeout=60)
@@ -451,9 +573,22 @@ def crear_accesos(raiz, programa):
     return not faltan
 
 
+def crear_accesos(raiz, programa, base=None):
+    """Acceso directo «TALLY» en el Escritorio y en la carpeta TALLY, y «Mis datos de TALLY» en la carpeta."""
+    destino, argumentos = destino_del_acceso(programa)
+    icono = programa / "portal" / "recursos" / "tally.ico"
+    icono = str(icono) if icono.exists() else ""
+    print("Creando el acceso directo TALLY...")
+    listo = crear_lnk(rutas_de_accesos(raiz), destino, argumentos, programa, icono, "Abre TALLY en el navegador")
+    if base is not None and base.resolve() != raiz.resolve():
+        crear_lnk([raiz / f"{NOMBRE_ACCESO_DATOS}.lnk"], base, "", base, "",
+                  "Carpeta de tus datos y respaldos de TALLY (en esta PC)")
+    return listo
+
+
 def instalar(sin_librerias=False, sin_accesos=False):
     """Instala o actualiza, dejando todo registrado en TALLY\\instalacion.log."""
-    raiz = escritorio() / NOMBRE_CARPETA
+    raiz = carpeta_de_instalacion()
     try:
         bitacora = Bitacora(raiz / BITACORA).__enter__()
     except OSError:                                   # sin bitácora se instala igual
@@ -478,7 +613,9 @@ def instalar(sin_librerias=False, sin_accesos=False):
 
 def _instalar(raiz, sin_librerias, sin_accesos):
     programa = raiz / PROGRAMA
+    base = carpeta_de_datos()
     print(f"Instalando en: {raiz}")
+    print(f"Tus datos: {base}")
 
     if raiz.resolve() == ORIGEN or raiz.resolve() in ORIGEN.parents and ORIGEN != programa.resolve():
         avisar("El instalador se está ejecutando desde dentro de la carpeta TALLY del Escritorio.\n\n"
@@ -501,7 +638,7 @@ def _instalar(raiz, sin_librerias, sin_accesos):
 
     actualizacion = programa.exists()
     try:
-        respaldo = respaldar_datos(raiz)
+        respaldo = respaldar_datos(raiz, base)
     except Exception as error:                        # noqa: BLE001 - sin respaldo no se actualiza
         avisar(f"No se pudo respaldar tus datos antes de actualizar ({error}).\n\n"
                "No se cambió nada. Revisa que la carpeta Datos esté completa.", error=True)
@@ -510,7 +647,7 @@ def _instalar(raiz, sin_librerias, sin_accesos):
         print(f"Respaldo de tus datos antes de actualizar: {respaldo}")
 
     try:
-        crear_estructura(raiz)
+        crear_estructura(raiz, base)
         copiar_programa(programa)
     except PermissionError:
         avisar("Windows no dejó reemplazar la carpeta _Programa: algún archivo está abierto (TALLY, una "
@@ -518,10 +655,22 @@ def _instalar(raiz, sin_librerias, sin_accesos):
                "INSTALAR.bat. Tus datos no se modificaron.", error=True)
         return 1
 
-    hay_portal = portal_disponible(programa)
-    accesos = sin_accesos or sys.platform != "win32" or not hay_portal or crear_accesos(raiz, programa)
+    try:
+        aviso_migracion = migrar_datos(raiz, base)
+    except Exception as error:                        # noqa: BLE001 - el programa nuevo los sigue usando ahí
+        aviso_migracion = (f"No se pudieron mover tus datos fuera del Escritorio ({error}). No se perdió nada: "
+                           f"siguen en {raiz / DATOS} y TALLY los usa ahí. Para moverlos, cierra las ventanas de "
+                           "esa carpeta, espera a que OneDrive termine de sincronizar y vuelve a correr "
+                           "INSTALAR.bat.")
+        print(aviso_migracion)
 
-    mensaje = f"{'Actualización' if actualizacion else 'Instalación'} terminada.\n\nCarpeta: {raiz}"
+    hay_portal = portal_disponible(programa)
+    accesos = sin_accesos or sys.platform != "win32" or not hay_portal or crear_accesos(raiz, programa, base)
+
+    mensaje = (f"{'Actualización' if actualizacion else 'Instalación'} terminada.\n\nCarpeta: {raiz}"
+               f"\nTus datos (solo en esta PC): {base}")
+    if aviso_migracion:
+        mensaje += f"\n\n{aviso_migracion}"
     if respaldo:
         mensaje += f"\n\nAntes de actualizar se respaldaron tus datos en:\n{respaldo.name}"
     if hay_portal:

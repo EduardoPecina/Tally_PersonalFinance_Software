@@ -5,16 +5,35 @@ Todo vive en `motor/`. El portal solo llama a `Sesion` y a `respaldos`.
 ## Dónde están los datos
 
 ```text
-Escritorio\TALLY\
-  _Programa\        el programa (el instalador lo reemplaza al actualizar)
-  Datos\tally.db    tus finanzas (las actualizaciones nunca lo tocan)
-  Respaldos\        respaldos manuales y automáticos (.zip)
-  LEEME.txt
-  instalacion.log
+Escritorio\TALLY\                el Escritorio que diga Windows (con o sin OneDrive)
+  _Programa\                      el programa (el instalador lo reemplaza al actualizar)
+  TALLY.lnk                       abre TALLY (también hay uno en el Escritorio)
+  Mis datos de TALLY.lnk          abre la carpeta de tus datos
+  LEEME.txt, instalacion.log
+
+C:\Users\<usuario>\TALLY\         tus datos, siempre en esta PC
+  Datos\tally.db                  tus finanzas (las actualizaciones nunca lo tocan)
+  Respaldos\                      respaldos manuales y automáticos (.zip)
 ```
 
+Los datos van en la carpeta del perfil del usuario porque:
+
+- **OneDrive no la sincroniza.** Solo mueve Escritorio, Documentos e Imágenes.
+  Las finanzas no terminan en una nube, aunque sea la de la empresa, y la
+  sincronización no bloquea el archivo mientras SQLite escribe.
+- **No es `AppData`.** El Python de la Microsoft Store redirige en secreto lo
+  que se escribe ahí a una carpeta privada que Windows borra al desinstalarlo.
+- Existe en cualquier Windows y el usuario siempre puede escribir en ella.
+
+Si el Escritorio no deja escribir (algunas PC de trabajo), todo se instala en
+`C:\Users\<usuario>\TALLY`.
+
 En desarrollo, `Datos/` y `Respaldos/` se crean dentro del repositorio y
-`.gitignore` las excluye. La variable `TALLY_RAIZ` permite usar otra carpeta.
+`.gitignore` las excluye. Variables de entorno: `TALLY_RAIZ` pone programa y
+datos en otra carpeta; `TALLY_DATOS` cambia solo la de los datos.
+
+La regla vive en `motor/rutas.py` y el instalador la usa directamente, así
+que los dos siempre buscan los datos en el mismo lugar.
 
 ## Cómo se guarda
 
@@ -59,6 +78,7 @@ Un respaldo es un `.zip` con:
 | `respaldos.restaurar(sesion, ruta)` | 1) valida todo, 2) crea `TALLY_antes_de_restaurar_*.zip` con lo actual, 3) reemplaza en una sola transacción y lo anota en la bitácora |
 | `respaldos.respaldo_automatico(sesion)` | Respaldo con rotación (conserva los últimos 10) |
 | `respaldos.respaldar_archivo_de_datos(ruta, carpeta)` | Respaldo en solo lectura de un `tally.db`. Lo usa el instalador antes de actualizar |
+| `respaldos.copiar_archivo_de_datos(origen, destino)` | Copia un `tally.db` y comprueba con una segunda lectura independiente que sea idéntico (entidades y bitácora). Nunca sobrescribe. Lo usa el instalador para mover los datos |
 
 Un respaldo dañado, incompleto, modificado o de una versión más nueva se
 rechaza **antes** de tocar nada.
@@ -73,7 +93,18 @@ llama a `instalador/instalar.py`, que:
 2. Instala las librerías con las versiones exactas de `requirements-lock.txt`.
 3. Si ya hay datos, crea `Respaldos\TALLY_antes_de_actualizar_*.zip`. Si no
    puede, **no actualiza**.
-4. Reemplaza `_Programa` completo y conserva `_Programa_anterior` para
+4. Si encuentra datos de una versión anterior en `Escritorio\TALLY\Datos`,
+   los mueve a la carpeta del usuario:
+   1. copia y verifica (`copiar_archivo_de_datos`);
+   2. aparta la carpeta vieja como `Datos_movido_<fecha>` y la borra. Si
+      OneDrive no deja borrarla, el portal la borra al abrir;
+   3. mueve los respaldos.
+
+   Si no puede apartar la vieja, borra la copia y **no actualiza**: los datos
+   nunca quedan en dos lugares a la vez. Si ya había datos en la carpeta del
+   usuario, no mezcla nada: deja los viejos en `Datos_anterior_<fecha>` y lo
+   avisa.
+5. Reemplaza `_Programa` completo y conserva `_Programa_anterior` para
    regresar a la versión anterior si la copia falla.
-5. Crea los accesos directos cuando exista el portal (Fase 3).
-6. Escribe todo en `instalacion.log`, sin el nombre de usuario.
+6. Crea los accesos directos **TALLY** y **Mis datos de TALLY**.
+7. Escribe todo en `instalacion.log`, sin el nombre de usuario.

@@ -39,3 +39,25 @@ def test_en_desarrollo_no_toca_nada(tmp_path):
     repo.mkdir()
     (tmp_path / "_Programa_anterior").mkdir()
     assert limpieza.copias_viejas(repo) == []
+
+
+def test_borra_lo_que_quedo_de_mover_los_datos(tmp_path):
+    """«Datos_movido_*» solo existe después de verificar la copia nueva; «Datos_anterior_*» nunca se borra."""
+    programa = instalacion(tmp_path)
+    movido = programa.with_name("Datos_movido_2026-07-20_120000")
+    movido.mkdir()
+    (movido / "tally.db").write_text("ya copiado y verificado")
+    apartado = programa.with_name("Datos_anterior_2026-07-20_120000")
+    apartado.mkdir()
+    (apartado / "tally.db").write_text("conflicto: lo decide el usuario")
+    limpieza.limpiar_copias(programa, en_segundo_plano=False)
+    assert not movido.exists()
+    assert (apartado / "tally.db").exists()
+    assert (tmp_path / "TALLY" / "Datos" / "tally.db").read_text() == "mis datos"
+
+
+def test_en_desarrollo_no_borra_carpetas_de_datos(tmp_path):
+    repo = tmp_path / "Tally_PersonalFinance_Software"
+    repo.mkdir()
+    (tmp_path / "Datos_movido_1").mkdir()
+    assert limpieza.restos_de_migracion(repo) == []

@@ -15,7 +15,8 @@ Excel.
 
 - Sin cuentas de usuario, sin inicio de sesión, sin correo.
 - Sin conexión bancaria, sin nube y sin telemetría.
-- Funciona sin Internet. Los datos viven en `Datos\tally.db`, en tu PC.
+- Funciona sin Internet. Los datos viven en `C:\Users\<tu usuario>\TALLY`,
+  solo en tu PC: fuera de OneDrive y de cualquier nube.
 - Los datos financieros nunca forman parte de este repositorio (ver `.gitignore`).
 
 ## Qué resuelve
@@ -38,7 +39,8 @@ Detalle en [`docs/MODELO_CONTABLE.md`](docs/MODELO_CONTABLE.md) y
 1. Descarga el proyecto (en GitHub: **Code → Download ZIP**) y descomprímelo
    en cualquier carpeta que no sea el Escritorio (por ejemplo, Descargas).
 2. Doble clic en `INSTALAR.bat`. Instala lo necesario y crea
-   `Escritorio\TALLY` y el acceso directo **TALLY**.
+   `Escritorio\TALLY` y el acceso directo **TALLY**. Funciona en cualquier
+   PC con Windows, personal o de trabajo, con el Escritorio en OneDrive o no.
 3. Doble clic en el acceso directo **TALLY**: se abre en tu navegador, en
    `http://localhost:8765`. Solo tu PC puede verlo.
 4. La primera vez te saluda, te pide tu nombre y te deja agregar tus cuentas.
@@ -48,6 +50,10 @@ Detalle en [`docs/MODELO_CONTABLE.md`](docs/MODELO_CONTABLE.md) y
 
 Para actualizar, corre el `INSTALAR.bat` de la versión nueva. Antes de
 actualizar se respaldan tus datos y no se tocan.
+
+Tus datos y respaldos están en `C:\Users\<tu usuario>\TALLY`, fuera del
+Escritorio, así que OneDrive no los sube a la nube. Para abrir esa carpeta usa
+el acceso directo **Mis datos de TALLY**, dentro de `Escritorio\TALLY`.
 
 | Página | Responde a |
 |---|---|

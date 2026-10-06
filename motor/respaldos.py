@@ -84,6 +84,16 @@ def respaldo_automatico(
     return ruta
 
 
+def _copia_de_lectura(ruta_datos: Path, destino: Path) -> None:
+    """Copia consistente de un archivo de datos abierto en solo lectura (incluye lo pendiente en el WAL)."""
+    try:
+        with closing(sqlite3.connect(f"{ruta_datos.resolve().as_uri()}?mode=ro", uri=True)) as origen:
+            with closing(sqlite3.connect(destino)) as copia:
+                origen.backup(copia)
+    except sqlite3.DatabaseError as error:
+        raise ErrorDatos(f"No se pudo leer el archivo de datos ({error}).") from error
+
+
 def respaldar_archivo_de_datos(
     ruta_datos: Path | str, carpeta: Path | str, *, prefijo: str = "antes_de_actualizar"
 ) -> Path | None:
@@ -97,15 +107,40 @@ def respaldar_archivo_de_datos(
         return None
     with tempfile.TemporaryDirectory() as temporal:
         copia = Path(temporal) / "copia.db"
-        try:
-            with closing(sqlite3.connect(f"{ruta_datos.resolve().as_uri()}?mode=ro", uri=True)) as origen:
-                with closing(sqlite3.connect(copia)) as destino:
-                    origen.backup(destino)
-        except sqlite3.DatabaseError as error:
-            raise ErrorDatos(f"No se pudo leer el archivo de datos ({error}).") from error
+        _copia_de_lectura(ruta_datos, copia)
         almacen = Almacen(copia)
         almacen.cargar()
         return _crear_desde(almacen, datetime.now(), carpeta, prefijo)
+
+
+def copiar_archivo_de_datos(origen: Path | str, destino: Path | str) -> Path:
+    """Copia un archivo de datos a otra carpeta y comprueba que la copia sea idéntica.
+
+    Lo usa el instalador para mover tus datos de lugar. El original no se modifica. La copia se escribe con
+    otro nombre y solo al final, ya verificada, toma el nombre definitivo: si algo falla, no queda nada a
+    medias. ``ErrorDatos`` si el destino ya existe, si el original está dañado o si la copia no coincide.
+    """
+    origen, destino = Path(origen), Path(destino)
+    if destino.exists():
+        raise ErrorDatos(f"Ya hay un archivo de datos en {destino}; no se sobrescribe.")
+    destino.parent.mkdir(parents=True, exist_ok=True)
+    temporal = destino.with_name(destino.name + ".tmp")
+    temporal.unlink(missing_ok=True)
+    try:
+        _copia_de_lectura(origen, temporal)
+        with tempfile.TemporaryDirectory() as carpeta:
+            referencia = Path(carpeta) / "referencia.db"
+            _copia_de_lectura(origen, referencia)            # segunda lectura, independiente de la copia
+            esperado, obtenido = Almacen(referencia), Almacen(temporal)
+            esperado.cargar()
+            obtenido.cargar()
+            if (esperado.estado_guardado != obtenido.estado_guardado
+                    or len(esperado.bitacora()) != len(obtenido.bitacora())):
+                raise ErrorDatos("La copia de tus datos no coincide con el original; no se movió nada.")
+        os.replace(temporal, destino)
+    finally:
+        temporal.unlink(missing_ok=True)
+    return destino
 
 
 def _crear_desde(almacen: Almacen, momento: datetime, destino: Path | str | None, prefijo: str) -> Path:

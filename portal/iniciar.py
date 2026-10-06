@@ -170,7 +170,7 @@ def arrancar_portal() -> str | None:
         proceso.terminate()
     return ("TALLY no pudo iniciar.\n\n"
             f"Detalle (últimas líneas de portal.log):\n{_ultimas_lineas() or '(vacío)'}\n"
-            "El archivo portal.log está en la carpeta TALLY de tu Escritorio.")
+            f"El archivo está en {bitacora()}.")
 
 
 def preparar_portal() -> str | None:

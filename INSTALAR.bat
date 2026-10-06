@@ -49,7 +49,8 @@ exit /b 1
 
 :fallo
 echo.
-echo La instalacion no se completo. Revisa el archivo instalacion.log en la carpeta TALLY de tu Escritorio.
+echo La instalacion no se completo. Revisa el archivo instalacion.log de la carpeta TALLY
+echo Esta en tu Escritorio o, si ahi no se pudo escribir, en %USERPROFILE%\TALLY
 echo.
 pause
 exit /b 1

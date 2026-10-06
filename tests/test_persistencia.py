@@ -190,6 +190,47 @@ def test_raiz_en_desarrollo_o_instalado(monkeypatch):
         assert rutas.raiz() == programa  # en desarrollo: el repositorio
 
 
+def test_instalado_los_datos_viven_en_la_carpeta_del_usuario(monkeypatch, tmp_path):
+    """Instalado: el programa en el Escritorio (con o sin OneDrive) y los datos en C:\\Users\\<usuario>\\TALLY."""
+    for variable in ("TALLY_RAIZ", "TALLY_DATOS"):
+        monkeypatch.delenv(variable, raising=False)
+    programa = tmp_path / "OneDrive - Empresa" / "Escritorio" / "TALLY" / "_Programa"
+    monkeypatch.setattr(rutas, "_PROGRAMA", programa)
+    monkeypatch.setattr(rutas.Path, "home", lambda: tmp_path / "Usuario")
+    assert rutas.instalado()
+    assert rutas.raiz() == programa.parent
+    assert rutas.archivo_datos() == tmp_path / "Usuario" / "TALLY" / "Datos" / "tally.db"
+    assert rutas.carpeta_respaldos() == tmp_path / "Usuario" / "TALLY" / "Respaldos"
+    monkeypatch.setenv("TALLY_DATOS", str(tmp_path / "Otra"))
+    assert rutas.carpeta_datos() == tmp_path / "Otra" / "Datos"
+
+
+def test_datos_que_el_instalador_no_pudo_mover_se_siguen_usando(monkeypatch, tmp_path):
+    for variable in ("TALLY_RAIZ", "TALLY_DATOS"):
+        monkeypatch.delenv(variable, raising=False)
+    escritorio = tmp_path / "Escritorio" / "TALLY"
+    monkeypatch.setattr(rutas, "_PROGRAMA", escritorio / "_Programa")
+    monkeypatch.setenv("TALLY_DATOS", str(tmp_path / "Usuario" / "TALLY"))
+    assert rutas.carpeta_usuario() == tmp_path / "Usuario" / "TALLY" and not rutas.datos_sin_mover()
+    (escritorio / "Datos").mkdir(parents=True)
+    (escritorio / "Datos" / "tally.db").write_bytes(b"")
+    assert rutas.archivo_datos() == escritorio / "Datos" / "tally.db"      # nunca un archivo vacío nuevo
+    assert rutas.datos_sin_mover()
+    (tmp_path / "Usuario" / "TALLY" / "Datos").mkdir(parents=True)
+    (tmp_path / "Usuario" / "TALLY" / "Datos" / "tally.db").write_bytes(b"")
+    assert rutas.carpeta_usuario() == tmp_path / "Usuario" / "TALLY"       # ya movidos: manda su lugar
+    assert not rutas.datos_sin_mover()
+
+
+def test_en_desarrollo_los_datos_viven_en_el_repositorio(monkeypatch, tmp_path):
+    for variable in ("TALLY_RAIZ", "TALLY_DATOS"):
+        monkeypatch.delenv(variable, raising=False)
+    repositorio = tmp_path / "Tally_PersonalFinance_Software"
+    monkeypatch.setattr(rutas, "_PROGRAMA", repositorio)
+    assert not rutas.instalado()
+    assert rutas.archivo_datos() == repositorio / "Datos" / "tally.db"
+
+
 def test_archivo_danado_no_queda_bloqueado(ruta, monkeypatch):
     """En Windows un archivo con una conexión abierta no se puede renombrar: abrir uno dañado no debe dejarla."""
     from motor import persistencia
