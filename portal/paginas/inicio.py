@@ -119,13 +119,16 @@ def mostrar() -> None:
 
     izquierda, derecha = st.columns(2)
     with izquierda:
-        st.markdown("**¿En qué gasté?**")
-        graficas.barras([(t.nombre, t.total) for t in reportes.gastos_por_categoria(lib, desde, hasta)
-                         if t.total > 0], "Gasto")
+        st.markdown("**¿En qué gasté?** · por categoría")
+        graficas.barras([(r, v) for r, v in reportes.gastos_por_rubro(lib, desde, hasta).items() if v > 0], "Gasto",
+                        "Categoría")
     with derecha:
-        st.markdown("**Por grupo**")
+        st.markdown("**Por clasificación**")
         graficas.barras([(g, v) for g, v in reportes.gastos_por_grupo(lib, desde, hasta).items() if v > 0], "Gasto",
-                       "Grupo")
+                        "Clasificación")
+    with st.expander("Ver por subcategoría"):
+        graficas.barras([(t.nombre, t.total) for t in reportes.gastos_por_categoria(lib, desde, hasta)
+                         if t.total > 0], "Gasto", "Subcategoría")
 
     # Al menos tres meses de contexto, aunque el periodo elegido sea más corto.
     hasta_grafica = max(desde, min(hasta, lib.hoy()))

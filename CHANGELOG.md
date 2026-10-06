@@ -2,7 +2,35 @@
 
 Todos los cambios relevantes de TALLY se documentan aquí.
 
-## [0.3.6] — Sin publicar
+## [0.4.0] — Sin publicar
+
+- **Categorías y subcategorías.** Las categorías son cajas (SALUD, TECNOLOGIA,
+  MASCOTAS…) que agrupan subcategorías (DENTISTA, CELULARES Y TABLETS…). A
+  cada movimiento se le pone una subcategoría y los reportes suman por las
+  dos. Los grupos de antes (Necesidad, Disfrute…) ahora se llaman
+  **clasificaciones**.
+- **Catálogo amplio**: 25 categorías y más de 130 subcategorías comunes
+  (despensa, gimnasio, gasolina, streaming, mascotas, hijos, viajes…),
+  además de las originales. Todo es editable.
+- Nombres de categorías y subcategorías siempre en **MAYÚSCULAS y sin
+  acentos** (la Ñ se conserva). No se puede agregar dos veces lo mismo,
+  aunque cambien mayúsculas, acentos, signos o espacios.
+- Tus datos se ponen al día solos al abrir TALLY: nombres estandarizados,
+  cada subcategoría en su categoría (las tuyas, en VARIOS) y las nuevas
+  agregadas. No se pierde ni se junta nada; queda en la bitácora. Los
+  respaldos de la 0.3 también se ponen al día al restaurarlos.
+- **Cargar datos**: plantillas `.txt` (débito, crédito, ahorro, inversión o
+  todas) para subir muchos movimientos a la vez desde Excel. Vista previa,
+  crea las cuentas que falten, pregunta qué es cada nombre desconocido, no
+  duplica transferencias que vienen en las dos cuentas ni lo que ya estaba,
+  respaldo automático antes de cargar y todo o nada.
+- **Empezar de cero** (Respaldos y bitácora): borra todo y deja TALLY como
+  recién instalado, con un respaldo previo para recuperarlo.
+- Resumen: gasto por categoría, por clasificación y por subcategoría.
+- Los datos y respaldos de esta versión ya no se abren con una versión
+  anterior de TALLY (que no conoce las subcategorías).
+
+## [0.3.6]
 
 - `portal.log` pasa del Escritorio a `C:\Users\<tu usuario>\TALLY`, junto a
   tus datos. TALLY escribe en él mientras está abierto y OneDrive lo

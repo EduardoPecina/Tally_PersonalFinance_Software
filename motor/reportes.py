@@ -23,7 +23,8 @@ from motor.modelo import (
     TipoOperacion,
 )
 
-SIN_GRUPO = "Sin grupo"
+SIN_GRUPO = "Sin clasificación"
+SIN_RUBRO = "SIN CATEGORIA"
 
 
 def rango_mes(anio: int, mes: int) -> tuple[date, date]:
@@ -95,10 +96,13 @@ def _hacia_ahorro(libro: Libro, op: Operacion) -> int:
 
 @dataclass(frozen=True, slots=True)
 class TotalCategoria:
+    """Total de una subcategoría (``nombre``), con su categoría (``rubro``) y su clasificación (``grupo``)."""
+
     categoria_id: str
     nombre: str
     grupo: str
     total: Decimal
+    rubro: str = SIN_RUBRO
 
 
 def por_categoria(libro: Libro, desde: date, hasta: date, clase: ClaseCategoria) -> list[TotalCategoria]:
@@ -110,7 +114,8 @@ def por_categoria(libro: Libro, desde: date, hasta: date, clase: ClaseCategoria)
             if libro.categoria(p.categoria_id).clase is clase:
                 totales[p.categoria_id] += signo * p.importe
     resultado = [
-        TotalCategoria(cat_id, libro.categoria(cat_id).nombre, _nombre_grupo(libro, cat_id), a_pesos(total))
+        TotalCategoria(cat_id, libro.categoria(cat_id).nombre, _nombre_grupo(libro, cat_id), a_pesos(total),
+                       _nombre_rubro(libro, cat_id))
         for cat_id, total in totales.items()
     ]
     return sorted(resultado, key=lambda t: (-t.total, t.nombre.casefold()))
@@ -122,6 +127,14 @@ def gastos_por_categoria(libro: Libro, desde: date, hasta: date) -> list[TotalCa
 
 def ingresos_por_categoria(libro: Libro, desde: date, hasta: date) -> list[TotalCategoria]:
     return por_categoria(libro, desde, hasta, ClaseCategoria.INGRESO)
+
+
+def gastos_por_rubro(libro: Libro, desde: date, hasta: date) -> dict[str, Decimal]:
+    """Gastos por categoría que agrupa (SALUD, TECNOLOGIA…), de mayor a menor."""
+    totales: dict[str, Decimal] = defaultdict(Decimal)
+    for t in gastos_por_categoria(libro, desde, hasta):
+        totales[t.rubro] += t.total
+    return dict(sorted(totales.items(), key=lambda kv: -kv[1]))
 
 
 def gastos_por_grupo(libro: Libro, desde: date, hasta: date) -> dict[str, Decimal]:
@@ -144,6 +157,11 @@ def gastos_por_cuenta(libro: Libro, desde: date, hasta: date) -> dict[str, Decim
             (cuenta,) = op.partidas_de_cuenta()
             totales[cuenta.cuenta_id] += gasto
     return {cuenta_id: a_pesos(total) for cuenta_id, total in totales.items()}
+
+
+def _nombre_rubro(libro: Libro, categoria_id: str) -> str:
+    rubro_id = libro.categoria(categoria_id).rubro_id
+    return libro.rubro(rubro_id).nombre if rubro_id else SIN_RUBRO
 
 
 def _nombre_grupo(libro: Libro, categoria_id: str) -> str:
@@ -306,6 +324,7 @@ def hechos(libro: Libro, desde: date | None = None, hasta: date | None = None) -
                     "tipo": op.tipo.value,
                     "cuenta": cuenta.nombre if cuenta else "",
                     "tipo_cuenta": cuenta.tipo.value if cuenta else "",
+                    "rubro": _nombre_rubro(libro, categoria.id),
                     "categoria": categoria.nombre,
                     "clase": categoria.clase.value,
                     "grupo": _nombre_grupo(libro, categoria.id),

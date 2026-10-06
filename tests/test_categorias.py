@@ -3,19 +3,41 @@ from datetime import date
 import pytest
 
 from conftest import D, JULIO
-from motor import categorias, movimientos, reportes
+from motor import catalogo, categorias, movimientos, reportes
 from motor.errores import ErrorValidacion
 from motor.libro import Libro
 from motor.modelo import CATEGORIA_AJUSTE, ClaseCategoria
 
 
+def rubro(libro, nombre):
+    return categorias.buscar_rubro(libro, nombre).id
+
+
 def test_catalogo_inicial(libro):
     nombres = {g.nombre for g in libro.grupos()}
-    assert nombres == set(categorias.GRUPOS_INICIALES)
+    assert nombres == set(catalogo.GRUPOS_INICIALES)
     nomina = categorias.buscar(libro, "nómina")
-    assert nomina.clase is ClaseCategoria.INGRESO and nomina.principal
+    assert nomina.nombre == "NOMINA" and nomina.clase is ClaseCategoria.INGRESO and nomina.principal
     alimentos = categorias.buscar(libro, "Alimentos")
     assert libro.grupo(alimentos.grupo_id).nombre == "Necesidad"
+    assert categorias.etiqueta(libro, alimentos.id) == "ALIMENTACION › ALIMENTOS"
+    # Un universo amplio: todas las subcategorías viven en una categoría de su mismo tipo.
+    assert len(libro.rubros()) >= 20 and len(libro.categorias()) >= 140
+    for c in libro.categorias():
+        if c.clase is not ClaseCategoria.SISTEMA:
+            assert libro.rubro(c.rubro_id).clase is c.clase
+    assert categorias.buscar(libro, "gimnasio").rubro_id == rubro(libro, "Deporte y bienestar")
+    assert categorias.nombre_rubro(libro, categorias.buscar(libro, "Despensa").id) == "ALIMENTACION"
+
+
+def test_catalogo_sin_repetidos_y_estandarizado():
+    from motor.textos import clave, estandarizar
+
+    rubros = [r for r, _, _ in catalogo.CATALOGO]
+    subcategorias = [s for _, _, subs in catalogo.CATALOGO for s, _ in subs]
+    for nombres in (rubros, subcategorias):
+        assert len({clave(n) for n in nombres}) == len(nombres)
+        assert all(n == estandarizar(n) for n in nombres)
 
 
 def test_catalogo_inicial_no_se_duplica(libro):
@@ -29,20 +51,60 @@ def test_libro_nuevo_solo_tiene_categorias_del_sistema():
     assert {c.clase for c in lib.categorias()} == {ClaseCategoria.SISTEMA}
 
 
-def test_nombres_se_normalizan_y_no_se_repiten(libro):
-    cat = categorias.crear(libro, "  HARDWARE   & JUEGOS ", ClaseCategoria.GASTO)
-    assert cat.nombre == "HARDWARE & JUEGOS"
+def test_nombres_en_mayusculas_sin_acentos_y_sin_repetir(libro):
+    salud = rubro(libro, "Salud")
+    cat = categorias.crear(libro, "  Ortodoncia   y  frenos ", salud)
+    assert cat.nombre == "ORTODONCIA Y FRENOS" and cat.clase is ClaseCategoria.GASTO
+    assert categorias.crear(libro, "Niñera de fin de semana", rubro(libro, "Hijos")).nombre == \
+        "NIÑERA DE FIN DE SEMANA"
+    assert categorias.crear(libro, "Clínica Médica", salud).nombre == "CLINICA MEDICA"
+    # Mayúsculas, acentos, signos y espacios no hacen otra subcategoría…
+    for repetida in ("ortodoncia y frenos", "Ortodóncia  Y  Frenos", "ORTODONCIA/Y-FRENOS"):
+        with pytest.raises(ErrorValidacion, match="dos veces"):
+            categorias.crear(libro, repetida, salud)
+    # …ni aunque sea en otra categoría o de otro tipo: cada subcategoría existe una sola vez.
+    with pytest.raises(ErrorValidacion, match="Ya existe la subcategoría «DENTISTA» \\(en SALUD\\)"):
+        categorias.crear(libro, "dentísta", rubro(libro, "Varios"))
     with pytest.raises(ErrorValidacion):
-        categorias.crear(libro, "hardware & juegos", ClaseCategoria.GASTO)
-    # El mismo nombre sí puede existir como ingreso.
-    categorias.crear(libro, "Hardware & juegos", ClaseCategoria.INGRESO)
+        categorias.crear(libro, "Nomina", rubro(libro, "Ingresos varios"))
     with pytest.raises(ErrorValidacion):
-        categorias.crear(libro, "   ", ClaseCategoria.GASTO)
+        categorias.crear(libro, "   ", salud)
+    with pytest.raises(ErrorValidacion, match="dos veces"):
+        categorias.editar(libro, cat.id, nombre="gasolína")
+
+
+def test_categorias_que_agrupan(libro):
+    tecnologia = categorias.crear_rubro(libro, "Electrónica y gadgets", ClaseCategoria.GASTO)
+    assert tecnologia.nombre == "ELECTRONICA Y GADGETS"
+    with pytest.raises(ErrorValidacion, match="dos veces"):
+        categorias.crear_rubro(libro, "electronica y GADGETS", ClaseCategoria.INGRESO)
+    with pytest.raises(ErrorValidacion):
+        categorias.crear_rubro(libro, "Sistema", ClaseCategoria.SISTEMA)
+    drones = categorias.crear(libro, "Drones", tecnologia.id)
+    categorias.renombrar_rubro(libro, tecnologia.id, "Gadgets")
+    assert categorias.etiqueta(libro, drones.id) == "GADGETS › DRONES"
+
+    # Mover una subcategoría solo a otra categoría del mismo tipo.
+    with pytest.raises(ErrorValidacion):
+        categorias.editar(libro, drones.id, rubro_id=rubro(libro, "Ingresos varios"))
+    categorias.editar(libro, drones.id, rubro_id=rubro(libro, "Tecnologia"))
+    assert libro.categoria(drones.id).rubro_id == rubro(libro, "Tecnologia")
+
+    # Borrar una categoría con subcategorías exige decir a dónde pasan (con todo y movimientos).
+    with pytest.raises(ErrorValidacion):
+        categorias.eliminar_rubro(libro, rubro(libro, "Mascotas"))
+    veterinario = categorias.buscar(libro, "Veterinario").id
+    categorias.eliminar_rubro(libro, rubro(libro, "Mascotas"), mover_a=rubro(libro, "Salud"))
+    assert categorias.buscar_rubro(libro, "Mascotas") is None
+    assert libro.categoria(veterinario).rubro_id == rubro(libro, "Salud")
+    categorias.eliminar_rubro(libro, rubro(libro, "Gadgets"))          # vacía: se borra sin más
 
 
 def test_solo_ingresos_pueden_ser_principales(libro):
     with pytest.raises(ErrorValidacion):
-        categorias.crear(libro, "Raro", ClaseCategoria.GASTO, principal=True)
+        categorias.crear(libro, "Raro", rubro(libro, "Varios"), principal=True)
+    with pytest.raises(ErrorValidacion, match="Elige en qué categoría"):
+        categorias.crear(libro, "Sin caja", None)
 
 
 def test_categorias_del_sistema_son_intocables(libro):
@@ -51,13 +113,14 @@ def test_categorias_del_sistema_son_intocables(libro):
     with pytest.raises(ErrorValidacion):
         categorias.eliminar(libro, CATEGORIA_AJUSTE)
     with pytest.raises(ErrorValidacion):
-        categorias.crear(libro, "Sistema", ClaseCategoria.SISTEMA)
+        categorias.crear(libro, "Sistema", None)
 
 
 def test_editar_categoria_y_grupo(libro, cat):
     disfrute = next(g for g in libro.grupos() if g.nombre == "Disfrute")
     categorias.editar(libro, cat("Alimentos"), nombre="Comida", grupo_id=disfrute.id)
     comida = libro.categoria(cat("Comida"))
+    assert comida.nombre == "COMIDA"
     assert comida.grupo_id == disfrute.id
     categorias.editar(libro, comida.id, grupo_id=None)
     assert libro.categoria(comida.id).grupo_id is None
@@ -71,10 +134,12 @@ def test_grupos_editables(libro, cat):
     assert libro.categoria(cat("Regalos")).grupo_id is None
     with pytest.raises(ErrorValidacion):
         categorias.crear_grupo(libro, "necesidad")
+    with pytest.raises(ErrorValidacion):
+        categorias.crear_grupo(libro, "INVERSION")      # sin importar el acento
 
 
 def test_eliminar_categoria_sin_uso(libro):
-    nueva = categorias.crear(libro, "Temporal", ClaseCategoria.GASTO)
+    nueva = categorias.crear(libro, "Temporal", rubro(libro, "Varios"))
     categorias.eliminar(libro, nueva.id)
     assert categorias.buscar(libro, "Temporal") is None
 
@@ -90,7 +155,7 @@ def test_eliminar_categoria_en_uso_exige_reasignar(libro, ctas, cat):
 
     categorias.eliminar(libro, snacks, reasignar_a=alimentos)
     (total,) = reportes.gastos_por_categoria(libro, *JULIO)
-    assert total.nombre == "Alimentos" and total.total == D(165)
+    assert total.nombre == "ALIMENTOS" and total.total == D(165)
 
 
 def test_fusion_une_partidas_de_un_gasto_repartido(libro, ctas, cat):

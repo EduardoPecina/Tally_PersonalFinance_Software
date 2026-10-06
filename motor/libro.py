@@ -24,6 +24,7 @@ from motor.modelo import (
     Grupo,
     Operacion,
     Perfil,
+    Rubro,
 )
 from motor.reglas import validar_operacion
 
@@ -35,11 +36,12 @@ class Libro:
         self._cuentas: dict[str, Cuenta] = {}
         self._categorias: dict[str, Categoria] = {}
         self._grupos: dict[str, Grupo] = {}
+        self._rubros: dict[str, Rubro] = {}
         self._operaciones: dict[str, Operacion] = {}
         self._secuencia = 0
         for categoria in (
-            Categoria(CATEGORIA_AJUSTE, "Ajuste de saldo", ClaseCategoria.SISTEMA, orden=-2),
-            Categoria(CATEGORIA_SALDO_INICIAL, "Saldo inicial", ClaseCategoria.SISTEMA, orden=-1),
+            Categoria(CATEGORIA_AJUSTE, "AJUSTE DE SALDO", ClaseCategoria.SISTEMA, orden=-2),
+            Categoria(CATEGORIA_SALDO_INICIAL, "SALDO INICIAL", ClaseCategoria.SISTEMA, orden=-1),
         ):
             self._categorias[categoria.id] = categoria
 
@@ -50,6 +52,7 @@ class Libro:
         perfil: Perfil | None,
         grupos: list[Grupo],
         categorias: list[Categoria],
+        rubros: list[Rubro] = (),
         cuentas: list[Cuenta],
         operaciones: list[Operacion],
         secuencia: int,
@@ -59,6 +62,7 @@ class Libro:
         libro = cls(reloj=reloj)
         libro.perfil = perfil
         libro._grupos = {g.id: g for g in grupos}
+        libro._rubros = {r.id: r for r in rubros}
         libro._categorias.update({c.id: c for c in categorias})
         libro._cuentas = {c.id: c for c in cuentas}
         libro._operaciones = {op.id: op for op in operaciones}
@@ -126,6 +130,25 @@ class Libro:
         if any(p.categoria_id == categoria_id for op in self._operaciones.values() for p in op.partidas):
             raise ErrorValidacion("La categoría tiene movimientos.")
         del self._categorias[categoria_id]
+
+    def rubro(self, rubro_id: str) -> Rubro:
+        try:
+            return self._rubros[rubro_id]
+        except KeyError:
+            raise ErrorNoEncontrado("La categoría no existe.") from None
+
+    def rubros(self) -> list[Rubro]:
+        return sorted(self._rubros.values(), key=lambda r: (r.orden, r.nombre.casefold()))
+
+    def guardar_rubro(self, rubro: Rubro) -> Rubro:
+        self._rubros[rubro.id] = rubro
+        return rubro
+
+    def quitar_rubro(self, rubro_id: str) -> None:
+        self.rubro(rubro_id)
+        if any(c.rubro_id == rubro_id for c in self._categorias.values()):
+            raise ErrorValidacion("La categoría todavía tiene subcategorías.")
+        del self._rubros[rubro_id]
 
     def grupo(self, grupo_id: str) -> Grupo:
         try:

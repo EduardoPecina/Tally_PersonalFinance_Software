@@ -25,7 +25,7 @@ from dataclasses import asdict, dataclass
 from datetime import datetime
 from pathlib import Path
 
-from motor import auditoria, rutas
+from motor import auditoria, catalogo, rutas
 from motor.config import VERSION
 from motor.errores import ErrorDatos
 from motor.libro import Libro
@@ -34,7 +34,7 @@ from motor.serializacion import libro_desde_instantanea
 from motor.sesion import Sesion
 
 FORMATO = "tally-respaldo"
-VERSION_FORMATO = 1
+VERSION_FORMATO = 2  # 2: categorías con subcategorías (TALLY 0.4). Los de formato 1 se ponen al día al restaurar
 MANIFIESTO = "manifiesto.json"
 DATOS = "datos.json"
 TAMANO_MAXIMO = 512 * 1024 * 1024  # bytes descomprimidos de datos.json
@@ -280,5 +280,27 @@ def restaurar(sesion: Sesion, ruta: Path | str, *, carpeta_seguridad: Path | str
     )
     sesion.almacen.reemplazar(libro, bitacora, nota)
     sesion.libro = libro
+    sesion.poner_al_dia()                 # un respaldo de TALLY 0.3 no tiene categorías con subcategorías
     return ResultadoRestauracion(info, seguridad)
+
+
+# ------------------------------------------------------------ empezar de cero
+
+
+def empezar_de_cero(sesion: Sesion, *, carpeta_seguridad: Path | str | None = None) -> Path:
+    """Borra todo (perfil, cuentas, movimientos, categorías y bitácora) y deja TALLY como recién instalado.
+
+    Antes crea un respaldo completo de lo actual (si no se puede, no se borra nada); con él se recupera todo
+    desde «Restaurar». Devuelve la ruta de ese respaldo.
+    """
+    seguridad = crear(sesion, carpeta_seguridad, prefijo="antes_de_empezar_de_cero")
+    nuevo = Libro(reloj=sesion.libro.reloj)
+    catalogo.cargar(nuevo)
+    nota = auditoria.Cambio(
+        entidad="respaldo", entidad_id=seguridad.name, accion=auditoria.EMPEZAR_DE_CERO, antes=None,
+        despues={"archivo": seguridad.name, "respaldo_de_seguridad": seguridad.name},
+    )
+    sesion.almacen.reemplazar(nuevo, [], nota)
+    sesion.libro = nuevo
+    return seguridad
 

@@ -8,9 +8,9 @@ from __future__ import annotations
 
 from dataclasses import replace
 
-from motor.categorias import normalizar_nombre
 from motor.libro import Libro
 from motor.modelo import Perfil
+from motor.textos import normalizar_nombre
 
 
 def necesita_bienvenida(libro: Libro) -> bool:

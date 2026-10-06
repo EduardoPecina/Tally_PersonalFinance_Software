@@ -106,16 +106,50 @@ Campos:
 - **Tarjeta de débito:** no es una entidad aparte. La cuenta de tipo `DEBITO`
   es la cuenta bancaria.
 
-## 6. Categorías y grupos
+## 6. Categorías, subcategorías y clasificaciones
 
-- Una categoría tiene una clase: `INGRESO`, `GASTO` o `SISTEMA`.
-- Opcionalmente pertenece a un **grupo**, equivalente a la columna
-  "Clasif. Metas" del Excel. Los grupos por defecto son Necesidad, Disfrute,
-  Estabilidad, Inversión y Dádivas. **Todos son editables.**
-- Una categoría de ingreso puede marcarse como **principal** (p. ej. Nómina).
-  Así se detectan las quincenas.
-- Borrar una categoría con movimientos exige reasignarlos a otra, lo que
-  equivale a fusionarlas.
+| En el portal | En el motor | Qué es |
+|---|---|---|
+| Categoría | `Rubro` | Caja que agrupa (SALUD, TECNOLOGIA…). De gasto o de ingreso |
+| Subcategoría | `Categoria` | Lo que lleva cada partida (DENTISTA, GASOLINA…). Vive en un rubro de su misma clase |
+| Clasificación | `Grupo` | Necesidad, Disfrute, Estabilidad, Inversión, Dádivas (la "Clasif. Metas" del Excel) |
+
+- Las partidas solo apuntan a subcategorías. Un rubro nunca tiene movimientos
+  propios: sus totales son la suma de sus subcategorías.
+- Una subcategoría tiene una clase: `INGRESO`, `GASTO` o `SISTEMA`. Las del
+  sistema (AJUSTE DE SALDO, SALDO INICIAL) no están en ningún rubro.
+- Nombres de rubros y subcategorías: MAYÚSCULAS y sin acentos (la Ñ se
+  conserva). Se comparan sin importar mayúsculas, acentos, signos ni
+  espacios: cada subcategoría existe una sola vez en todo el libro, y cada
+  rubro también (`motor/textos.py`).
+- Una subcategoría de ingreso puede marcarse como **principal** (p. ej.
+  NOMINA). Así se detectan las quincenas.
+- Borrar una subcategoría con movimientos exige pasarlos a otra (fusión).
+  Borrar un rubro con subcategorías exige pasarlas a otro de la misma clase.
+- El catálogo inicial está en `motor/catalogo.py`. Los datos de TALLY 0.3 se
+  ponen al día una sola vez al abrirlos: nombres estandarizados (si dos
+  chocan, la segunda queda como «NOMBRE (2)»), cada subcategoría en su rubro
+  del catálogo o en VARIOS / INGRESOS VARIOS, y las del catálogo que falten.
+
+## 6 bis. Carga masiva
+
+`motor/importacion.py` lee la plantilla de texto (un bloque por cuenta) y
+aplica las mismas reglas de la tabla 3:
+
+| Columna SUBCATEGORIA | CARGO | ABONO |
+|---|---|---|
+| Subcategoría de gasto | Gasto | Reembolso |
+| Subcategoría de ingreso | Rendimiento negativo | Ingreso |
+| AJUSTE DE SALDO | Ajuste (−) | Ajuste (+) |
+| Otra cuenta propia | Transferencia hacia ella | Transferencia desde ella |
+
+- Si el destino de la transferencia es una tarjeta de crédito, es un pago de
+  tarjeta.
+- Una transferencia que viene en los bloques de las dos cuentas se carga una
+  vez.
+- Lo que ya existe se omite: misma fecha, tipo y partidas, sin importar la
+  descripción.
+- Es todo o nada: con un solo error no se carga ninguna fila.
 
 ## 7. Indicadores
 

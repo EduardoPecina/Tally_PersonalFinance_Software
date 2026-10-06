@@ -96,7 +96,23 @@ class Grupo:
 
 
 @dataclass(frozen=True, slots=True)
+class Rubro:
+    """La caja que agrupa subcategorías (SALUD, TECNOLOGIA…). En el portal se llama «Categoría».
+
+    Los movimientos nunca apuntan a un rubro, solo a sus subcategorías (:class:`Categoria`).
+    """
+
+    id: str
+    nombre: str
+    clase: ClaseCategoria  # INGRESO o GASTO
+    orden: int = 0
+
+
+@dataclass(frozen=True, slots=True)
 class Categoria:
+    """Lo que se asigna a cada movimiento. En el portal se llama «Subcategoría» y vive dentro de un
+    :class:`Rubro` (salvo las del sistema). ``grupo_id`` es su clasificación (Necesidad, Disfrute…)."""
+
     id: str
     nombre: str
     clase: ClaseCategoria
@@ -105,6 +121,7 @@ class Categoria:
     # Ingreso principal (p. ej. Nómina): marca el inicio de cada quincena.
     principal: bool = False
     orden: int = 0
+    rubro_id: str | None = None
 
 
 @dataclass(frozen=True, slots=True)

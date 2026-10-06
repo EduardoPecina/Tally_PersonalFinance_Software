@@ -19,12 +19,13 @@ from motor.modelo import (
     Operacion,
     Partida,
     Perfil,
+    Rubro,
     TipoCuenta,
     TipoOperacion,
 )
 
 # Tipos de entidad, en el orden en que se cargan.
-ENTIDADES = ("perfil", "grupo", "categoria", "cuenta", "operacion")
+ENTIDADES = ("perfil", "grupo", "rubro", "categoria", "cuenta", "operacion")
 ID_PERFIL = "perfil"
 
 
@@ -55,10 +56,14 @@ def grupo_a_dict(g: Grupo) -> dict:
     return {"id": g.id, "nombre": g.nombre, "orden": g.orden}
 
 
+def rubro_a_dict(r: Rubro) -> dict:
+    return {"id": r.id, "nombre": r.nombre, "clase": r.clase.value, "orden": r.orden}
+
+
 def categoria_a_dict(c: Categoria) -> dict:
     return {
         "id": c.id, "nombre": c.nombre, "clase": c.clase.value, "grupo_id": c.grupo_id,
-        "activa": c.activa, "principal": c.principal, "orden": c.orden,
+        "activa": c.activa, "principal": c.principal, "orden": c.orden, "rubro_id": c.rubro_id,
     }
 
 
@@ -94,10 +99,15 @@ def grupo_desde_dict(d: dict) -> Grupo:
     return Grupo(id=d["id"], nombre=d["nombre"], orden=d.get("orden", 0))
 
 
+def rubro_desde_dict(d: dict) -> Rubro:
+    return Rubro(id=d["id"], nombre=d["nombre"], clase=ClaseCategoria(d["clase"]), orden=d.get("orden", 0))
+
+
 def categoria_desde_dict(d: dict) -> Categoria:
     return Categoria(
         id=d["id"], nombre=d["nombre"], clase=ClaseCategoria(d["clase"]), grupo_id=d.get("grupo_id"),
         activa=d.get("activa", True), principal=d.get("principal", False), orden=d.get("orden", 0),
+        rubro_id=d.get("rubro_id"),   # los datos anteriores a la 0.4 no tienen rubros (motor/catalogo.py)
     )
 
 
@@ -134,6 +144,7 @@ def instantanea(libro: Libro) -> Instantanea:
     return {
         "perfil": {ID_PERFIL: perfil_a_dict(libro.perfil)} if libro.perfil else {},
         "grupo": {g.id: grupo_a_dict(g) for g in libro.grupos()},
+        "rubro": {r.id: rubro_a_dict(r) for r in libro.rubros()},
         "categoria": {c.id: categoria_a_dict(c) for c in libro.categorias()},
         "cuenta": {c.id: cuenta_a_dict(c) for c in libro.cuentas()},
         "operacion": {op.id: operacion_a_dict(op) for op in libro.operaciones()},
@@ -150,6 +161,7 @@ def libro_desde_instantanea(
             perfil=perfil_desde_dict(perfil) if perfil else None,
             grupos=[grupo_desde_dict(d) for d in datos.get("grupo", {}).values()],
             categorias=[categoria_desde_dict(d) for d in datos.get("categoria", {}).values()],
+            rubros=[rubro_desde_dict(d) for d in datos.get("rubro", {}).values()],
             cuentas=[cuenta_desde_dict(d) for d in datos.get("cuenta", {}).values()],
             operaciones=[operacion_desde_dict(d) for d in datos.get("operacion", {}).values()],
             secuencia=secuencia,
@@ -169,9 +181,19 @@ def verificar_integridad(libro: Libro) -> list[str]:
     cuentas = {c.id for c in libro.cuentas()}
     categorias = {c.id for c in libro.categorias()}
     grupos = {g.id for g in libro.grupos()}
+    rubros = {r.id: r for r in libro.rubros()}
+    for rubro in rubros.values():
+        if rubro.clase is ClaseCategoria.SISTEMA:
+            problemas.append(f"la categoría «{rubro.nombre}» no puede ser del sistema")
     for categoria in libro.categorias():
         if categoria.grupo_id is not None and categoria.grupo_id not in grupos:
-            problemas.append(f"la categoría «{categoria.nombre}» apunta a un grupo inexistente")
+            problemas.append(f"la subcategoría «{categoria.nombre}» apunta a una clasificación inexistente")
+        if categoria.rubro_id is not None:
+            rubro = rubros.get(categoria.rubro_id)
+            if rubro is None:
+                problemas.append(f"la subcategoría «{categoria.nombre}» apunta a una categoría inexistente")
+            elif rubro.clase is not categoria.clase:
+                problemas.append(f"la subcategoría «{categoria.nombre}» no es del mismo tipo que su categoría")
     for op in libro.operaciones():
         if sum(p.importe for p in op.partidas) != 0:
             problemas.append(f"el movimiento del {op.fecha} no suma cero")

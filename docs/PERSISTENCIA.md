@@ -54,7 +54,9 @@ que los dos siempre buscan los datos en el mismo lugar.
   mal, TALLY lo dice y sugiere restaurar un respaldo; no trabaja sobre datos
   dañados.
 - **Versión de esquema:** un archivo creado por una versión más nueva de TALLY
-  no se abre con una más vieja.
+  no se abre con una más vieja. Esquema 2 (TALLY 0.4): categorías con
+  subcategorías. Al abrir datos del esquema 1, `Sesion` los pone al día una
+  sola vez (`motor/catalogo.py`) y lo anota en la bitácora.
 
 ## Bitácora
 
@@ -79,10 +81,12 @@ Un respaldo es un `.zip` con:
 | `respaldos.restaurar(sesion, ruta)` | 1) valida todo, 2) crea `TALLY_antes_de_restaurar_*.zip` con lo actual, 3) reemplaza en una sola transacción y lo anota en la bitácora |
 | `respaldos.respaldo_automatico(sesion)` | Respaldo con rotación (conserva los últimos 10) |
 | `respaldos.respaldar_archivo_de_datos(ruta, carpeta)` | Respaldo en solo lectura de un `tally.db`. Lo usa el instalador antes de actualizar |
+| `respaldos.empezar_de_cero(sesion)` | Respalda todo (`TALLY_antes_de_empezar_de_cero_*.zip`) y deja TALLY como recién instalado. Sin respaldo no borra nada |
 | `respaldos.copiar_archivo_de_datos(origen, destino)` | Copia un `tally.db` y comprueba con una segunda lectura independiente que sea idéntico (entidades y bitácora). Nunca sobrescribe. Lo usa el instalador para mover los datos |
 
 Un respaldo dañado, incompleto, modificado o de una versión más nueva se
-rechaza **antes** de tocar nada.
+rechaza **antes** de tocar nada. Formato 2 desde TALLY 0.4. Un respaldo de
+formato 1 se pone al día al restaurarlo.
 
 ## Instalador
 
