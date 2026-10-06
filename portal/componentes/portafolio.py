@@ -3,20 +3,23 @@ valor aproximado actual (motor/cotizaciones.py). Se muestra dentro del estado de
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timedelta
 from decimal import Decimal
 
 import pandas as pd
 import streamlit as st
 
-from motor import cotizaciones, portafolio
+from motor import cotizaciones, perfil, portafolio
 from motor.dinero import a_pesos
 from motor.modelo import Cuenta, TipoOperacionValor
 from portal.componentes import formato
 from portal.componentes.sesion import ejecutar, libro
 
-PRIVACIDAD = ("Solo se envía el **símbolo** (por ejemplo IVVPESO.MX) a Yahoo Finance; nunca tus títulos, montos ni "
-              "archivos. Los precios pueden tener retraso: son aproximados.")
+TRANSPARENCIA = (f"⚡ Precios obtenidos desde **{cotizaciones.PROVEEDOR}**. La consulta solo envía los **símbolos "
+                 "bursátiles** (por ejemplo IVV o IVVPESO.MX) para obtener cotizaciones públicas: no se envían "
+                 "movimientos, saldos, cantidades ni datos personales. Todo el cálculo se hace en tu PC. Los precios "
+                 "pueden tener retraso: son aproximados.")
+VIGENCIA = timedelta(hours=1)
 
 
 def mostrar(cuenta: Cuenta) -> None:
@@ -54,24 +57,51 @@ def mostrar(cuenta: Cuenta) -> None:
 
 
 def _precios(cuenta: Cuenta, abiertas) -> tuple[dict, dict]:
-    """Los de la última consulta, más los que el usuario escriba a mano (estos mandan)."""
+    """Los últimos guardados en tu PC (de esta consulta o de antes), más los que escribas a mano (estos mandan)."""
     clave = f"_cotizacion_{cuenta.id}"
+    lib = libro()
     if abiertas:
-        boton, nota = st.columns([1, 2], vertical_alignment="center")
-        if boton.button("Consultar valor aproximado actual", type="primary", icon=":material/travel_explore:",
-                        key=f"consultar_{cuenta.id}"):
+        simbolos = [p.simbolo for p in abiertas]
+        boton, auto = st.columns([1, 1.3], vertical_alignment="center")
+        pedido = boton.button("Consultar valor aproximado actual", type="primary", icon=":material/travel_explore:",
+                              key=f"consultar_{cuenta.id}")
+        actual = bool(lib.perfil and lib.perfil.actualizar_precios)
+        automatico = auto.toggle(
+            "Actualizar precios automáticamente", value=actual, key=f"auto_precios_{cuenta.id}",
+            help="Al abrir una cuenta de inversión, si los precios guardados tienen más de una hora, TALLY los "
+                 "consulta solo. Igual que el botón: envía solo los símbolos.")
+        if lib.perfil and automatico != actual:
+            ejecutar(lambda lib: perfil.ajustar(lib, actualizar_precios=automatico))
+        guardados, _ = cotizaciones.ultimos()
+        ahora = datetime.now()
+        viejos = any(s not in guardados or ahora - guardados[s].actualizado > VIGENCIA for s in simbolos)
+        bandera = f"_auto_hecho_{cuenta.id}"
+        if pedido or (automatico and viejos and not st.session_state.get(bandera)):
+            st.session_state[bandera] = True          # lo automático, una vez por visita
             with st.spinner("Consultando precios…"):
-                resultado, tipos, aviso = cotizaciones.consultar([p.simbolo for p in abiertas])
-            st.session_state[clave] = {"precios": resultado, "tipos": tipos, "aviso": aviso, "momento": datetime.now()}
-        nota.caption(PRIVACIDAD)
-    consulta = st.session_state.get(clave)
-    precios = {s: (c.precio, c.moneda or "MXN") for s, c in (consulta or {}).get("precios", {}).items() if c.ok}
-    tipos = dict((consulta or {}).get("tipos", {}))
-    if consulta:
-        texto = f"Consultado a las {consulta['momento']:%H:%M} del {formato.fecha(consulta['momento'].date())}."
-        if consulta["aviso"]:
-            st.warning(f"{texto} No se pudo todo: {consulta['aviso']}")
-        else:
+                consulta = cotizaciones.consultar(simbolos)
+            cotizaciones.guardar(consulta)
+            st.session_state[clave] = consulta
+        st.caption(TRANSPARENCIA)
+
+    consulta: cotizaciones.Consulta | None = st.session_state.get(clave)
+    guardados, tipos_guardados = cotizaciones.ultimos()
+    precios = {s: (g.valor, g.moneda) for s, g in guardados.items()}
+    tipos = {m: g.valor for m, g in tipos_guardados.items()}
+    if consulta and consulta.falla_proveedor:
+        st.error(f"⚠️ {cotizaciones.PROVEEDOR} no está respondiendo como antes: puede que haya cambiado o dejado de "
+                 "funcionar. **TALLY sigue funcionando**: usa tus últimos precios guardados o escríbelos a mano. Si "
+                 "sigue así, una actualización de TALLY cambiará a otro proveedor gratuito.")
+    elif consulta and consulta.sin_conexion:
+        st.warning(consulta.aviso)
+    elif consulta and consulta.aviso:
+        st.warning(f"No se pudo todo: {consulta.aviso}")
+    if abiertas:
+        fechas = [guardados[p.simbolo].actualizado for p in abiertas if p.simbolo in guardados]
+        if fechas:
+            texto = f"Última actualización: {min(fechas):%d/%m/%Y %H:%M}"
+            if consulta and (consulta.sin_conexion or consulta.falla_proveedor):
+                texto += " · sin conexión: se muestran los últimos precios guardados en tu PC"
             st.caption(texto)
     if abiertas:
         with st.expander("Escribir precios a mano (sin internet)"):

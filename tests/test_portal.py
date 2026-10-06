@@ -607,3 +607,35 @@ def test_titulos_en_una_cuenta_de_inversion(raiz, monkeypatch):
     lib = sesion_en(raiz).libro
     assert cuentas.saldo(lib, inv) > 1000                                # 125 de títulos + interés de los cetes
     assert lib.cuenta(inv).plusvalia_registrada > 0
+
+
+def test_precios_automaticos_solo_si_el_usuario_los_activa(raiz, monkeypatch):
+    import json
+
+    from motor import cotizaciones, portafolio
+
+    s = sesion_en(raiz)
+    with s.cambio() as lib:
+        perfil.configurar(lib, "Usuario Ficticio")
+        inv = cuentas.crear(lib, "Inversión Ficticia", "inversion", saldo_inicial=1000, fecha_creacion=date(2026, 1, 1)).id
+        portafolio.registrar_compra(lib, inv, date(2026, 7, 2), "FICT.MX", 10, 100)
+    enviados = []
+
+    def falso(simbolo):
+        enviados.append(simbolo)
+        return json.dumps({"chart": {"result": [{"meta": {"currency": "MXN", "regularMarketPrice": 101}}]}})
+
+    monkeypatch.setattr(cotizaciones, "enviar", falso)
+    at = abrir(_pagina("cuentas"))
+    next(b for b in at.button if b.key == f"ver_{inv}").click().run()
+    sin_errores(at)
+    assert enviados == []                                    # apagado por omisión: no sale nada al abrir
+
+    at.toggle(key=f"auto_precios_{inv}").set_value(True).run()
+    sin_errores(at)
+    assert sesion_en(raiz).libro.perfil.actualizar_precios
+    assert enviados == ["FICT.MX"]                           # una consulta, solo el símbolo
+    at.run()
+    assert enviados == ["FICT.MX"]                           # no vuelve a consultar en la misma visita
+    assert any("Última actualización" in c.value for c in at.caption)
+    assert cotizaciones.ultimos()[0]["FICT.MX"].valor == 101   # guardado en la PC para usarlo sin internet

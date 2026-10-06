@@ -17,10 +17,22 @@ Excel.
 - Sin conexión bancaria, sin nube y sin telemetría.
 - Funciona sin Internet. Los datos viven en `C:\Users\<tu usuario>\TALLY`,
   solo en tu PC: fuera de OneDrive y de cualquier nube.
-- La única conexión opcional es el botón **Consultar valor aproximado actual** de
-  las cuentas de inversión: envía solo el símbolo del título (por ejemplo
-  `IVVPESO.MX`) a Yahoo Finance, nunca tus títulos, montos ni archivos, y solo
-  cuando lo aprietas. Sin él, escribes el precio a mano.
+- La única conexión es opcional: **Consultar valor aproximado actual**, en las
+  cuentas de inversión. Pide a Yahoo Finance el precio público de cada título y
+  envía **solo el símbolo bursátil** (`GET https://…/chart/IVV`), siempre por
+  HTTPS:
+  - **No envía** cantidades, precios de compra, saldos, movimientos,
+    patrimonio, tu nombre ni archivos. Valor actual, ganancia y rentabilidad
+    se calculan en tu PC.
+  - **No se registra** en bitácoras ni logs. En tu PC solo se guardan los
+    últimos precios públicos (`Datos\precios.json`), para seguir funcionando
+    sin internet.
+  - **Solo consulta** cuando aprietas el botón, o al abrir la cuenta si tú
+    activas «Actualizar precios automáticamente» (viene apagado).
+  - **Si Yahoo deja de responder**, TALLY avisa y sigue funcionando con los
+    últimos precios guardados o con los que escribas a mano. El proveedor está
+    concentrado en `motor/cotizaciones.py`, así que cambiarlo por otro es un
+    cambio pequeño.
 - Los datos financieros nunca forman parte de este repositorio (ver `.gitignore`).
 
 ## Qué resuelve
