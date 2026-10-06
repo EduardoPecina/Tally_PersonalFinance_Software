@@ -23,6 +23,6 @@ jobs:
         with:
           python-version: "3.13"
       - name: Instalar librerías (lock verificado)
-        run: python -m pip install --require-hashes --only-binary=:all: -r requirements-lock.txt
+        run: "python -m pip install --require-hashes --only-binary=:all: -r requirements-lock.txt"
       - name: Pruebas
         run: python -m pytest -q
