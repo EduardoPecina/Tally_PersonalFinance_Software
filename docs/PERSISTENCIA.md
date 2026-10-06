@@ -45,8 +45,11 @@ que los dos siempre buscan los datos en el mismo lugar.
   del bloque se guarda de inmediato. Si algo falla, el libro vuelve al último
   estado guardado; nunca queda a medias.
 - Solo se escriben las entidades que cambiaron. Cada una es un documento JSON
-  (perfil, grupo, categoría, cuenta u operación), en el mismo formato estable
-  que los respaldos.
+  (perfil, clasificación, categoría, subcategoría, cuenta, operación y, desde
+  TALLY 0.7, `valor` —compras y ventas de títulos— y `plazo` —CETES, pagarés—),
+  en el mismo formato estable que los respaldos. Esquema 3 y respaldos de
+  formato 3 desde TALLY 0.7: una versión anterior ya no los abre, para no perder
+  los títulos.
 - Un **contador de revisión** detecta si otra ventana de TALLY modificó los
   datos y pide recargar en lugar de sobrescribir.
 - **Al abrir** se ejecuta `PRAGMA quick_check` y se verifica que cada

@@ -10,7 +10,7 @@ import streamlit as st
 from motor import consultas, cuentas, tarjetas
 from motor.consultas import ETIQUETA_TIPO_CUENTA
 from motor.modelo import TipoCuenta
-from portal.componentes import exportar, formato
+from portal.componentes import exportar, formato, portafolio
 from portal.componentes import tarjeta as estado_tarjeta
 from portal.componentes.sesion import libro
 from portal.paginas import historial, registrar
@@ -75,6 +75,9 @@ def mostrar(cuenta_id: str) -> None:
         _msi(cuenta.id)
     else:
         st.metric("Saldo", formato.dinero(cuentas.saldo(lib, cuenta.id)))
+    if cuenta.tipo is TipoCuenta.INVERSION:
+        with st.container(border=True):
+            portafolio.mostrar(cuenta)
 
     izquierda, derecha, orden_col = st.columns([1, 2, 1.2], vertical_alignment="bottom")
     if not cuenta.activa:

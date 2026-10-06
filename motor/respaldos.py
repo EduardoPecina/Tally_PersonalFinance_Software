@@ -34,7 +34,8 @@ from motor.serializacion import libro_desde_instantanea
 from motor.sesion import Sesion
 
 FORMATO = "tally-respaldo"
-VERSION_FORMATO = 2  # 2: categorías con subcategorías (TALLY 0.4). Los de formato 1 se ponen al día al restaurar
+VERSION_FORMATO = 3  # 2: categorías con subcategorías (TALLY 0.4). 3: títulos e inversiones a plazo (TALLY 0.7).
+#                      Los anteriores se ponen al día al restaurar
 MANIFIESTO = "manifiesto.json"
 DATOS = "datos.json"
 TAMANO_MAXIMO = 512 * 1024 * 1024  # bytes descomprimidos de datos.json

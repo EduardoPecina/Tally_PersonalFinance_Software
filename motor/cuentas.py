@@ -237,7 +237,7 @@ def eliminar_cuenta(libro: Libro, cuenta_id: str, *, dejar_en_cero: bool = False
       quede en 0 y deje de contar en el patrimonio.
     """
     cuenta = libro.cuenta(cuenta_id)
-    if not tiene_movimientos(libro, cuenta_id):
+    if not tiene_movimientos(libro, cuenta_id) and not libro.tiene_titulos(cuenta_id):
         eliminar(libro, cuenta_id)
         return BORRADA
     if dejar_en_cero and libro.saldo_centavos(cuenta_id):

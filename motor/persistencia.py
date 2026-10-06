@@ -28,9 +28,10 @@ from motor.errores import ErrorDatos
 from motor.libro import Libro
 from motor.serializacion import Instantanea, instantanea, libro_desde_instantanea
 
-VERSION_ESQUEMA = 2
+VERSION_ESQUEMA = 3
 # 1: TALLY 0.1–0.3. 2: categorías con subcategorías (entidad «rubro»). Las tablas no cambian; el contenido lo
-#    pone al día ``Sesion`` (motor/catalogo.py) la primera vez que se abre.
+#    pone al día ``Sesion`` (motor/catalogo.py) la primera vez que se abre. 3: títulos e inversiones a plazo
+#    (entidades «valor» y «plazo», TALLY 0.7): una versión anterior ya no abre los datos, para no perderlos.
 NOMBRE_ARCHIVO = "tally.db"
 
 _ESQUEMA = """
