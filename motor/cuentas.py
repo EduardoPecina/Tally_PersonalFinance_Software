@@ -40,17 +40,24 @@ def crear(
     limite_credito: Monto | None = None,
     dia_corte: int | None = None,
     dia_pago: int | None = None,
+    dias_para_pagar: int | None = None,
+    dias_habiles: bool = False,
+    recorrer_inhabil: bool = True,
     fecha_creacion: date | None = None,
 ) -> Cuenta:
     """Crea una cuenta y, si se indica, registra su saldo inicial.
 
     Para tarjetas de crédito lo natural es indicar ``deuda_inicial`` (lo que
-    se debe hoy) en lugar de ``saldo_inicial``.
+    se debe hoy) en lugar de ``saldo_inicial``. La fecha límite de pago se
+    indica con ``dia_pago`` (un día fijo del mes) o con ``dias_para_pagar``
+    (días después del corte, naturales o hábiles según ``dias_habiles``).
     """
     tipo = TipoCuenta(tipo)
     nombre = normalizar_nombre(nombre)
     _nombre_libre(libro, nombre)
-    if tipo is not TipoCuenta.CREDITO and any(v is not None for v in (deuda_inicial, limite_credito, dia_corte, dia_pago)):
+    if tipo is not TipoCuenta.CREDITO and any(
+        v is not None for v in (deuda_inicial, limite_credito, dia_corte, dia_pago, dias_para_pagar)
+    ):
         raise ErrorValidacion("Límite, día de corte, día de pago y deuda solo aplican a tarjetas de crédito.")
 
     inicial = a_centavos(saldo_inicial)
@@ -72,7 +79,11 @@ def crear(
         limite_credito=_limite(limite_credito),
         dia_corte=_dia(dia_corte, "corte"),
         dia_pago=_dia(dia_pago, "pago"),
+        dias_para_pagar=_dias_para_pagar(dias_para_pagar),
+        dias_habiles=bool(dias_habiles),
+        recorrer_inhabil=bool(recorrer_inhabil),
     )
+    _validar_regla_de_pago(cuenta)
     libro.guardar_cuenta(cuenta)
     if inicial:
         _registrar_saldo_inicial(libro, cuenta.id, inicial, fecha_saldo_inicial or fecha_creacion)
@@ -94,6 +105,9 @@ def editar(
     limite_credito: Monto | None | object = _SIN_CAMBIO,
     dia_corte: int | None | object = _SIN_CAMBIO,
     dia_pago: int | None | object = _SIN_CAMBIO,
+    dias_para_pagar: int | None | object = _SIN_CAMBIO,
+    dias_habiles: bool | None = None,
+    recorrer_inhabil: bool | None = None,
 ) -> Cuenta:
     """Edita datos descriptivos. El tipo de cuenta no se cambia aquí."""
     cuenta = libro.cuenta(cuenta_id)
@@ -114,6 +128,7 @@ def editar(
         "limite_credito": (limite_credito, _limite),
         "dia_corte": (dia_corte, lambda v: _dia(v, "corte")),
         "dia_pago": (dia_pago, lambda v: _dia(v, "pago")),
+        "dias_para_pagar": (dias_para_pagar, _dias_para_pagar),
     }
     for campo, (valor, convertir) in datos_credito.items():
         if valor is _SIN_CAMBIO:
@@ -121,7 +136,14 @@ def editar(
         if cuenta.tipo is not TipoCuenta.CREDITO and valor is not None:
             raise ErrorValidacion("Límite, día de corte y día de pago solo aplican a tarjetas de crédito.")
         cambios[campo] = convertir(valor)
-    return libro.guardar_cuenta(replace(cuenta, **cambios))
+    for campo, valor in (("dias_habiles", dias_habiles), ("recorrer_inhabil", recorrer_inhabil)):
+        if valor is not None:
+            if cuenta.tipo is not TipoCuenta.CREDITO:
+                raise ErrorValidacion("La regla de la fecha de pago solo aplica a tarjetas de crédito.")
+            cambios[campo] = bool(valor)
+    nueva = replace(cuenta, **cambios)
+    _validar_regla_de_pago(nueva)
+    return libro.guardar_cuenta(nueva)
 
 
 def cambiar_tipo(libro: Libro, cuenta_id: str, tipo: TipoCuenta) -> Cuenta:
@@ -129,7 +151,8 @@ def cambiar_tipo(libro: Libro, cuenta_id: str, tipo: TipoCuenta) -> Cuenta:
     cuenta = libro.cuenta(cuenta_id)
     nueva = replace(cuenta, tipo=TipoCuenta(tipo))
     if nueva.tipo is not TipoCuenta.CREDITO:
-        nueva = replace(nueva, limite_credito=None, dia_corte=None, dia_pago=None)
+        nueva = replace(nueva, limite_credito=None, dia_corte=None, dia_pago=None, dias_para_pagar=None,
+                        dias_habiles=False, recorrer_inhabil=True)
         recibe_pagos = any(
             op.tipo is TipoOperacion.PAGO_TARJETA
             and any(p.cuenta_id == cuenta_id and p.importe > 0 for p in op.partidas)
@@ -256,6 +279,19 @@ def _dia(valor: int | None, que: str) -> int | None:
     if isinstance(valor, bool) or not isinstance(valor, int) or not 1 <= valor <= 31:
         raise ErrorValidacion(f"El día de {que} debe estar entre 1 y 31.")
     return valor
+
+
+def _dias_para_pagar(valor: int | None) -> int | None:
+    if valor is None:
+        return None
+    if isinstance(valor, bool) or not isinstance(valor, int) or not 1 <= valor <= 60:
+        raise ErrorValidacion("Los días para pagar después del corte deben estar entre 1 y 60.")
+    return valor
+
+
+def _validar_regla_de_pago(cuenta: Cuenta) -> None:
+    if cuenta.dia_pago is not None and cuenta.dias_para_pagar is not None:
+        raise ErrorValidacion("Elige un día fijo de pago o un número de días después del corte, no ambos.")
 
 
 def _operacion_inicial(cuenta_id: str, centavos: int, fecha: date) -> Operacion:

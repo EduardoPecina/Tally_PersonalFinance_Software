@@ -187,3 +187,18 @@ def test_archivo_danado_ofrece_recuperacion(raiz):
 
 def _pagina(nombre: str) -> str:
     return f"vistas/{nombre}.py"
+
+
+def test_tarjeta_con_10_dias_naturales_despues_del_corte(raiz, con_datos):
+    at = abrir()
+    at.switch_page(_pagina("cuentas")).run()
+    at.selectbox(key="cuentas_tipo_nueva").set_value("credito").run()
+    assert at.radio(key="cuentas_modo_pago").value == "dias"
+    next(t for t in at.text_input if t.label == "Nombre" and not t.value).input("TDC con plazo")
+    next(n for n in at.number_input if n.label == "Día de corte (opcional)").set_value(3)
+    assert next(n for n in at.number_input if n.label == "Días para pagar después del corte").value == 10
+    boton(at, "Agregar cuenta").click().run()
+    sin_errores(at)
+    tdc = cuentas.buscar(sesion_en(raiz).libro, "TDC con plazo")
+    assert (tdc.dia_corte, tdc.dias_para_pagar, tdc.dias_habiles, tdc.recorrer_inhabil, tdc.dia_pago) == (
+        3, 10, False, True, None)

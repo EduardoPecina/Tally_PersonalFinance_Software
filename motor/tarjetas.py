@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from datetime import date, timedelta
 from decimal import Decimal
 
+from motor import calendario
 from motor.dinero import a_centavos, a_pesos
 from motor.errores import ErrorValidacion
 from motor.libro import Libro
@@ -112,7 +113,7 @@ def resumen_ciclo(libro: Libro, tarjeta_id: str, fecha: date | None = None, *, h
     return ResumenCiclo(
         inicio=inicio,
         fin=fin,
-        fecha_limite_pago=_fecha_limite(fin, tarjeta.dia_pago),
+        fecha_limite_pago=fecha_limite_pago(tarjeta, fin),
         saldo_inicial=a_pesos(libro.saldo_centavos(tarjeta_id, inicio - timedelta(days=1))),
         cargos=a_pesos(cargos),
         abonos=a_pesos(abonos),
@@ -141,13 +142,42 @@ def ciclo_actual(libro: Libro, tarjeta_id: str, hoy: date | None = None) -> Resu
     return resumen_ciclo(libro, tarjeta_id, hoy, hasta=hoy)
 
 
-def _fecha_limite(corte: date, dia_pago: int | None) -> date | None:
-    if dia_pago is None:
+def describir_regla_pago(tarjeta: Cuenta) -> str:
+    """La regla de pago en palabras, p. ej. «10 días naturales después del corte (si es inhábil, el siguiente
+    día hábil)». Vacía si la tarjeta no tiene regla."""
+    if tarjeta.dias_para_pagar is not None:
+        tipo = "hábiles" if tarjeta.dias_habiles else "naturales"
+        texto = f"{tarjeta.dias_para_pagar} días {tipo} después del corte"
+    elif tarjeta.dia_pago is not None:
+        texto = f"el día {tarjeta.dia_pago} de cada mes"
+    else:
+        return ""
+    return texto + (" (si es inhábil, el siguiente día hábil)" if tarjeta.recorrer_inhabil else "")
+
+
+def fecha_limite_pago(tarjeta: Cuenta, corte: date) -> date | None:
+    """Fecha límite para pagar lo del corte, según la regla de la tarjeta.
+
+    - ``dias_para_pagar``: N días después del corte, naturales o hábiles (``dias_habiles``).
+      Ej. «hasta 10 días naturales contados a partir de la fecha de corte».
+    - ``dia_pago``: un día fijo del mes (el siguiente después del corte).
+    - Si ``recorrer_inhabil`` y la fecha cae en sábado, domingo o día inhábil bancario, se recorre al
+      siguiente día hábil («se considerará el día hábil siguiente»).
+
+    ``None`` si la tarjeta no tiene regla de pago.
+    """
+    if tarjeta.dias_para_pagar is not None:
+        if tarjeta.dias_habiles:
+            limite = calendario.sumar_dias_habiles(corte, tarjeta.dias_para_pagar)
+        else:
+            limite = corte + timedelta(days=tarjeta.dias_para_pagar)
+    elif tarjeta.dia_pago is not None:
+        limite = _dia_en_mes(corte.year, corte.month, tarjeta.dia_pago)
+        if limite <= corte:
+            limite = _dia_en_mes(*_mes_siguiente(corte.year, corte.month), tarjeta.dia_pago)
+    else:
         return None
-    candidata = _dia_en_mes(corte.year, corte.month, dia_pago)
-    if candidata <= corte:
-        candidata = _dia_en_mes(*_mes_siguiente(corte.year, corte.month), dia_pago)
-    return candidata
+    return calendario.siguiente_habil(limite) if tarjeta.recorrer_inhabil else limite
 
 
 def _tarjeta(libro: Libro, tarjeta_id: str) -> Cuenta:

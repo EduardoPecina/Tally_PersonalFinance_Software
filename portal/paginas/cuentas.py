@@ -18,10 +18,58 @@ def _etiqueta_tipo(tipo: TipoCuenta) -> str:
     return ETIQUETA_TIPO_CUENTA[TipoCuenta(tipo)]
 
 
+MODO_FIJO, MODO_DIAS, MODO_NINGUNO = "fijo", "dias", "ninguno"
+MODOS_PAGO = {
+    MODO_DIAS: "N días después del corte",
+    MODO_FIJO: "Un día fijo del mes",
+    MODO_NINGUNO: "No lo sé / después",
+}
+
+
+def _elegir_modo_pago(clave: str, cuenta: Cuenta | None = None) -> str:
+    """Cómo se calcula la fecha límite de pago (va fuera del formulario para que cambie los campos al momento)."""
+    if cuenta is None:
+        inicial = MODO_DIAS
+    elif cuenta.dias_para_pagar is not None:
+        inicial = MODO_DIAS
+    elif cuenta.dia_pago is not None:
+        inicial = MODO_FIJO
+    else:
+        inicial = MODO_NINGUNO
+    return st.radio(
+        "Fecha límite de pago", list(MODOS_PAGO), format_func=MODOS_PAGO.get, horizontal=True,
+        index=list(MODOS_PAGO).index(inicial), key=clave,
+        help="Búscalo en tu contrato o estado de cuenta. Ej.: «hasta 10 días naturales contados a partir de la "
+             "fecha de corte» o «el día 23 de cada mes».",
+    )
+
+
+def _campos_regla_pago(modo: str, izquierda, derecha, cuenta: Cuenta | None = None) -> dict:
+    """Campos de la regla de pago dentro del formulario. Devuelve los argumentos para el motor."""
+    if modo == MODO_NINGUNO:
+        return {"dia_pago": None, "dias_para_pagar": None}
+    if modo == MODO_FIJO:
+        regla = {"dias_para_pagar": None, "dia_pago": derecha.number_input(
+            "Día de pago", min_value=1, max_value=31, step=1, value=cuenta.dia_pago if cuenta else None)}
+    else:
+        regla = {"dia_pago": None, "dias_para_pagar": derecha.number_input(
+            "Días para pagar después del corte", min_value=1, max_value=60, step=1,
+            value=(cuenta.dias_para_pagar if cuenta and cuenta.dias_para_pagar else 10)),
+            "dias_habiles": izquierda.checkbox(
+                "Contar solo días hábiles", value=bool(cuenta and cuenta.dias_habiles),
+                help="Déjalo sin marcar si tu contrato dice «días naturales».")}
+    regla["recorrer_inhabil"] = st.checkbox(
+        "Si la fecha cae en fin de semana o día inhábil, se recorre al siguiente día hábil",
+        value=cuenta.recorrer_inhabil if cuenta else True,
+        help="Así lo dicen la mayoría de los contratos. Se usa el calendario de días inhábiles bancarios.")
+    return regla
+
+
 def formulario_nueva_cuenta(clave: str = "cuentas") -> None:
     """Formulario para crear una cuenta (se usa también en la bienvenida)."""
     tipo = st.selectbox("Tipo de cuenta", TIPOS, format_func=_etiqueta_tipo, key=f"{clave}_tipo_nueva")
     es_credito = tipo is TipoCuenta.CREDITO
+    modo_pago = _elegir_modo_pago(f"{clave}_modo_pago") if es_credito else MODO_NINGUNO
     with st.form(f"{clave}_nueva_cuenta", clear_on_submit=True, border=False):
         izquierda, derecha = st.columns(2)
         nombre = izquierda.text_input("Nombre", placeholder="Ej. BBVA Débito, Mercado Pago, TDC Nu", max_chars=60)
@@ -35,8 +83,7 @@ def formulario_nueva_cuenta(clave: str = "cuentas") -> None:
             datos["dia_corte"] = izquierda.number_input(
                 "Día de corte (opcional)", min_value=1, max_value=31, value=None, step=1,
                 help="El último día de cada ciclo de la tarjeta.")
-            datos["dia_pago"] = derecha.number_input(
-                "Día límite de pago (opcional)", min_value=1, max_value=31, value=None, step=1)
+            datos.update(_campos_regla_pago(modo_pago, izquierda, derecha))
         else:
             datos["saldo_inicial"] = izquierda.number_input(
                 "¿Cuánto tienes hoy en esta cuenta?", value=0.0, step=100.0, format="%.2f")
@@ -78,6 +125,9 @@ def _tarjeta_de_cuenta(cuenta: Cuenta) -> None:
         disponible = tarjetas.credito_disponible(lib, cuenta.id)
         if disponible is not None:
             notas.append(f"Crédito disponible: **{formato.dinero_md(disponible)}**")
+        regla = tarjetas.describir_regla_pago(cuenta)
+        if regla:
+            notas.append(f"Pago: {regla}")
         por_pagar = tarjetas.ciclo_por_pagar(lib, cuenta.id)
         if por_pagar is not None:
             texto = f"Corte del {formato.fecha(por_pagar.fin)}: por liquidar **{formato.dinero_md(por_pagar.por_liquidar)}**"
@@ -89,6 +139,8 @@ def _tarjeta_de_cuenta(cuenta: Cuenta) -> None:
 
 
 def _editar(cuenta: Cuenta) -> None:
+    es_credito = cuenta.tipo is TipoCuenta.CREDITO
+    modo_pago = _elegir_modo_pago(f"modo_pago_{cuenta.id}", cuenta) if es_credito else MODO_NINGUNO
     with st.form(f"editar_{cuenta.id}", border=False):
         izquierda, derecha = st.columns(2)
         nombre = izquierda.text_input("Nombre", value=cuenta.nombre, max_chars=60)
@@ -102,8 +154,7 @@ def _editar(cuenta: Cuenta) -> None:
                 "limite_credito": limite or None,
                 "dia_corte": derecha.number_input("Día de corte", min_value=1, max_value=31, step=1,
                                                   value=cuenta.dia_corte),
-                "dia_pago": izquierda.number_input("Día límite de pago", min_value=1, max_value=31, step=1,
-                                                   value=cuenta.dia_pago),
+                **_campos_regla_pago(modo_pago, izquierda, derecha, cuenta),
             }
         notas = st.text_area("Notas", value=cuenta.notas, height=80)
         en_disponible = st.checkbox("Cuenta como dinero disponible", value=cuenta.en_disponible)

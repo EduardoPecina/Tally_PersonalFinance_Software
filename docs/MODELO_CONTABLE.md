@@ -141,6 +141,14 @@ Los reportes aceptan cualquier rango de fechas. El motor ofrece además:
   la siguiente nómina. Reemplaza las filas "HISTORICO" del Excel.
 - **Ciclo de TDC:** según el día de corte. Muestra los cargos y abonos del
   ciclo, el saldo al corte y cuánto falta por liquidar.
+- **Fecha límite de pago** (la regla del contrato de cada tarjeta):
+  - **N días después del corte**, contados como naturales o como hábiles.
+    Ejemplo: «hasta 10 días naturales contados a partir de la fecha de corte».
+  - o **un día fijo del mes** (el siguiente después del corte).
+  - Si la fecha cae en sábado, domingo o día inhábil bancario, se recorre al
+    siguiente día hábil, salvo que la tarjeta indique lo contrario.
+  - Los días inhábiles bancarios de México se calculan para cualquier año en
+    `motor/calendario.py`, incluidos los jueves y viernes santos.
 
 Dentro de un mismo día, el orden de las operaciones es el de su captura.
 
