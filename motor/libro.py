@@ -22,7 +22,9 @@ from motor.modelo import (
     ClaseCategoria,
     Cuenta,
     Grupo,
+    InversionPlazo,
     Operacion,
+    OperacionValor,
     Perfil,
     Rubro,
 )
@@ -38,6 +40,8 @@ class Libro:
         self._grupos: dict[str, Grupo] = {}
         self._rubros: dict[str, Rubro] = {}
         self._operaciones: dict[str, Operacion] = {}
+        self._valores: dict[str, OperacionValor] = {}
+        self._plazos: dict[str, InversionPlazo] = {}
         self._secuencia = 0
         for categoria in (
             Categoria(CATEGORIA_AJUSTE, "AJUSTE DE SALDO", ClaseCategoria.SISTEMA, orden=-2),
@@ -57,6 +61,8 @@ class Libro:
         operaciones: list[Operacion],
         secuencia: int,
         reloj: Callable[[], datetime] | None = None,
+        valores: list[OperacionValor] = (),
+        plazos: list[InversionPlazo] = (),
     ) -> Libro:
         """Reconstruye un libro ya guardado, tal cual (lo usa la persistencia)."""
         libro = cls(reloj=reloj)
@@ -66,6 +72,8 @@ class Libro:
         libro._categorias.update({c.id: c for c in categorias})
         libro._cuentas = {c.id: c for c in cuentas}
         libro._operaciones = {op.id: op for op in operaciones}
+        libro._valores = {v.id: v for v in valores}
+        libro._plazos = {p.id: p for p in plazos}
         libro._secuencia = max([secuencia, *(op.secuencia for op in operaciones)])
         return libro
 
@@ -108,7 +116,54 @@ class Libro:
         self.cuenta(cuenta_id)
         if any(p.cuenta_id == cuenta_id for op in self._operaciones.values() for p in op.partidas):
             raise ErrorValidacion("La cuenta tiene movimientos; archívala en lugar de borrarla.")
+        if self.tiene_titulos(cuenta_id):
+            raise ErrorValidacion("La cuenta tiene títulos o inversiones a plazo; archívala en lugar de borrarla.")
         del self._cuentas[cuenta_id]
+
+    # ------------------------------------------------- títulos e inversiones a plazo
+
+    def valores(self, cuenta_id: str | None = None) -> list[OperacionValor]:
+        """Compras y ventas de títulos, en orden cronológico."""
+        lista = [v for v in self._valores.values() if cuenta_id is None or v.cuenta_id == cuenta_id]
+        return sorted(lista, key=lambda v: (v.fecha, v.tipo != "compra", v.id))
+
+    def valor(self, valor_id: str) -> OperacionValor:
+        try:
+            return self._valores[valor_id]
+        except KeyError:
+            raise ErrorNoEncontrado("La compra o venta no existe.") from None
+
+    def guardar_valor(self, valor: OperacionValor) -> OperacionValor:
+        self.cuenta(valor.cuenta_id)
+        self._valores[valor.id] = valor
+        return valor
+
+    def quitar_valor(self, valor_id: str) -> None:
+        self.valor(valor_id)
+        del self._valores[valor_id]
+
+    def plazos(self, cuenta_id: str | None = None) -> list[InversionPlazo]:
+        lista = [p for p in self._plazos.values() if cuenta_id is None or p.cuenta_id == cuenta_id]
+        return sorted(lista, key=lambda p: (p.fecha_inicio, p.nombre))
+
+    def plazo(self, plazo_id: str) -> InversionPlazo:
+        try:
+            return self._plazos[plazo_id]
+        except KeyError:
+            raise ErrorNoEncontrado("La inversión a plazo no existe.") from None
+
+    def guardar_plazo(self, plazo: InversionPlazo) -> InversionPlazo:
+        self.cuenta(plazo.cuenta_id)
+        self._plazos[plazo.id] = plazo
+        return plazo
+
+    def quitar_plazo(self, plazo_id: str) -> None:
+        self.plazo(plazo_id)
+        del self._plazos[plazo_id]
+
+    def tiene_titulos(self, cuenta_id: str) -> bool:
+        return any(v.cuenta_id == cuenta_id for v in self._valores.values()) or any(
+            p.cuenta_id == cuenta_id for p in self._plazos.values())
 
     # ------------------------------------------------------- categorías/grupos
 

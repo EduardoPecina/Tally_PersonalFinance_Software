@@ -72,6 +72,8 @@ ETIQUETA_ENTIDAD = {
     "categoria": "Subcategoría",
     "cuenta": "Cuenta",
     "operacion": "Movimiento",
+    "valor": "Compra o venta de títulos",
+    "plazo": "Inversión a plazo",
     "respaldo": "Respaldo",
 }
 ETIQUETA_ACCION = {CREAR: "Creó", EDITAR: "Editó", BORRAR: "Borró", RESTAURAR: "Restauró"}
@@ -90,6 +92,8 @@ _IGNORAR = {"modificado_en", "secuencia", "creado_en"}
 def resumen(registro: Registro | Cambio) -> str:
     """Una línea legible: «Editó Movimiento «Pizza» (importe/cuenta/categoría, descripción)»."""
     datos = registro.despues or registro.antes or {}
+    if registro.entidad == "valor" and "nombre" not in datos:
+        datos = {**datos, "nombre": f"{datos.get('tipo', '')} {datos.get('titulos', '')} {datos.get('simbolo', '')}".strip()}
     if registro.accion == EMPEZAR_DE_CERO:
         return f"Empezó de cero (lo anterior quedó en «{datos.get('respaldo_de_seguridad', '')}»)"
     nombre = datos.get("nombre") or datos.get("descripcion") or datos.get("archivo") or ""

@@ -575,3 +575,35 @@ def test_clasificaciones_como_cajas_con_sus_subcategorias(raiz, con_datos):
     caja("Disfrute").select(snacks).run()
     sin_errores(at)
     assert sesion_en(raiz).libro.categoria(snacks).grupo_id == grupo["Disfrute"]
+
+
+def test_titulos_en_una_cuenta_de_inversion(raiz, monkeypatch):
+    import json
+
+    from motor import cotizaciones, portafolio
+
+    s = sesion_en(raiz)
+    with s.cambio() as lib:
+        perfil.configurar(lib, "Usuario Ficticio")
+        inv = cuentas.crear(lib, "Inversión Ficticia", "inversion", saldo_inicial=1000, fecha_creacion=date(2026, 1, 1)).id
+        portafolio.registrar_compra(lib, inv, date(2026, 7, 2), "FICT.MX", 10, 100)
+        portafolio.registrar_plazo(lib, inv, "Cetes ficticios", date(2026, 7, 1), 500, 10, 28)
+    enviados = []
+
+    def falso(simbolo):
+        enviados.append(simbolo)
+        return json.dumps({"chart": {"result": [{"meta": {"currency": "MXN", "regularMarketPrice": 112.5}}]}})
+
+    monkeypatch.setattr(cotizaciones, "enviar", falso)
+    at = abrir(_pagina("cuentas"))
+    next(b for b in at.button if b.key == f"ver_{inv}").click().run()
+    sin_errores(at)
+    assert any(h.value == "Tus títulos e inversiones a plazo" for h in at.subheader)
+    next(b for b in at.button if b.key == f"consultar_{inv}").click().run()
+    sin_errores(at)
+    assert enviados == ["FICT.MX"]                                       # solo el símbolo
+    next(b for b in at.button if b.key == f"registrar_rendimiento_{inv}").click().run()
+    sin_errores(at)
+    lib = sesion_en(raiz).libro
+    assert cuentas.saldo(lib, inv) > 1000                                # 125 de títulos + interés de los cetes
+    assert lib.cuenta(inv).plusvalia_registrada > 0

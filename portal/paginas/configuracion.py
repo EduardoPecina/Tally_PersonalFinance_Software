@@ -102,7 +102,9 @@ def _acerca() -> None:
         f"- Tus datos: `{ruta}` ({tamano:,.0f} KB) · {len(lib.cuentas())} cuenta(s), "
         f"{len(lib.operaciones())} movimiento(s).\n"
         f"- Usuario desde el {lib.perfil.creado_en:%d/%m/%Y}.\n"
-        "- Nada sale de esta PC: sin nube, sin bancos conectados, sin telemetría."
+        "- Nada sale de esta PC: sin nube, sin bancos conectados, sin telemetría. La única excepción es opcional: "
+        "«Consultar valor aproximado actual» en una cuenta de inversión envía solo el símbolo del título "
+        "(p. ej. IVVPESO.MX), y solo cuando lo aprietas."
     )
     if sys.platform == "win32" and st.button("Abrir la carpeta de mis datos", icon=":material/folder_open:"):
         os.startfile(rutas.carpeta_usuario())  # noqa: S606 - abre el Explorador en la carpeta local del usuario

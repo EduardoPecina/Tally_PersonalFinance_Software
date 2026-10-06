@@ -17,6 +17,10 @@ Excel.
 - Sin conexión bancaria, sin nube y sin telemetría.
 - Funciona sin Internet. Los datos viven en `C:\Users\<tu usuario>\TALLY`,
   solo en tu PC: fuera de OneDrive y de cualquier nube.
+- La única conexión opcional es el botón **Consultar valor aproximado actual** de
+  las cuentas de inversión: envía solo el símbolo del título (por ejemplo
+  `IVVPESO.MX`) a Yahoo Finance, nunca tus títulos, montos ni archivos, y solo
+  cuando lo aprietas. Sin él, escribes el precio a mano.
 - Los datos financieros nunca forman parte de este repositorio (ver `.gitignore`).
 
 ## Qué resuelve
@@ -60,7 +64,7 @@ el acceso directo **Mis datos de TALLY**, dentro de `Escritorio\TALLY`.
 | Resumen | ¿Cuánto dinero tengo? ¿Cuánto gasté y en qué? ¿Tengo pagos de tarjeta por vencer? ¿Cómo voy con mis presupuestos? ¿Qué cargos temporales me deben devolver? |
 | Registrar | Anotar un gasto (también a meses sin intereses, repartido o como cargo temporal que te van a devolver), ingreso, transferencia, pago de tarjeta o reembolso |
 | Historial | Buscar, filtrar, editar, repetir o eliminar movimientos |
-| Cuentas | Saldo de cada cuenta, estado de cuenta con saldo corrido y estado de cada tarjeta (línea, disponible, pago) |
+| Cuentas | Saldo de cada cuenta, estado de cuenta con saldo corrido, estado de cada tarjeta (línea, disponible, pago) y, en las de inversión, tus títulos (acciones, ETFs, cripto) y CETES o pagarés con su valor aproximado |
 | Presupuestos | Tope mensual por categoría y cuánto llevas |
 | Tablas dinámicas | Pivots por categoría, mes, cuenta… exportables a Excel |
 | Gráficas | Dona, barras, tendencias, ingresos vs. gastos y patrimonio |

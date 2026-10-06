@@ -9,6 +9,7 @@ from __future__ import annotations
 import enum
 from dataclasses import dataclass
 from datetime import date, datetime
+from decimal import Decimal
 
 from motor.config import MONEDA
 
@@ -93,6 +94,49 @@ class Cuenta:
     dias_para_pagar: int | None = None
     dias_habiles: bool = False
     recorrer_inhabil: bool = True
+    # Solo cuentas de inversión con títulos: la ganancia (realizada + no realizada) que ya se pasó al saldo como
+    # rendimiento, en centavos. Así «Registrar como rendimiento» solo agrega lo nuevo (motor/portafolio.py).
+    plusvalia_registrada: int = 0
+
+
+class TipoOperacionValor(enum.StrEnum):
+    COMPRA = "compra"
+    VENTA = "venta"
+
+
+@dataclass(frozen=True, slots=True)
+class OperacionValor:
+    """Compra o venta de títulos (acciones, ETF, cripto) dentro de una cuenta de inversión.
+
+    Es un detalle de la cuenta, no un movimiento: comprar acciones con el dinero que ya está en la cuenta no
+    cambia su saldo. El dinero entra y sale de la cuenta con transferencias, como siempre.
+    """
+
+    id: str
+    cuenta_id: str
+    fecha: date
+    tipo: TipoOperacionValor
+    simbolo: str               # como lo cotiza Yahoo Finance: IVVPESO.MX, AAPL, BTC-USD…
+    titulos: Decimal           # puede tener decimales (cripto, fracciones de acción)
+    precio: Decimal            # por título, en ``moneda``
+    moneda: str = MONEDA
+    tipo_cambio: Decimal = Decimal(1)   # pesos por unidad de ``moneda`` ese día (1 si es MXN)
+    comision: Decimal = Decimal(0)      # en ``moneda``
+    notas: str = ""
+
+
+@dataclass(frozen=True, slots=True)
+class InversionPlazo:
+    """CETES, pagarés o certificados de depósito: tasa fija; su valor se calcula sin internet."""
+
+    id: str
+    cuenta_id: str
+    nombre: str
+    fecha_inicio: date
+    monto: int                 # centavos invertidos
+    tasa_anual: Decimal        # % anual (p. ej. 10.5)
+    plazo_dias: int
+    notas: str = ""
 
 
 @dataclass(frozen=True, slots=True)

@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from datetime import date, datetime
+from decimal import Decimal
 
 from motor.errores import ErrorDatos
 from motor.libro import Libro
@@ -16,16 +17,19 @@ from motor.modelo import (
     ClaseCategoria,
     Cuenta,
     Grupo,
+    InversionPlazo,
     Operacion,
+    OperacionValor,
     Partida,
     Perfil,
     Rubro,
     TipoCuenta,
     TipoOperacion,
+    TipoOperacionValor,
 )
 
 # Tipos de entidad, en el orden en que se cargan.
-ENTIDADES = ("perfil", "grupo", "rubro", "categoria", "cuenta", "operacion")
+ENTIDADES = ("perfil", "grupo", "rubro", "categoria", "cuenta", "operacion", "valor", "plazo")
 ID_PERFIL = "perfil"
 
 
@@ -78,7 +82,19 @@ def cuenta_a_dict(c: Cuenta) -> dict:
         "institucion": c.institucion, "notas": c.notas, "orden": c.orden,
         "limite_credito": c.limite_credito, "dia_corte": c.dia_corte, "dia_pago": c.dia_pago,
         "dias_para_pagar": c.dias_para_pagar, "dias_habiles": c.dias_habiles, "recorrer_inhabil": c.recorrer_inhabil,
+        **({"plusvalia_registrada": c.plusvalia_registrada} if c.plusvalia_registrada else {}),
     }
+
+
+def valor_a_dict(v: OperacionValor) -> dict:
+    return {"id": v.id, "cuenta_id": v.cuenta_id, "fecha": _iso(v.fecha), "tipo": v.tipo.value, "simbolo": v.simbolo,
+            "titulos": str(v.titulos), "precio": str(v.precio), "moneda": v.moneda,
+            "tipo_cambio": str(v.tipo_cambio), "comision": str(v.comision), "notas": v.notas}
+
+
+def plazo_a_dict(p: InversionPlazo) -> dict:
+    return {"id": p.id, "cuenta_id": p.cuenta_id, "nombre": p.nombre, "fecha_inicio": _iso(p.fecha_inicio),
+            "monto": p.monto, "tasa_anual": str(p.tasa_anual), "plazo_dias": p.plazo_dias, "notas": p.notas}
 
 
 def operacion_a_dict(op: Operacion) -> dict:
@@ -130,7 +146,22 @@ def cuenta_desde_dict(d: dict) -> Cuenta:
         institucion=d.get("institucion", ""), notas=d.get("notas", ""), orden=d.get("orden", 0),
         limite_credito=d.get("limite_credito"), dia_corte=d.get("dia_corte"), dia_pago=d.get("dia_pago"),
         dias_para_pagar=d.get("dias_para_pagar"), dias_habiles=d.get("dias_habiles", False),
-        recorrer_inhabil=d.get("recorrer_inhabil", True),
+        recorrer_inhabil=d.get("recorrer_inhabil", True), plusvalia_registrada=d.get("plusvalia_registrada", 0),
+    )
+
+
+def valor_desde_dict(d: dict) -> OperacionValor:
+    return OperacionValor(
+        id=d["id"], cuenta_id=d["cuenta_id"], fecha=_fecha(d["fecha"]), tipo=TipoOperacionValor(d["tipo"]),
+        simbolo=d["simbolo"], titulos=Decimal(d["titulos"]), precio=Decimal(d["precio"]), moneda=d.get("moneda", "MXN"),
+        tipo_cambio=Decimal(d.get("tipo_cambio", "1")), comision=Decimal(d.get("comision", "0")), notas=d.get("notas", ""),
+    )
+
+
+def plazo_desde_dict(d: dict) -> InversionPlazo:
+    return InversionPlazo(
+        id=d["id"], cuenta_id=d["cuenta_id"], nombre=d["nombre"], fecha_inicio=_fecha(d["fecha_inicio"]),
+        monto=d["monto"], tasa_anual=Decimal(d["tasa_anual"]), plazo_dias=d["plazo_dias"], notas=d.get("notas", ""),
     )
 
 
@@ -162,6 +193,8 @@ def instantanea(libro: Libro) -> Instantanea:
         "categoria": {c.id: categoria_a_dict(c) for c in libro.categorias()},
         "cuenta": {c.id: cuenta_a_dict(c) for c in libro.cuentas()},
         "operacion": {op.id: operacion_a_dict(op) for op in libro.operaciones()},
+        "valor": {v.id: valor_a_dict(v) for v in libro.valores()},
+        "plazo": {p.id: plazo_a_dict(p) for p in libro.plazos()},
     }
 
 
@@ -178,10 +211,12 @@ def libro_desde_instantanea(
             rubros=[rubro_desde_dict(d) for d in datos.get("rubro", {}).values()],
             cuentas=[cuenta_desde_dict(d) for d in datos.get("cuenta", {}).values()],
             operaciones=[operacion_desde_dict(d) for d in datos.get("operacion", {}).values()],
+            valores=[valor_desde_dict(d) for d in datos.get("valor", {}).values()],
+            plazos=[plazo_desde_dict(d) for d in datos.get("plazo", {}).values()],
             secuencia=secuencia,
             reloj=reloj,
         )
-    except (KeyError, TypeError, ValueError, AttributeError) as error:
+    except (KeyError, TypeError, ValueError, AttributeError, ArithmeticError) as error:
         raise ErrorDatos(f"Los datos guardados están dañados o incompletos ({error}).") from error
     problemas = verificar_integridad(libro)
     if problemas:
@@ -208,6 +243,9 @@ def verificar_integridad(libro: Libro) -> list[str]:
                 problemas.append(f"la subcategoría «{categoria.nombre}» apunta a una categoría inexistente")
             elif rubro.clase is not categoria.clase:
                 problemas.append(f"la subcategoría «{categoria.nombre}» no es del mismo tipo que su categoría")
+    for registro in [*libro.valores(), *libro.plazos()]:
+        if registro.cuenta_id not in cuentas:
+            problemas.append("una compra de títulos o inversión a plazo usa una cuenta inexistente")
     for op in libro.operaciones():
         if sum(p.importe for p in op.partidas) != 0:
             problemas.append(f"el movimiento del {op.fecha} no suma cero")

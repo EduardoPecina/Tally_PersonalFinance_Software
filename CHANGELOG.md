@@ -2,7 +2,25 @@
 
 Todos los cambios relevantes de TALLY se documentan aquí.
 
-## [0.6.0] — Sin publicar
+## [0.7.0] — Sin publicar
+
+- **Títulos e inversiones a plazo** en las cuentas de inversión (Cuentas → Ver movimientos):
+  - Registra **compras y ventas** de acciones, ETFs y cripto: símbolo (como en Yahoo Finance: IVVPESO.MX, AAPL,
+    BTC-USD), títulos (con decimales), precio, moneda, tipo de cambio y comisión. TALLY lleva el **costo
+    promedio** y la **ganancia de lo vendido**, y no deja vender títulos que no tenías.
+  - Registra **CETES, pagarés y certificados de depósito** (monto, tasa anual, plazo). Su valor e interés se
+    calculan en tu PC, sin internet.
+  - Botón **«Consultar valor aproximado actual»**: trae el precio de hoy de cada título y, si cotiza en dólares,
+    el tipo de cambio. Muestra el valor actual y la ganancia en $ y %. **Solo envía el símbolo**, nunca tus
+    títulos, montos ni archivos, y solo cuando lo aprietas. Sin conexión (o si la red lo bloquea) lo dice y
+    puedes escribir los precios a mano.
+  - **«Registrar como rendimiento»** (opcional): pasa a tu saldo la ganancia (o pérdida) que aún no estaba
+    registrada. TALLY recuerda lo ya registrado para no contar nada dos veces.
+  - Registrar títulos no cambia el saldo de la cuenta: el dinero ya estaba ahí.
+- Los datos y los respaldos de esta versión ya no los abre una versión anterior de TALLY, para que no se pierdan
+  tus títulos. Los respaldos anteriores se siguen restaurando sin problema.
+
+## [0.6.0]
 
 - **Clasificaciones nuevas**:
   - Antes eran 5 (Necesidad, Disfrute, Estabilidad, Inversión, Dádivas) y ahora son 7, cada una con una
