@@ -15,12 +15,14 @@ from portal.componentes.sesion import avisar, sesion
 
 def _crear() -> None:
     st.subheader("Descargar respaldo")
-    st.caption("Un clic y te llevas **todo** en un archivo .zip (también queda una copia en la carpeta "
-               f"**{rutas.carpeta_respaldos()}**). Guárdalo en una memoria USB o donde quieras: si cambias de PC, "
+    st.caption("Un clic y te llevas **todo** en un archivo .zip, a tu carpeta de Descargas. Guárdalo en una "
+               "memoria USB o donde quieras: si cambias de PC, "
                "formateas o empiezas de cero, con él recuperas todo, aquí en **Restaurar** o en la bienvenida "
                "(«Ya usaba TALLY»).")
     respaldo.boton_descargar("respaldos")
-    st.caption("¿Solo quieres guardar una copia en la carpeta Respaldos, sin descargarla?")
+    st.caption(f"¿Solo quieres guardar una copia en la carpeta **{rutas.carpeta_respaldos()}**, sin descargarla? "
+               "Ahí también están los automáticos: uno por día (los últimos que elijas en Configuración) y los "
+               "de seguridad, antes de actualizar, cargar datos o restaurar (los últimos 5 de cada tipo).")
     if st.button("Guardar respaldo en la carpeta"):
         try:
             avisar(f"Respaldo guardado: {respaldos.crear(sesion()).name}")

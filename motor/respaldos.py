@@ -72,6 +72,29 @@ def crear(sesion: Sesion, destino: Path | str | None = None, *, prefijo: str = "
     return _crear_desde(sesion.almacen, sesion.libro.ahora(), destino, prefijo)
 
 
+DE_SEGURIDAD_A_CONSERVAR = 5
+
+
+def de_seguridad(sesion: Sesion, prefijo: str, carpeta: Path | str | None = None) -> Path:
+    """Respaldo automático antes de algo delicado (cargar datos, restaurar, empezar de cero). De cada tipo se
+    conservan los últimos ``DE_SEGURIDAD_A_CONSERVAR``: los más viejos se borran solos."""
+    ruta = crear(sesion, carpeta, prefijo=prefijo)
+    rotar(ruta.parent, prefijo, DE_SEGURIDAD_A_CONSERVAR)
+    return ruta
+
+
+def rotar(carpeta: Path | str, prefijo: str, conservar: int) -> None:
+    """Borra los respaldos ``TALLY_<prefijo>_*.zip`` más viejos y deja los ``conservar`` más recientes."""
+    inicio = len(f"TALLY_{prefijo}_")
+
+    def antiguedad(ruta: Path) -> tuple:              # fecha y hora del nombre; en el mismo segundo, el más nuevo
+        return ruta.stem[inicio:].split("_")[:2], ruta.stat().st_mtime_ns
+
+    anteriores = sorted(Path(carpeta).glob(f"TALLY_{prefijo}_*.zip"), key=antiguedad)
+    for viejo in anteriores[:-conservar] if conservar > 0 else []:
+        viejo.unlink(missing_ok=True)
+
+
 def leer_perfil(ruta_datos: Path | str):
     """El perfil (y sus preferencias) de un archivo de datos, sin modificarlo; ``None`` si no hay. Lo usa el
     instalador para recrear el acceso directo con el ícono que eligió el usuario."""
@@ -105,9 +128,7 @@ def respaldo_automatico(
     """Respaldo con rotación: conserva solo los ``conservar`` más recientes con ese prefijo."""
     carpeta = Path(carpeta or rutas.carpeta_respaldos())
     ruta = crear(sesion, carpeta, prefijo=prefijo)
-    anteriores = sorted(carpeta.glob(f"TALLY_{prefijo}_*.zip"))
-    for viejo in anteriores[:-conservar] if conservar > 0 else []:
-        viejo.unlink(missing_ok=True)
+    rotar(carpeta, prefijo, conservar)
     return ruta
 
 
@@ -126,8 +147,8 @@ def respaldar_archivo_de_datos(
 ) -> Path | None:
     """Respalda un archivo de datos sin modificarlo (lo usa el instalador).
 
-    Se lee en modo de solo lectura y se trabaja sobre una copia temporal.
-    Devuelve ``None`` si todavía no hay datos.
+    Se lee en modo de solo lectura y se trabaja sobre una copia temporal. Como los demás respaldos de seguridad,
+    se conservan los últimos ``DE_SEGURIDAD_A_CONSERVAR``. Devuelve ``None`` si todavía no hay datos.
     """
     ruta_datos = Path(ruta_datos)
     if not ruta_datos.exists():
@@ -137,7 +158,9 @@ def respaldar_archivo_de_datos(
         _copia_de_lectura(ruta_datos, copia)
         almacen = Almacen(copia)
         almacen.cargar()
-        return _crear_desde(almacen, datetime.now(), carpeta, prefijo)
+        ruta = _crear_desde(almacen, datetime.now(), carpeta, prefijo)
+    rotar(ruta.parent, prefijo, DE_SEGURIDAD_A_CONSERVAR)
+    return ruta
 
 
 def copiar_archivo_de_datos(origen: Path | str, destino: Path | str) -> Path:
@@ -318,7 +341,7 @@ def restaurar(sesion: Sesion, ruta: Path | str, *, carpeta_seguridad: Path | str
     3. Reemplaza todo en una sola transacción y lo anota en la bitácora.
     """
     info, libro, bitacora = _leer(Path(ruta), reloj=sesion.libro.reloj)
-    seguridad = crear(sesion, carpeta_seguridad, prefijo="antes_de_restaurar")
+    seguridad = de_seguridad(sesion, "antes_de_restaurar", carpeta_seguridad)
     nota = auditoria.Cambio(
         entidad="respaldo",
         entidad_id=info.ruta.name,
@@ -345,7 +368,7 @@ def empezar_de_cero(sesion: Sesion, *, carpeta_seguridad: Path | str | None = No
     Antes crea un respaldo completo de lo actual (si no se puede, no se borra nada); con él se recupera todo
     desde «Restaurar». Devuelve la ruta de ese respaldo.
     """
-    seguridad = crear(sesion, carpeta_seguridad, prefijo="antes_de_empezar_de_cero")
+    seguridad = de_seguridad(sesion, "antes_de_empezar_de_cero", carpeta_seguridad)
     nuevo = Libro(reloj=sesion.libro.reloj)
     catalogo.cargar(nuevo)
     nota = auditoria.Cambio(

@@ -171,7 +171,7 @@ def mostrar() -> None:
         st.info("Decide arriba qué es cada nombre que TALLY no reconoce.")
     if st.button(f"Cargar {resultado.nuevos} movimiento(s)", type="primary", disabled=not resultado.se_puede_cargar):
         try:
-            respaldo = respaldos.crear(sesion(), prefijo="antes_de_cargar_datos")
+            respaldo = respaldos.de_seguridad(sesion(), "antes_de_cargar_datos")
         except (ErrorTally, OSError) as error:
             st.error(f"No se cargó nada: no se pudo crear el respaldo previo ({error}).")
             return

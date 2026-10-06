@@ -2,7 +2,16 @@
 
 Todos los cambios relevantes de TALLY se documentan aquí.
 
-## [0.5.4] — Sin publicar
+## [0.5.5] — Sin publicar
+
+- **Respaldos sin acumularse**:
+  - «Descargar respaldo» ya no deja una copia en la carpeta Respaldos: el archivo solo va a tus Descargas.
+  - Los respaldos de seguridad (antes de actualizar, de cargar datos, de restaurar y de empezar de cero) se
+    rotan solos: se conservan los últimos 5 de cada tipo.
+  - Los automáticos diarios siguen como antes (los últimos 10, o los que elijas en Configuración) y los que
+    guardas a mano con «Guardar respaldo en la carpeta» nunca se borran.
+
+## [0.5.4]
 
 - **Cargar datos**: dentro de un mismo día se carga primero lo que entra (nómina, rendimientos, devoluciones),
   luego lo que se mueve entre cuentas y al final los gastos. Así ningún saldo pasa por un negativo que nunca

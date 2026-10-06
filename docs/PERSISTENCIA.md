@@ -80,6 +80,7 @@ Un respaldo es un `.zip` con:
 | `respaldos.inspeccionar(ruta)` | Valida el archivo y resume su contenido (cuentas, movimientos, fechas) para mostrarlo antes de restaurar |
 | `respaldos.restaurar(sesion, ruta)` | 1) valida todo, 2) crea `TALLY_antes_de_restaurar_*.zip` con lo actual, 3) reemplaza en una sola transacción y lo anota en la bitácora |
 | `respaldos.respaldo_automatico(sesion)` | Respaldo con rotación (conserva los últimos 10) |
+| `respaldos.de_seguridad(sesion, prefijo)` | Respaldo antes de algo delicado (cargar datos, restaurar, empezar de cero; el instalador, antes de actualizar). Conserva los últimos 5 de cada tipo |
 | `respaldos.respaldar_archivo_de_datos(ruta, carpeta)` | Respaldo en solo lectura de un `tally.db`. Lo usa el instalador antes de actualizar |
 | `respaldos.empezar_de_cero(sesion)` | Respalda todo (`TALLY_antes_de_empezar_de_cero_*.zip`) y deja TALLY como recién instalado. Sin respaldo no borra nada |
 | `respaldos.copiar_archivo_de_datos(origen, destino)` | Copia un `tally.db` y comprueba con una segunda lectura independiente que sea idéntico (entidades y bitácora). Nunca sobrescribe. Lo usa el instalador para mover los datos |
