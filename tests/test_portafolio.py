@@ -136,9 +136,10 @@ def test_consultar_trae_precios_y_tipo_de_cambio():
         return {"FICT.MX": _respuesta("FICT.MX", 52.5), "FUSD": _respuesta("FUSD", 10.25, "USD"),
                 "USDMXN=X": _respuesta("USDMXN=X", 18.9)}[simbolo]
 
-    precios, tipos, aviso = cotizaciones.consultar(["FICT.MX", "FUSD", "FICT.MX"], enviar=falso)
+    consulta = cotizaciones.consultar(["FICT.MX", "FUSD", "FICT.MX"], enviar=falso)
+    precios = consulta.precios
     assert precios["FICT.MX"].precio == D("52.5") and precios["FUSD"].moneda == "USD"
-    assert tipos == {"USD": D("18.9")} and aviso == ""
+    assert consulta.tipos == {"USD": D("18.9")} and consulta.aviso == "" and not consulta.falla_proveedor
     assert sorted(enviados) == ["FICT.MX", "FUSD", "USDMXN=X"]             # solo símbolos, una vez cada uno
 
 
@@ -149,9 +150,10 @@ def test_sin_conexion_avisa_de_inmediato():
         llamadas.append(simbolo)
         raise urllib.error.URLError("red bloqueada")
 
-    precios, tipos, aviso = cotizaciones.consultar(["A", "B", "C"], enviar=sin_red)
-    assert llamadas == ["A"] and all(c.sin_conexion for c in precios.values())
-    assert "escribe los precios a mano" in aviso and tipos == {}
+    consulta = cotizaciones.consultar(["A", "B", "C"], enviar=sin_red)
+    assert llamadas == ["A"] and consulta.sin_conexion and all(c.sin_conexion for c in consulta.precios.values())
+    assert "escribe los precios a mano" in consulta.aviso and consulta.tipos == {}
+    assert not consulta.falla_proveedor                                   # no es culpa del proveedor
 
 
 def test_simbolo_inexistente_y_respuestas_raras():
@@ -162,12 +164,43 @@ def test_simbolo_inexistente_y_respuestas_raras():
             return "<html>cambió</html>"
         raise urllib.error.HTTPError("u", 404, "Not Found", {}, None)
 
-    precios, _, aviso = cotizaciones.consultar(["NOEXISTE", "ROTO", "OTRO"], enviar=falso)
+    consulta = cotizaciones.consultar(["NOEXISTE", "ROTO", "OTRO"], enviar=falso)
+    precios = consulta.precios
     assert "revisa el símbolo" in precios["NOEXISTE"].error and "no se pudo leer" in precios["ROTO"].error
-    assert "revisa el símbolo" in precios["OTRO"].error and "NOEXISTE" in aviso
+    assert "revisa el símbolo" in precios["OTRO"].error and "NOEXISTE" in consulta.aviso
+    assert consulta.falla_proveedor                    # hubo conexión y ninguna respuesta sirvió: ¿cambió Yahoo?
 
 
 def test_enviar_rechaza_simbolos_raros_sin_salir_a_internet():
     with pytest.raises(ValueError):
         cotizaciones.enviar("../../etc")
     assert Decimal(1)  # el módulo no se conecta al importarse
+
+
+def test_si_el_proveedor_cambia_o_desaparece_se_detecta():
+    def caido(simbolo):
+        raise urllib.error.HTTPError("u", 503, "Service Unavailable", {}, None)
+
+    consulta = cotizaciones.consultar(["FICT", "OTRO"], enviar=caido)
+    assert consulta.falla_proveedor and not consulta.sin_conexion
+    parcial = cotizaciones.consultar(["FICT", "OTRO"], enviar=lambda s: _respuesta(s, 1) if s == "FICT" else "x")
+    assert not parcial.falla_proveedor                                   # uno sí respondió: no es caída general
+
+
+def test_los_ultimos_precios_se_guardan_en_la_pc_y_sobreviven_sin_conexion(tmp_path):
+    ruta = tmp_path / "Datos" / "precios.json"
+    buena = cotizaciones.consultar(["FICT.MX", "FUSD"], enviar=lambda s: {
+        "FICT.MX": _respuesta("FICT.MX", 52.5), "FUSD": _respuesta("FUSD", 10, "USD"),
+        "USDMXN=X": _respuesta("USDMXN=X", 18.9)}[s])
+    cotizaciones.guardar(buena, ruta)
+
+    def sin_red(simbolo):
+        raise urllib.error.URLError("sin internet")
+
+    cotizaciones.guardar(cotizaciones.consultar(["FICT.MX"], enviar=sin_red), ruta)   # no borra lo anterior
+    precios, tipos = cotizaciones.ultimos(ruta)
+    assert precios["FICT.MX"].valor == D("52.5") and precios["FUSD"].moneda == "USD" and tipos["USD"].valor == D("18.9")
+    guardado = json.loads(ruta.read_text(encoding="utf-8"))
+    assert set(guardado["precios"]["FICT.MX"]) == {"valor", "moneda", "actualizado"}  # solo datos públicos
+    ruta.write_text("dañado", encoding="utf-8")
+    assert cotizaciones.ultimos(ruta) == ({}, {})                         # archivo dañado: se ignora

@@ -45,6 +45,7 @@ def ajustar(
     tema: str | None = None,
     icono: str | None = None,
     dias_para_reclamar: int | None = None,
+    actualizar_precios: bool | None = None,
 ) -> Perfil:
     """Cambia las preferencias (página Configuración). Solo cambia lo que se indique."""
     from motor.reportes import PERIODOS
@@ -76,5 +77,7 @@ def ajustar(
         if isinstance(dias_para_reclamar, bool) or not 1 <= int(dias_para_reclamar) <= MAXIMO_DIAS_PARA_RECLAMAR:
             raise ErrorValidacion(f"Los días para reclamar van de 1 a {MAXIMO_DIAS_PARA_RECLAMAR}.")
         cambios["dias_para_reclamar"] = int(dias_para_reclamar)
+    if actualizar_precios is not None:
+        cambios["actualizar_precios"] = bool(actualizar_precios)
     libro.perfil = replace(libro.perfil, **cambios)
     return libro.perfil

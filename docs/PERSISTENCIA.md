@@ -50,6 +50,10 @@ que los dos siempre buscan los datos en el mismo lugar.
   en el mismo formato estable que los respaldos. Esquema 3 y respaldos de
   formato 3 desde TALLY 0.7: una versión anterior ya no los abre, para no perder
   los títulos.
+- `Datos\precios.json` (TALLY 0.7.1) guarda los últimos precios públicos
+  consultados (símbolo, precio, moneda, hora). No es parte de tus datos ni de
+  los respaldos: si se borra o se daña, TALLY lo ignora y lo rehace en la
+  siguiente consulta.
 - Un **contador de revisión** detecta si otra ventana de TALLY modificó los
   datos y pide recargar en lugar de sobrescribir.
 - **Al abrir** se ejecuta `PRAGMA quick_check` y se verifica que cada

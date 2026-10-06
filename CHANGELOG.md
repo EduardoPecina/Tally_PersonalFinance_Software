@@ -2,7 +2,20 @@
 
 Todos los cambios relevantes de TALLY se documentan aquí.
 
-## [0.7.0] — Sin publicar
+## [0.7.1] — Sin publicar
+
+- **Precios de títulos, más transparentes y a prueba de fallas**:
+  - Nota visible: «⚡ Precios obtenidos desde Yahoo Finance. La consulta solo envía los símbolos bursátiles…».
+  - Los últimos precios consultados se **guardan en tu PC** (`Datos\precios.json`). Si no hay internet, o la
+    red lo bloquea, se muestran los últimos guardados, con la hora de la **última actualización**.
+  - Interruptor **«Actualizar precios automáticamente»**, apagado por omisión. Al abrir una cuenta de
+    inversión, consulta solo si los precios tienen más de una hora, una vez por visita, y envía solo los
+    símbolos.
+  - Si el proveedor deja de responder como antes (cambió o desapareció), TALLY lo **avisa** y sigue
+    funcionando con los precios guardados o a mano. El proveedor quedó en un solo lugar para poder cambiarlo.
+  - La consulta solo se hace por HTTPS y no se registra en bitácoras ni logs.
+
+## [0.7.0]
 
 - **Títulos e inversiones a plazo** en las cuentas de inversión (Cuentas → Ver movimientos):
   - Registra **compras y ventas** de acciones, ETFs y cripto: símbolo (como en Yahoo Finance: IVVPESO.MX, AAPL,
