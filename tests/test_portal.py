@@ -449,3 +449,9 @@ def test_apariencia_tema_oscuro_e_icono(raiz, con_datos):
     next(b for b in at.button if b.key == "configuracion_icono_acento").click().run()
     sin_errores(at)
     assert sesion_en(raiz).libro.perfil.icono == "acento"
+
+
+def test_el_icono_violeta_se_llama_asi(raiz, con_datos):
+    at = abrir(_pagina("configuracion"))
+    etiquetas = [b.label for b in at.button if b.key and b.key.startswith("configuracion_icono_")]
+    assert "Usar violeta" in etiquetas and not any("acento" in e.lower() for e in etiquetas)

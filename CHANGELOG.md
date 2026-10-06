@@ -2,7 +2,11 @@
 
 Todos los cambios relevantes de TALLY se documentan aquí.
 
-## [0.5.0] — Sin publicar
+## [0.5.1] — Sin publicar
+
+- Configuración → Apariencia: el ícono «Acento» ahora se llama **«Violeta»**.
+
+## [0.5.0]
 
 **Fase 4: análisis.**
 

@@ -30,7 +30,8 @@ def configurar(libro: Libro, nombre: str) -> Perfil:
 
 MAXIMO_RESPALDOS = 100
 TEMAS = {"claro": "Claro", "oscuro": "Oscuro"}
-ICONOS = {"claro": "Claro", "oscuro": "Oscuro", "acento": "Acento", "gris": "Gris"}
+# La clave «acento» se queda así (ya está guardada en los perfiles y en los nombres de los .ico); se muestra «Violeta».
+ICONOS = {"claro": "Claro", "oscuro": "Oscuro", "acento": "Violeta", "gris": "Gris"}
 
 
 def ajustar(
