@@ -8,6 +8,7 @@ from motor import categorias, cuentas, movimientos, tarjetas
 from motor.consultas import ETIQUETA_TIPO_CUENTA
 from motor.modelo import TIPOS_DISPONIBLES_POR_DEFECTO, Cuenta, TipoCuenta
 from portal.componentes import formato
+from portal.componentes import tarjeta as estado_tarjeta
 from portal.componentes.sesion import aplicar, avisar, ejecutar, libro
 
 TIPOS = list(TipoCuenta)
@@ -118,24 +119,7 @@ def _tarjeta_de_cuenta(cuenta: Cuenta) -> None:
         if cuenta.tipo is not TipoCuenta.CREDITO:
             derecha.metric("Saldo", formato.dinero(saldo))
             return
-        derecha.metric("Debes", formato.dinero(tarjetas.deuda(lib, cuenta.id)))
-        notas = []
-        if saldo > 0:
-            notas.append(f"Saldo a favor: **{formato.dinero_md(saldo)}**")
-        disponible = tarjetas.credito_disponible(lib, cuenta.id)
-        if disponible is not None:
-            notas.append(f"Crédito disponible: **{formato.dinero_md(disponible)}**")
-        regla = tarjetas.describir_regla_pago(cuenta)
-        if regla:
-            notas.append(f"Pago: {regla}")
-        por_pagar = tarjetas.ciclo_por_pagar(lib, cuenta.id)
-        if por_pagar is not None:
-            texto = f"Corte del {formato.fecha(por_pagar.fin)}: por liquidar **{formato.dinero_md(por_pagar.por_liquidar)}**"
-            if por_pagar.fecha_limite_pago and por_pagar.por_liquidar:
-                texto += f" antes del {formato.fecha(por_pagar.fecha_limite_pago)}"
-            notas.append(texto)
-        if notas:
-            izquierda.caption(" · ".join(notas))
+        estado_tarjeta.mostrar(cuenta)
 
 
 def _editar(cuenta: Cuenta) -> None:

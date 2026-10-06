@@ -2,7 +2,17 @@
 
 Todos los cambios relevantes de TALLY se documentan aquí.
 
-## [0.4.0] — Sin publicar
+## [0.4.1] — Sin publicar
+
+- **Estado de cada tarjeta de crédito** en Resumen y en Cuentas:
+  - cuánto debes, tu disponible y tu línea de crédito;
+  - qué porcentaje de la línea usas (con aviso si pasa del 70 %);
+  - si estás al corriente o cuánto pagar del último corte y antes de qué
+    fecha (con los días que faltan), o si el pago ya venció;
+  - el ciclo actual y el próximo corte.
+- Nuevo `tarjetas.estado()` en el motor.
+
+## [0.4.0]
 
 - **Categorías y subcategorías.** Las categorías son cajas (SALUD, TECNOLOGIA,
   MASCOTAS…) que agrupan subcategorías (DENTISTA, CELULARES Y TABLETS…). A
