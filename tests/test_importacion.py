@@ -258,3 +258,21 @@ def test_en_la_sesion_es_todo_o_nada(tmp_path):
             importacion.cargar(libro, leer(texto))
     assert instantanea(sesion.libro) == antes
     assert instantanea(Sesion(tmp_path / "tally.db", reloj=lambda: AHORA).libro) == antes
+
+
+def test_en_un_mismo_dia_entra_primero_lo_que_llega(libro):
+    """Un retiro total y su ganancia del mismo día, en bloques distintos: el saldo nunca pasa por negativo."""
+    from motor import consultas
+
+    texto = archivo(
+        bloque("Ahorro Ficticio", "AHORRO", ["22/09/2026\tRetiro de la inversión\tInversión Ficticia\t\t1,050.00\t"]),
+        bloque("Inversión Ficticia", "INVERSION", ["01/09/2026\tAportación\tAhorro Ficticio\t\t1,000.00\t",
+                                                  "22/09/2026\tGanancia\tINTERESES Y RENDIMIENTOS\t\t50.00\t"],
+               saldo=""),
+    )
+    previa = importacion.vista_previa(libro, leer(texto))
+    assert not previa.errores, previa.errores
+    importacion.cargar(libro, leer(texto))
+    inversion = cuentas.buscar(libro, "Inversión Ficticia").id
+    saldos = [f.saldo for f in consultas.movimientos_de_cuenta(libro, inversion)]
+    assert saldos[0] == 0 and min(saldos) >= 0, saldos

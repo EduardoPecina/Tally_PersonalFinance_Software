@@ -17,6 +17,7 @@ from portal.paginas import historial, registrar
 
 ABIERTA = "cuenta_abierta"
 RANGOS = {"todo": "Todo", "mes": "Este mes", "3m": "Últimos 3 meses", "anio": "Este año"}
+ORDENES = {"recientes": "Más recientes primero", "antiguos": "Más antiguos primero"}
 
 
 def abrir(cuenta_id: str | None) -> None:
@@ -75,7 +76,7 @@ def mostrar(cuenta_id: str) -> None:
     else:
         st.metric("Saldo", formato.dinero(cuentas.saldo(lib, cuenta.id)))
 
-    izquierda, derecha = st.columns([1, 2], vertical_alignment="bottom")
+    izquierda, derecha, orden_col = st.columns([1, 2, 1.2], vertical_alignment="bottom")
     if not cuenta.activa:
         st.info("Esta cuenta está eliminada: aquí ves su historial guardado. Para volver a usarla, restáurala en "
                 "Cuentas → «Mostrar eliminadas».", icon="🗄️")
@@ -83,7 +84,11 @@ def mostrar(cuenta_id: str) -> None:
         _agregar(cuenta.id)
     rango = derecha.segmented_control("Periodo", list(RANGOS), format_func=RANGOS.get, default="todo",
                                       required=True, key="cuenta_rango", label_visibility="collapsed")
+    orden = orden_col.selectbox("Orden", list(ORDENES), format_func=ORDENES.get, key="cuenta_orden",
+                                label_visibility="collapsed")
     filas = consultas.movimientos_de_cuenta(lib, cuenta.id, desde=_desde(rango, lib.hoy()))
+    if orden == "antiguos":
+        filas = filas[::-1]           # en el orden real: los del mismo día también quedan en su lugar
     if not filas:
         st.info("Sin movimientos en este periodo.")
         return
@@ -99,7 +104,8 @@ def mostrar(cuenta_id: str) -> None:
     })
     entradas, salidas = sum(f.abono for f in filas), sum(f.cargo for f in filas)
     st.caption(f"{len(filas)} movimiento(s) · Abonos {formato.dinero_md(entradas)} · "
-               f"Cargos {formato.dinero_md(salidas)}. El saldo es el que quedó después de cada movimiento.")
+               f"Cargos {formato.dinero_md(salidas)}. El saldo es el que quedó después de cada movimiento; para "
+               "verlo de arriba abajo usa «Orden» (al ordenar con clic en una columna, el saldo no se recalcula).")
     vista, config = formato.tabla_en_pesos(tabla, ("Cargo", "Abono", columna_saldo))
     evento = st.dataframe(
         vista, hide_index=True, width="stretch", on_select="rerun", selection_mode="single-row", key="cuenta_tabla",

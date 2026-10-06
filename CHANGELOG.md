@@ -2,7 +2,16 @@
 
 Todos los cambios relevantes de TALLY se documentan aquí.
 
-## [0.5.3] — Sin publicar
+## [0.5.4] — Sin publicar
+
+- **Cargar datos**: dentro de un mismo día se carga primero lo que entra (nómina, rendimientos, devoluciones),
+  luego lo que se mueve entre cuentas y al final los gastos. Así ningún saldo pasa por un negativo que nunca
+  existió (por ejemplo, un retiro total y su ganancia del mismo día).
+- **Estado de cuenta**: nuevo selector «Más recientes primero» / «Más antiguos primero». Ordena bien los
+  movimientos del mismo día, para leer el saldo de arriba abajo; al ordenar con clic en una columna el saldo no
+  se recalcula, y así lo dice la nota de la tabla.
+
+## [0.5.3]
 
 - **Cargos temporales**: lo que te cobran para verificar tu tarjeta y te
   devuelven después (Amazon, Uber, un hotel…). **No cuentan como gasto.**
