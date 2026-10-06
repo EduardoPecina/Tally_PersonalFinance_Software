@@ -6,9 +6,10 @@ from datetime import date, timedelta
 
 import streamlit as st
 
-from motor import cuentas, reportes, tarjetas
+from motor import cuentas, reportes
 from motor.modelo import TipoCuenta
 from portal.componentes import estado, formato, graficas
+from portal.componentes import tarjeta as estado_tarjeta
 from portal.componentes.sesion import libro
 from portal.navegacion import enlace
 
@@ -70,23 +71,11 @@ def _tarjetas() -> None:
     if not lista:
         return
     st.subheader("Tarjetas de crédito")
-    columnas = st.columns(min(len(lista), 3))
+    columnas = st.columns(min(len(lista), 2))
     for i, tarjeta in enumerate(lista):
         with columnas[i % len(columnas)], st.container(border=True):
-            st.markdown(f"**{tarjeta.nombre}**")
-            st.metric("Debes", formato.dinero(tarjetas.deuda(lib, tarjeta.id)))
-            por_pagar = tarjetas.ciclo_por_pagar(lib, tarjeta.id)
-            if por_pagar is not None:
-                texto = f"Por liquidar del corte {formato.fecha(por_pagar.fin)}: **{formato.dinero_md(por_pagar.por_liquidar)}**"
-                if por_pagar.por_liquidar and por_pagar.fecha_limite_pago:
-                    texto += f"  \nPagar antes del **{formato.fecha(por_pagar.fecha_limite_pago)}**"
-                st.markdown(texto)
-                actual = tarjetas.ciclo_actual(lib, tarjeta.id)
-                st.caption(f"Ciclo actual ({formato.rango(actual.inicio, actual.fin)}): "
-                           f"cargos {formato.dinero_md(actual.cargos)}")
-            disponible = tarjetas.credito_disponible(lib, tarjeta.id)
-            if disponible is not None:
-                st.caption(f"Crédito disponible: {formato.dinero_md(disponible)}")
+            st.markdown(f"**{tarjeta.nombre}**" + (f"  \n:gray[{tarjeta.institucion}]" if tarjeta.institucion else ""))
+            estado_tarjeta.mostrar(tarjeta)
 
 
 def _quincenas() -> None:

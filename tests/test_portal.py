@@ -284,3 +284,16 @@ def test_empezar_de_cero_desde_respaldos(raiz, con_datos):
     assert lib.perfil is None and lib.cuentas() == []
     (respaldo,) = (raiz / "Respaldos").glob("TALLY_antes_de_empezar_de_cero_*.zip")
     assert respaldos.inspeccionar(respaldo).movimientos == 6
+
+
+def test_estado_de_tarjeta_en_resumen_y_cuentas(raiz, con_datos):
+    s = sesion_en(raiz)
+    with s.cambio() as lib:
+        movimientos.registrar_gasto(lib, lib.hoy(), con_datos["tdc"], con_datos["cat"]["DESPENSA"], 500, "Súper")
+    for pagina in (None, _pagina("cuentas")):
+        at = abrir(pagina)
+        sin_errores(at)
+        metricas = {m.label: m.value for m in at.metric}
+        assert metricas["Línea de crédito"] == "$2,000.00"
+        assert metricas["Disponible"] == "$1,500.00"
+        assert any("Usas el 25% de tu línea" in str(p.proto) for p in at.get("progress"))

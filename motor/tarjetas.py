@@ -142,6 +142,66 @@ def ciclo_actual(libro: Libro, tarjeta_id: str, hoy: date | None = None) -> Resu
     return resumen_ciclo(libro, tarjeta_id, hoy, hasta=hoy)
 
 
+# ------------------------------------------------------------------- estado
+
+
+AL_CORRIENTE, POR_PAGAR, VENCIDA, SIN_FECHA, SIN_CORTE = "al_corriente", "por_pagar", "vencida", "sin_fecha", "sin_corte"
+
+
+@dataclass(frozen=True, slots=True)
+class EstadoTarjeta:
+    """Cómo va una tarjeta hoy: lo que se ve en el estado de cuenta del banco."""
+
+    limite: Decimal | None            # línea de crédito (None si no se registró)
+    deuda: Decimal                    # lo que se debe hoy
+    saldo_a_favor: Decimal
+    disponible: Decimal | None        # línea − deuda + saldo a favor
+    uso: Decimal | None               # deuda / línea (0.37 = 37 %); puede pasar de 1 si se excedió
+    corte: ResumenCiclo | None        # el último corte (lo que hay que pagar)
+    actual: ResumenCiclo | None       # el ciclo en curso
+    situacion: str                    # AL_CORRIENTE, POR_PAGAR, VENCIDA, SIN_FECHA o SIN_CORTE
+    dias_para_pagar: int | None       # días que faltan para la fecha límite (negativo si ya pasó)
+
+    @property
+    def excedida(self) -> bool:
+        return self.limite is not None and self.deuda > self.limite
+
+
+def estado(libro: Libro, tarjeta_id: str, hoy: date | None = None) -> EstadoTarjeta:
+    """Línea, deuda, disponible, uso de la línea, último corte y si ya se pagó.
+
+    - **Por pagar** (para no generar intereses): lo que falta de la deuda al último corte.
+    - **Vencida**: queda algo por pagar y ya pasó la fecha límite.
+    """
+    tarjeta = _tarjeta(libro, tarjeta_id)
+    hoy = hoy or libro.hoy()
+    saldo = libro.saldo_centavos(tarjeta_id, hoy)
+    limite = tarjeta.limite_credito
+    corte = ciclo_por_pagar(libro, tarjeta_id, hoy)
+    actual = ciclo_actual(libro, tarjeta_id, hoy)
+    dias = None
+    if corte is None:
+        situacion = SIN_CORTE
+    elif not corte.por_liquidar:
+        situacion = AL_CORRIENTE
+    elif corte.fecha_limite_pago is None:
+        situacion = SIN_FECHA
+    else:
+        dias = (corte.fecha_limite_pago - hoy).days
+        situacion = VENCIDA if dias < 0 else POR_PAGAR
+    return EstadoTarjeta(
+        limite=a_pesos(limite) if limite is not None else None,
+        deuda=a_pesos(max(0, -saldo)),
+        saldo_a_favor=a_pesos(max(0, saldo)),
+        disponible=a_pesos(limite + saldo) if limite is not None else None,
+        uso=(Decimal(max(0, -saldo)) / Decimal(limite)).quantize(Decimal("0.0001")) if limite else None,
+        corte=corte,
+        actual=actual,
+        situacion=situacion,
+        dias_para_pagar=dias,
+    )
+
+
 def describir_regla_pago(tarjeta: Cuenta) -> str:
     """La regla de pago en palabras, p. ej. «10 días naturales después del corte (si es inhábil, el siguiente
     día hábil)». Vacía si la tarjeta no tiene regla."""

@@ -149,3 +149,47 @@ def test_describir_regla_pago(libro):
     assert tarjetas.describir_regla_pago(
         libro2.cuenta(cuentas.crear(libro2, "Fija", "credito", dia_pago=23).id)).startswith("el día 23 de cada mes")
     assert tarjetas.describir_regla_pago(libro2.cuenta(cuentas.crear(libro2, "Sin", "credito").id)) == ""
+
+
+def test_estado_de_la_tarjeta(libro, ctas, cat):
+    """Línea de 1,000, corte el 3 y pago el 23 (si es inhábil, el siguiente hábil)."""
+    movimientos.registrar_gasto(libro, date(2026, 7, 5), ctas.credito, cat("Alimentos"), "640.20")
+
+    hoy = tarjetas.estado(libro, ctas.credito, date(2026, 7, 20))
+    assert (hoy.limite, hoy.deuda, hoy.disponible, hoy.uso) == (D(1000), D("640.20"), D("359.80"), D("0.6402"))
+    assert hoy.situacion == tarjetas.AL_CORRIENTE                   # el corte del 3 de julio no debía nada
+    assert hoy.actual.cargos == D("640.20") and hoy.actual.fin == date(2026, 8, 3)
+    assert not hoy.excedida
+
+    # Después del corte del 3 de agosto: hay que pagar antes del lunes 24 (el 23 es domingo).
+    agosto = tarjetas.estado(libro, ctas.credito, date(2026, 8, 10))
+    assert agosto.situacion == tarjetas.POR_PAGAR and agosto.corte.por_liquidar == D("640.20")
+    assert agosto.corte.fecha_limite_pago == date(2026, 8, 24) and agosto.dias_para_pagar == 14
+    registrar_pago_tarjeta(libro, date(2026, 8, 12), ctas.debito, ctas.credito, 400)
+    assert tarjetas.estado(libro, ctas.credito, date(2026, 8, 20)).corte.por_liquidar == D("240.20")
+
+    vencida = tarjetas.estado(libro, ctas.credito, date(2026, 8, 25))
+    assert vencida.situacion == tarjetas.VENCIDA and vencida.dias_para_pagar == -1
+    registrar_pago_tarjeta(libro, date(2026, 8, 25), ctas.debito, ctas.credito, "240.20")
+    assert tarjetas.estado(libro, ctas.credito, date(2026, 8, 25)).situacion == tarjetas.AL_CORRIENTE
+
+
+def test_estado_excedida_saldo_a_favor_y_sin_datos(libro, ctas, cat):
+    movimientos.registrar_gasto(libro, date(2026, 7, 5), ctas.credito, cat("Alimentos"), 1200)
+    excedida = tarjetas.estado(libro, ctas.credito, date(2026, 7, 20))
+    assert excedida.excedida and excedida.uso == D("1.2") and excedida.disponible == D(-200)
+
+    registrar_pago_tarjeta(libro, date(2026, 7, 6), ctas.debito, ctas.credito, 1300)
+    a_favor = tarjetas.estado(libro, ctas.credito, date(2026, 7, 20))
+    assert (a_favor.deuda, a_favor.saldo_a_favor, a_favor.disponible, a_favor.uso) == (0, D(100), D(1100), 0)
+
+    sencilla = tarjetas.estado(libro, cuentas.crear(libro, "Sin datos", "credito").id)
+    assert (sencilla.limite, sencilla.disponible, sencilla.uso, sencilla.situacion) == (
+        None, None, None, tarjetas.SIN_CORTE)
+
+
+def test_estado_sin_regla_de_pago(libro, cat):
+    tdc = cuentas.crear(libro, "Solo corte", "credito", dia_corte=3, fecha_creacion=date(2026, 6, 1)).id
+    movimientos.registrar_gasto(libro, date(2026, 6, 20), tdc, cat("Alimentos"), 50)
+    estado = tarjetas.estado(libro, tdc, date(2026, 7, 10))
+    assert estado.situacion == tarjetas.SIN_FECHA and estado.dias_para_pagar is None
