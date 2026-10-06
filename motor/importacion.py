@@ -399,6 +399,9 @@ def _cargar_en(libro: Libro, archivo: Archivo, mapeo: dict[str, Destino]) -> Res
         except ErrorTally as error:
             propuestas.append((bloque, linea, None, str(error)))
 
+    # Dentro de un mismo día entra primero lo que llega (nómina, rendimientos, devoluciones), luego lo que se
+    # mueve entre cuentas y al final los gastos: así ningún saldo pasa por un negativo que nunca existió.
+    propuestas.sort(key=lambda p: (p[1].fecha, _momento_del_dia(p[2])))
     existentes = Counter(_firma(op) for op in libro.operaciones())
     lado_principal = _lados_principales(propuestas)
     vistas: Counter = Counter()
@@ -434,6 +437,16 @@ def _cargar_en(libro: Libro, archivo: Archivo, mapeo: dict[str, Destino]) -> Res
             resultado.filas.append(Fila(**fila, tipo=op.tipo, destino=destino, estado=ERROR, detalle=str(error)))
     resultado.filas.sort(key=lambda f: f.numero)
     return resultado
+
+
+def _momento_del_dia(op: Operacion | None) -> int:
+    if op is None or op.tipo in (TipoOperacion.TRANSFERENCIA, TipoOperacion.PAGO_TARJETA):
+        return 1
+    if op.tipo in (TipoOperacion.INGRESO, TipoOperacion.REEMBOLSO):
+        return 0
+    if op.tipo is TipoOperacion.GASTO:
+        return 2
+    return 0 if sum(p.importe for p in op.partidas_de_cuenta()) > 0 else 2    # rendimiento: ganancia o pérdida
 
 
 class _Pendiente(Exception):

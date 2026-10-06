@@ -412,6 +412,10 @@ def test_estado_de_cuenta_desde_cuentas(raiz, con_datos):
     assert list(tabla.columns) == ["Fecha", "Descripción", "Subcategoría o cuenta", "Cargo", "Abono", "Saldo"]
     assert tabla.iloc[0]["Saldo"] == "$7,620.00"                  # 5000 + 4000 − 80 − 1000 − 300, saldo corrido
     assert boton(at, "Agregar movimiento")
+    at.selectbox(key="cuenta_orden").set_value("antiguos").run()
+    sin_errores(at)
+    tabla = at.dataframe[0].value
+    assert tabla.iloc[0]["Saldo"] == "$5,000.00" and tabla.iloc[-1]["Saldo"] == "$7,620.00"   # de arriba abajo
     boton(at, "← Todas mis cuentas").click().run()
     assert at.title[0].value == "Cuentas"
 
