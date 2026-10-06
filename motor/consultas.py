@@ -160,3 +160,52 @@ def total(filas: Iterable[FilaMovimiento]) -> dict[str, Decimal]:
     for f in filas:
         resultado[f.sentido] += f.monto
     return {clave: a_pesos(int(valor * 100)) for clave, valor in resultado.items()}
+
+
+# ------------------------------------------------------------ por cuenta
+
+
+@dataclass(frozen=True, slots=True)
+class FilaCuenta:
+    """Un renglón del estado de cuenta: como en el Excel, con el saldo después de cada movimiento."""
+
+    id: str
+    fecha: date
+    tipo: TipoOperacion
+    tipo_etiqueta: str
+    descripcion: str
+    detalle: str              # «SALUD › DENTISTA», «→ Ahorro», «← Débito»…
+    cargo: Decimal            # salió de la cuenta (0 si no)
+    abono: Decimal            # entró a la cuenta (0 si no)
+    saldo: Decimal            # saldo de la cuenta después de este movimiento (negativo en crédito = deuda)
+    msi: int = 0
+
+
+def movimientos_de_cuenta(libro: Libro, cuenta_id: str, desde: date | None = None,
+                          hasta: date | None = None) -> list[FilaCuenta]:
+    """Los movimientos de una cuenta con su saldo corrido, del más reciente al más antiguo.
+
+    El saldo se calcula con todo el historial (aunque se pida un rango), así que siempre coincide con el real.
+    """
+    libro.cuenta(cuenta_id)
+    filas, saldo = [], 0
+    for op in libro.operaciones(hasta=hasta):
+        propias = [p for p in op.partidas_de_cuenta() if p.cuenta_id == cuenta_id]
+        if not propias:
+            continue
+        importe = sum(p.importe for p in propias)
+        saldo += importe
+        if desde is not None and op.fecha < desde:
+            continue
+        otras = [p for p in op.partidas_de_cuenta() if p.cuenta_id != cuenta_id]
+        if otras:
+            flecha = "→" if importe < 0 else "←"
+            detalle = f"{flecha} {libro.cuenta(otras[0].cuenta_id).nombre}"
+        else:
+            detalle = ", ".join(categorias.etiqueta(libro, p.categoria_id) for p in op.partidas_de_categoria())
+        filas.append(FilaCuenta(
+            id=op.id, fecha=op.fecha, tipo=op.tipo, tipo_etiqueta=ETIQUETA_TIPO_OPERACION[op.tipo],
+            descripcion=op.descripcion, detalle=detalle, cargo=a_pesos(max(0, -importe)),
+            abono=a_pesos(max(0, importe)), saldo=a_pesos(saldo), msi=op.msi,
+        ))
+    return list(reversed(filas))

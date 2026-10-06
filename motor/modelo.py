@@ -111,6 +111,7 @@ class Rubro:
     nombre: str
     clase: ClaseCategoria  # INGRESO o GASTO
     orden: int = 0
+    presupuesto: int | None = None  # gasto mensual que el usuario se propone no rebasar (centavos)
 
 
 @dataclass(frozen=True, slots=True)
@@ -158,6 +159,9 @@ class Operacion:
     secuencia: int = 0
     creado_en: datetime | None = None
     modificado_en: datetime | None = None
+    # Compra con tarjeta de crédito a meses sin intereses (0 = de contado). El gasto cuenta completo en la
+    # fecha de compra; la tarjeta solo exige una mensualidad en cada corte (motor/tarjetas.py).
+    msi: int = 0
 
     def partidas_de_cuenta(self) -> tuple[Partida, ...]:
         return tuple(p for p in self.partidas if p.cuenta_id is not None)

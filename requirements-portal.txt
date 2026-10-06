@@ -4,3 +4,5 @@ streamlit==1.65.0
 psutil==7.2.2
 # Para crear el acceso directo del Escritorio (instalador), como el Portal de Honorarios.
 pywin32==312 ; sys_platform == "win32"
+# Para exportar tablas dinámicas y movimientos a Excel (.xlsx).
+openpyxl==3.1.5

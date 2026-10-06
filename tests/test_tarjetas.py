@@ -193,3 +193,61 @@ def test_estado_sin_regla_de_pago(libro, cat):
     movimientos.registrar_gasto(libro, date(2026, 6, 20), tdc, cat("Alimentos"), 50)
     estado = tarjetas.estado(libro, tdc, date(2026, 7, 10))
     assert estado.situacion == tarjetas.SIN_FECHA and estado.dias_para_pagar is None
+
+
+# ------------------------------------------------------------- meses sin intereses
+
+
+def test_compra_a_meses_sin_intereses(libro, ctas, cat):
+    """Corte el 3, pago el 23. 1,200 a 12 MSI: el banco solo pide $100 por corte para no generar intereses."""
+    movimientos.registrar_gasto(libro, date(2026, 7, 10), ctas.credito, cat("Computadoras y accesorios"), 1200,
+                                "Laptop", msi=12)
+    movimientos.registrar_gasto(libro, date(2026, 7, 15), ctas.credito, cat("Despensa"), 300, "Súper")
+
+    corte = tarjetas.estado(libro, ctas.credito, date(2026, 8, 10)).corte
+    assert corte.deuda_al_corte == D(1500)                     # el banco te muestra la deuda total…
+    assert corte.msi_por_vencer == D(1100)                     # …pero 11 mensualidades aún no vencen
+    assert corte.por_liquidar == D(400) and corte.pago_para_no_generar_intereses == D(400)
+    registrar_pago_tarjeta(libro, date(2026, 8, 12), ctas.debito, ctas.credito, 400)
+    assert tarjetas.estado(libro, ctas.credito, date(2026, 8, 20)).situacion == tarjetas.AL_CORRIENTE
+
+    septiembre = tarjetas.estado(libro, ctas.credito, date(2026, 9, 10)).corte
+    assert (septiembre.deuda_al_corte, septiembre.msi_por_vencer, septiembre.por_liquidar) == (D(1100), D(1000), D(100))
+    # Para los reportes, el gasto cuenta completo el día de la compra.
+    from motor import reportes
+    assert reportes.resumen(libro, date(2026, 7, 1), date(2026, 7, 31)).gastos == D(1500)
+
+    (laptop,) = tarjetas.compras_a_msi(libro, ctas.credito, date(2026, 9, 10))
+    assert (laptop.mensualidad, laptop.cobradas, laptop.restante, laptop.ultima) == (D(100), 2, D(1000),
+                                                                                   date(2027, 7, 3))
+    assert tarjetas.compras_a_msi(libro, ctas.credito, date(2027, 7, 3)) == []        # ya terminó
+
+
+def test_msi_con_centavos_y_reglas(libro, ctas, cat):
+    movimientos.registrar_gasto(libro, date(2026, 7, 10), ctas.credito, cat("Despensa"), 1000, msi=3)
+    corte = tarjetas.resumen_ciclo(libro, ctas.credito, date(2026, 8, 3), hasta=date(2026, 8, 3))
+    assert corte.msi_por_vencer == D("666.66") and corte.por_liquidar == D("333.34")   # la 1.ª lleva el centavo
+    for malo in (dict(cuenta=ctas.debito, msi=6), dict(cuenta=ctas.credito, msi=1), dict(cuenta=ctas.credito, msi=99)):
+        with pytest.raises(ErrorValidacion):
+            movimientos.registrar_gasto(libro, date(2026, 7, 10), malo["cuenta"], cat("Despensa"), 100, msi=malo["msi"])
+
+
+def test_msi_se_conserva_al_editar_y_al_guardar(libro, ctas, cat, tmp_path):
+    from motor.serializacion import instantanea, libro_desde_instantanea
+
+    op = movimientos.registrar_gasto(libro, date(2026, 7, 10), ctas.credito, cat("Despensa"), 600, msi=6)
+    editada = movimientos.editar(libro, op.id, monto=900, descripcion="Refri")
+    assert editada.msi == 6
+    assert libro_desde_instantanea(instantanea(libro)).operacion(op.id).msi == 6
+    assert movimientos.editar(libro, op.id, msi=0).msi == 0
+    with pytest.raises(ErrorValidacion):
+        movimientos.editar(libro, op.id, cuenta_id=ctas.debito, msi=6)
+
+
+def test_avisos_de_pago(libro, ctas, cat):
+    movimientos.registrar_gasto(libro, date(2026, 7, 10), ctas.credito, cat("Despensa"), 500)
+    assert tarjetas.pagos_proximos(libro, date(2026, 8, 10)) == []                  # vence el 24: faltan 14 días
+    ((tarjeta, estado),) = tarjetas.pagos_proximos(libro, date(2026, 8, 20))
+    assert tarjeta.id == ctas.credito and estado.dias_para_pagar == 4
+    ((_, vencida),) = tarjetas.pagos_proximos(libro, date(2026, 8, 30))
+    assert vencida.situacion == tarjetas.VENCIDA

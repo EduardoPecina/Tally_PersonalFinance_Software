@@ -107,10 +107,14 @@ def registrar_gasto(
     notas: str = "",
     *,
     reparto: Reparto | None = None,
+    msi: int = 0,
 ) -> Operacion:
-    """Gasto pagado con cualquier cuenta (débito, TDC, efectivo, ahorro…)."""
+    """Gasto pagado con cualquier cuenta (débito, TDC, efectivo, ahorro…).
+
+    ``msi``: compra con tarjeta de crédito a meses sin intereses (el gasto cuenta completo hoy).
+    """
     op = construir(TipoOperacion.GASTO, fecha, cuenta_id, categoria_id, monto, descripcion, notas, reparto=reparto)
-    return libro.agregar_operacion(op)
+    return libro.agregar_operacion(replace(op, msi=int(msi or 0)))
 
 
 def registrar_ingreso(
@@ -228,8 +232,9 @@ def editar(
     categoria_id: str | object = _SIN_CAMBIO,
     descripcion: str | object = _SIN_CAMBIO,
     notas: str | object = _SIN_CAMBIO,
+    msi: int | object = _SIN_CAMBIO,
 ) -> Operacion:
-    """Edita un movimiento conservando su tipo.
+    """Edita un movimiento conservando su tipo (y sus meses sin intereses, salvo que se indique ``msi``).
 
     En una transferencia, cambiar el importe cambia ambos lados a la vez.
     Para cambiar el tipo (p. ej. de gasto a transferencia) usa :func:`reemplazar`.
@@ -245,8 +250,9 @@ def editar(
     nuevas_notas = valor(notas, op.notas)
     estructura = (monto, cuenta_id, cuenta_destino_id, categoria_id)
 
+    nuevo_msi = int(valor(msi, op.msi) or 0)
     if all(v is _SIN_CAMBIO for v in estructura):
-        nueva = replace(op, fecha=nueva_fecha, descripcion=nueva_descripcion, notas=nuevas_notas)
+        nueva = replace(op, fecha=nueva_fecha, descripcion=nueva_descripcion, notas=nuevas_notas, msi=nuevo_msi)
         return libro.reemplazar_operacion(operacion_id, nueva)
 
     nuevo_monto = valor(monto, actual.monto)
@@ -281,7 +287,17 @@ def editar(
                 op.tipo, nueva_fecha, nueva_cuenta, valor(categoria_id, actual.categoria_id),
                 nuevo_monto, nueva_descripcion, nuevas_notas,
             )
+    if op.tipo is TipoOperacion.GASTO:
+        nueva = replace(nueva, msi=nuevo_msi)
     return libro.reemplazar_operacion(operacion_id, nueva)
+
+
+def duplicar(libro: Libro, operacion_id: str, fecha: date) -> Operacion:
+    """Registra otra vez el mismo movimiento en ``fecha`` (la renta, una suscripción…)."""
+    op = libro.operacion(operacion_id)
+    if op.tipo is TipoOperacion.SALDO_INICIAL:
+        raise ErrorValidacion("El saldo inicial no se puede repetir.")
+    return libro.agregar_operacion(replace(op, id="", fecha=fecha, secuencia=0, creado_en=None, modificado_en=None))
 
 
 def reemplazar(libro: Libro, operacion_id: str, nueva: Operacion) -> Operacion:

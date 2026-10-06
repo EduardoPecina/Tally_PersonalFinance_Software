@@ -59,7 +59,8 @@ def grupo_a_dict(g: Grupo) -> dict:
 
 
 def rubro_a_dict(r: Rubro) -> dict:
-    return {"id": r.id, "nombre": r.nombre, "clase": r.clase.value, "orden": r.orden}
+    return {"id": r.id, "nombre": r.nombre, "clase": r.clase.value, "orden": r.orden,
+            **({"presupuesto": r.presupuesto} if r.presupuesto is not None else {})}
 
 
 def categoria_a_dict(c: Categoria) -> dict:
@@ -87,6 +88,7 @@ def operacion_a_dict(op: Operacion) -> dict:
         ],
         "descripcion": op.descripcion, "notas": op.notas, "secuencia": op.secuencia,
         "creado_en": _iso(op.creado_en), "modificado_en": _iso(op.modificado_en),
+        **({"msi": op.msi} if op.msi else {}),
     }
 
 
@@ -105,7 +107,8 @@ def grupo_desde_dict(d: dict) -> Grupo:
 
 
 def rubro_desde_dict(d: dict) -> Rubro:
-    return Rubro(id=d["id"], nombre=d["nombre"], clase=ClaseCategoria(d["clase"]), orden=d.get("orden", 0))
+    return Rubro(id=d["id"], nombre=d["nombre"], clase=ClaseCategoria(d["clase"]), orden=d.get("orden", 0),
+                 presupuesto=d.get("presupuesto"))
 
 
 def categoria_desde_dict(d: dict) -> Categoria:
@@ -136,6 +139,7 @@ def operacion_desde_dict(d: dict) -> Operacion:
         ),
         descripcion=d.get("descripcion", ""), notas=d.get("notas", ""), secuencia=d.get("secuencia", 0),
         creado_en=_momento(d.get("creado_en")), modificado_en=_momento(d.get("modificado_en")),
+        msi=d.get("msi", 0),
     )
 
 

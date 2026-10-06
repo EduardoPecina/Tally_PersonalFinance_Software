@@ -79,7 +79,13 @@ class ResumenCiclo:
     saldo_al_corte: Decimal
     deuda_al_corte: Decimal
     pagado_despues_del_corte: Decimal
-    por_liquidar: Decimal  # lo que falta pagar de la deuda al corte
+    por_liquidar: Decimal  # lo que falta pagar para no generar intereses
+    msi_por_vencer: Decimal = Decimal("0.00")  # mensualidades futuras de compras a MSI (no se pagan en este corte)
+
+    @property
+    def pago_para_no_generar_intereses(self) -> Decimal:
+        """Deuda al corte menos las mensualidades de MSI que aún no vencen."""
+        return max(Decimal("0.00"), self.deuda_al_corte - self.msi_por_vencer)
 
 
 def resumen_ciclo(libro: Libro, tarjeta_id: str, fecha: date | None = None, *, hasta: date | None = None) -> ResumenCiclo:
@@ -110,6 +116,8 @@ def resumen_ciclo(libro: Libro, tarjeta_id: str, fecha: date | None = None, *, h
 
     saldo_al_corte = libro.saldo_centavos(tarjeta_id, fin)
     deuda_al_corte = max(0, -saldo_al_corte)
+    diferido = min(deuda_al_corte, sum(c.restante_centavos for c in _compras_msi(libro, tarjeta, fin)))
+    exigible = deuda_al_corte - diferido
     return ResumenCiclo(
         inicio=inicio,
         fin=fin,
@@ -120,8 +128,77 @@ def resumen_ciclo(libro: Libro, tarjeta_id: str, fecha: date | None = None, *, h
         saldo_al_corte=a_pesos(saldo_al_corte),
         deuda_al_corte=a_pesos(deuda_al_corte),
         pagado_despues_del_corte=a_pesos(pagos_posteriores),
-        por_liquidar=a_pesos(max(0, deuda_al_corte - pagos_posteriores)),
+        por_liquidar=a_pesos(max(0, exigible - pagos_posteriores)),
+        msi_por_vencer=a_pesos(diferido),
     )
+
+
+# ------------------------------------------------------- meses sin intereses
+
+
+@dataclass(frozen=True, slots=True)
+class CompraMSI:
+    """Una compra a meses sin intereses y cómo va al corte indicado."""
+
+    operacion_id: str
+    fecha: date
+    descripcion: str
+    total: Decimal
+    meses: int
+    mensualidad: Decimal
+    cobradas: int                # mensualidades que ya entraron en algún corte
+    restante_centavos: int       # lo que aún no se cobra
+    ultima: date | None          # corte en el que entra la última mensualidad
+
+    @property
+    def restante(self) -> Decimal:
+        return a_pesos(self.restante_centavos)
+
+    @property
+    def terminada(self) -> bool:
+        return self.cobradas >= self.meses
+
+
+def _cortes_hasta(fecha: date, dia_corte: int, corte: date) -> int:
+    """Cuántos cortes hay desde el que cierra el ciclo de ``fecha`` hasta ``corte`` (incluidos)."""
+    _, siguiente = ciclo_de(fecha, dia_corte)
+    cuenta = 0
+    while siguiente <= corte:
+        cuenta += 1
+        siguiente = _dia_en_mes(*_mes_siguiente(siguiente.year, siguiente.month), dia_corte)
+    return cuenta
+
+
+def _compras_msi(libro: Libro, tarjeta: Cuenta, corte: date) -> list[CompraMSI]:
+    """Compras a MSI hechas hasta ``corte``. Cada corte cobra una mensualidad, empezando por el que cierra el
+    ciclo de la compra (la primera mensualidad lleva los centavos que no dividen exacto)."""
+    if tarjeta.dia_corte is None:
+        return []
+    compras = []
+    for op in libro.operaciones(hasta=corte):
+        if not op.msi:
+            continue
+        total = -sum(p.importe for p in op.partidas_de_cuenta() if p.cuenta_id == tarjeta.id)
+        if total <= 0:
+            continue
+        base, sobrante = divmod(total, op.msi)
+        cobradas = min(op.msi, _cortes_hasta(op.fecha, tarjeta.dia_corte, corte))
+        cobrado = base * cobradas + (sobrante if cobradas else 0)
+        primera = ciclo_de(op.fecha, tarjeta.dia_corte)[1]
+        ultima = primera
+        for _ in range(op.msi - 1):
+            ultima = _dia_en_mes(*_mes_siguiente(ultima.year, ultima.month), tarjeta.dia_corte)
+        compras.append(CompraMSI(op.id, op.fecha, op.descripcion, a_pesos(total), op.msi, a_pesos(base),
+                                 cobradas, total - cobrado, ultima))
+    return compras
+
+
+def compras_a_msi(libro: Libro, tarjeta_id: str, hoy: date | None = None, *, incluir_terminadas: bool = False
+                  ) -> list[CompraMSI]:
+    """Las compras a MSI de la tarjeta, con lo que falta por cobrar a hoy (las vigentes, por omisión)."""
+    tarjeta = _tarjeta(libro, tarjeta_id)
+    compras = _compras_msi(libro, tarjeta, hoy or libro.hoy())
+    return [c for c in compras if incluir_terminadas or not c.terminada]
 
 
 def ciclo_por_pagar(libro: Libro, tarjeta_id: str, hoy: date | None = None) -> ResumenCiclo | None:
@@ -200,6 +277,19 @@ def estado(libro: Libro, tarjeta_id: str, hoy: date | None = None) -> EstadoTarj
         situacion=situacion,
         dias_para_pagar=dias,
     )
+
+
+def pagos_proximos(libro: Libro, hoy: date | None = None, dias: int = 5) -> list[tuple[Cuenta, EstadoTarjeta]]:
+    """Tarjetas con el pago vencido o que vence en los próximos ``dias`` (para avisar en el Resumen)."""
+    hoy = hoy or libro.hoy()
+    avisos = []
+    for tarjeta in libro.cuentas():
+        if tarjeta.tipo is not TipoCuenta.CREDITO or not tarjeta.activa:
+            continue
+        actual = estado(libro, tarjeta.id, hoy)
+        if actual.situacion == VENCIDA or (actual.situacion == POR_PAGAR and actual.dias_para_pagar <= dias):
+            avisos.append((tarjeta, actual))
+    return sorted(avisos, key=lambda a: a[1].dias_para_pagar)
 
 
 def describir_regla_pago(tarjeta: Cuenta) -> str:
