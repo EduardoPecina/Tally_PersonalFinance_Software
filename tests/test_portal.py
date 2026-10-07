@@ -427,7 +427,7 @@ def test_estado_de_cuenta_desde_cuentas(raiz, con_datos):
     sin_errores(at)
     assert at.title[0].value == "Débito Ficticio"
     tabla = at.dataframe[0].value
-    assert list(tabla.columns) == ["Fecha", "Descripción", "Subcategoría o cuenta", "Cargo", "Abono", "Saldo"]
+    assert list(tabla.columns) == ["Fecha", "Descripción", "Subcategoría o cuenta", "Entrada", "Salida", "Saldo"]
     assert tabla.iloc[0]["Saldo"] == "$7,620.00"                  # 5000 + 4000 − 80 − 1000 − 300, saldo corrido
     assert boton(at, "Agregar movimiento")
     at.selectbox(key="cuenta_orden").set_value("antiguos").run()
@@ -735,3 +735,26 @@ def test_inversiones_sin_cuentas_de_inversion(con_datos):
     at = abrir(_pagina("inversiones"))
     sin_errores(at)
     assert any("Aún no tienes cuentas de inversión" in i.value for i in at.info)
+
+
+def test_contabilidad_tecnica(raiz, con_datos):
+    at = abrir(_pagina("contabilidad"))
+    sin_errores(at)
+    assert [t.label for t in at.tabs] == ["Situación financiera", "Resultados", "Flujo de efectivo",
+                                          "Balanza de comprobación"]
+    assert any("Activo = Pasivo + Patrimonio" in s.value for s in at.success)
+    assert any("Sumas iguales" in s.value for s in at.success)
+    assert any(m.label == "Lo que vales (Patrimonio)" for m in at.metric)
+    balanza = at.dataframe[0].value
+    assert balanza["Cuenta"].iloc[-1] == "SUMAS IGUALES"
+    assert balanza["Debe"].iloc[-1] == balanza["Haber"].iloc[-1]
+    at.toggle(key="conta_subcuentas").set_value(True).run()
+    sin_errores(at)
+    assert any("›" in c for c in at.dataframe[0].value["Cuenta"])
+    for periodo in ("anio_pasado", "mes", "mes_pasado", "12m"):
+        at.selectbox(key="conta_periodo").set_value(periodo).run()
+        sin_errores(at)
+    at.selectbox(key="conta_comparar").set_value("no").run()
+    sin_errores(at)
+    at.selectbox(key="conta_periodo").set_value("rango").run()
+    sin_errores(at)
