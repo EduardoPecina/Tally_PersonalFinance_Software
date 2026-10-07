@@ -42,6 +42,11 @@ _DIAS = {"semanal": 7, "catorcenal": 14}
 _VECES_AL_MES = {"semanal": Decimal(52) / 12, "catorcenal": Decimal(26) / 12, "quincenal": Decimal(2),
                  "mensual": Decimal(1), "bimestral": Decimal(1) / 2, "trimestral": Decimal(1) / 3,
                  "semestral": Decimal(1) / 6, "anual": Decimal(1) / 12}
+FIN_DE_SEMANA = {
+    "": "Ese mismo día",
+    "antes": "Se adelanta al viernes",
+    "despues": "Se pasa al lunes",
+}
 TIPOS = (TipoOperacion.GASTO, TipoOperacion.INGRESO, TipoOperacion.TRANSFERENCIA)
 DIAS_DE_GRACIA = 7          # un pago hasta 7 días antes o después cuenta para esa fecha
 DIAS_ATRAS = 14             # en el calendario se ven los pagos de las últimas 2 semanas (pagados o vencidos)
@@ -54,16 +59,19 @@ RECURRENTE, TARJETA, PRESTAMO = "recurrente", "tarjeta", "prestamo"
 
 def crear(libro: Libro, nombre: str, tipo, monto, cuenta_id: str, frecuencia: str, inicio: date, *,
           categoria_id: str | None = None, destino_id: str | None = None, fin: date | None = None,
-          suscripcion: bool = False, notas: str = "") -> Recurrente:
+          suscripcion: bool = False, notas: str = "", monto_2=None, fin_de_semana: str = "") -> Recurrente:
     r = Recurrente(id=libro.nuevo_id(), nombre=nombre, tipo=TipoOperacion(tipo), monto=_centavos(monto),
                    cuenta_id=cuenta_id, frecuencia=frecuencia, inicio=inicio, categoria_id=categoria_id,
-                   destino_id=destino_id, fin=fin, suscripcion=suscripcion, notas=notas)
+                   destino_id=destino_id, fin=fin, suscripcion=suscripcion, notas=notas,
+                   monto_2=_centavos(monto_2) if monto_2 else None, fin_de_semana=fin_de_semana)
     return libro.guardar_recurrente(_validar(libro, r))
 
 
 def editar(libro: Libro, recurrente_id: str, **cambios) -> Recurrente:
     if "monto" in cambios:
         cambios["monto"] = _centavos(cambios["monto"])
+    if "monto_2" in cambios:
+        cambios["monto_2"] = _centavos(cambios["monto_2"]) if cambios["monto_2"] else None
     if "tipo" in cambios:
         cambios["tipo"] = TipoOperacion(cambios["tipo"])
     return libro.guardar_recurrente(_validar(libro, replace(libro.recurrente(recurrente_id), **cambios)))
@@ -88,6 +96,10 @@ def _validar(libro: Libro, r: Recurrente) -> Recurrente:
         raise ErrorValidacion("Elige cada cuánto se repite.")
     if r.fin is not None and r.fin < r.inicio:
         raise ErrorValidacion("La fecha en que termina no puede ser antes de la primera vez.")
+    if r.fin_de_semana not in FIN_DE_SEMANA:
+        raise ErrorValidacion("Elige qué pasa si cae en fin de semana.")
+    if r.frecuencia != "quincenal" or r.monto_2 == r.monto:
+        r = replace(r, monto_2=None)             # solo la quincena distingue la 1.ª de la 2.ª
     cuenta = libro.cuenta(r.cuenta_id)
     if not cuenta.activa:
         raise ErrorValidacion(f"La cuenta «{cuenta.nombre}» está archivada.")
@@ -112,7 +124,43 @@ def _validar(libro: Libro, r: Recurrente) -> Recurrente:
 
 
 def fechas(r: Recurrente, desde: date, hasta: date) -> list[date]:
-    """Las veces que toca entre ``desde`` y ``hasta`` (incluidas), desde su primera vez hasta su fin."""
+    """Las veces que toca entre ``desde`` y ``hasta`` (incluidas), desde su primera vez hasta su fin. Si cae en fin
+    de semana, se mueve al viernes o al lunes según ``fin_de_semana`` (los días festivos no se conocen)."""
+    if not r.fin_de_semana:
+        return _programadas(r, desde, hasta)
+    movidas = (mover(r, d) for d in _programadas(r, desde - timedelta(days=3), hasta + timedelta(days=3)))
+    return [d for d in movidas if desde <= d <= hasta]
+
+
+def mover(r: Recurrente, dia: date) -> date:
+    """El día real: si ``dia`` es sábado o domingo, el viernes antes o el lunes después (según el recurrente)."""
+    if dia.weekday() < 5 or not r.fin_de_semana:
+        return dia
+    if r.fin_de_semana == "antes":
+        return dia - timedelta(days=dia.weekday() - 4)
+    return dia + timedelta(days=7 - dia.weekday())
+
+
+def quincena(r: Recurrente, dia: date) -> int:
+    """1 si ``dia`` es el pago de la 1.ª quincena (la del 15), 2 si es el de la 2.ª (la de fin de mes): la fecha
+    de pago más cercana, ya movida por el fin de semana."""
+    candidatas = []
+    for mes in (-1, 0, 1):
+        base = _sumar_meses(dia.replace(day=1), mes)
+        candidatas += [(base.replace(day=15), 1),
+                       (base.replace(day=calendar.monthrange(base.year, base.month)[1]), 2)]
+    return min(candidatas, key=lambda c: (abs((mover(r, c[0]) - dia).days), c[1]))[1]
+
+
+def monto_en(r: Recurrente, dia: date) -> int:
+    """El importe estimado de la vez que toca ``dia`` (la 2.ª quincena puede ser distinta de la 1.ª)."""
+    if r.monto_2 and r.frecuencia == "quincenal" and quincena(r, dia) == 2:
+        return r.monto_2
+    return r.monto
+
+
+def _programadas(r: Recurrente, desde: date, hasta: date) -> list[date]:
+    """Las fechas según el calendario, sin mover las que caen en fin de semana."""
     desde = max(desde, r.inicio)
     if r.fin is not None:
         hasta = min(hasta, r.fin)
@@ -163,11 +211,16 @@ def _sumar_meses(dia: date, meses: int) -> date:
 
 def al_mes(r: Recurrente) -> Decimal:
     """Lo que equivale al mes (una suscripción anual de $1,200 son $100 al mes)."""
-    return a_pesos(int((Decimal(r.monto) * _VECES_AL_MES[r.frecuencia]).to_integral_value()))
+    return a_pesos(int((_promedio(r) * _VECES_AL_MES[r.frecuencia]).to_integral_value()))
 
 
 def al_anio(r: Recurrente) -> Decimal:
-    return a_pesos(int((Decimal(r.monto) * _VECES_AL_MES[r.frecuencia] * 12).to_integral_value()))
+    return a_pesos(int((_promedio(r) * _VECES_AL_MES[r.frecuencia] * 12).to_integral_value()))
+
+
+def _promedio(r: Recurrente) -> Decimal:
+    """Lo de cada vez; con dos quincenas distintas, su promedio."""
+    return Decimal(r.monto + r.monto_2) / 2 if r.monto_2 else Decimal(r.monto)
 
 
 @dataclass(frozen=True, slots=True)
@@ -205,7 +258,8 @@ def _cubre(libro: Libro, r: Recurrente, op: Operacion) -> bool:
         if op.tipo is not r.tipo or not any(p.categoria_id == r.categoria_id for p in op.partidas):
             return False
         monto = abs(sum(p.importe for p in op.partidas if p.cuenta_id == r.cuenta_id))
-    return r.monto / 2 <= monto <= r.monto * 2
+    montos = (r.monto, r.monto_2 or r.monto)
+    return min(montos) / 2 <= monto <= max(montos) * 2
 
 
 def pagos(libro: Libro, r: Recurrente, fechas_: list[date]) -> dict[date, Operacion]:
@@ -228,7 +282,7 @@ def pagos(libro: Libro, r: Recurrente, fechas_: list[date]) -> dict[date, Operac
 def registrar(libro: Libro, recurrente_id: str, fecha: date, monto=None, *, cuenta_id: str | None = None) -> Operacion:
     """Registra el pago (o el ingreso) con su importe estimado, u otro si este mes fue distinto."""
     r = libro.recurrente(recurrente_id)
-    importe = a_pesos(r.monto) if monto is None else monto
+    importe = a_pesos(monto_en(r, fecha)) if monto is None else monto
     cuenta = cuenta_id or r.cuenta_id
     if r.tipo is TipoOperacion.GASTO:
         return registrar_gasto(libro, fecha, cuenta, r.categoria_id, importe, r.nombre)
@@ -272,7 +326,7 @@ def calendario(libro: Libro, hoy: date | None = None, dias: int = 30) -> list[Ev
             op = hechos.get(dia)
             estado = PAGADO if op else (VENCIDO if dia < hoy else PENDIENTE)
             signo = 1 if r.tipo is TipoOperacion.INGRESO else -1
-            eventos.append(Evento(dia, r.nombre, RECURRENTE, signo * (op_monto(op, r) if op else r.monto),
+            eventos.append(Evento(dia, r.nombre, RECURRENTE, signo * (op_monto(op, r) if op else monto_en(r, dia)),
                                   r.cuenta_id, estado, r.id, op.id if op else "", r.destino_id,
                                   FRECUENCIAS[r.frecuencia], r.suscripcion))
     eventos += _tarjetas(libro, hoy, desde, hasta)

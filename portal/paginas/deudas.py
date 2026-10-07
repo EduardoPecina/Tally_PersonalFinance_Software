@@ -39,9 +39,9 @@ def _capacidad() -> None:
     cap = planeacion.capacidad(lib)
     st.subheader("¿Cuánto de tu ingreso se va en deudas?")
     if not cap.ingreso:
-        st.info("Para saberlo, marca tu **ingreso principal** (y tus ingresos fijos) en **Presupuestos → Tus "
-                "ingresos**, o escribe cuánto ganas al mes.")
-        navegacion.enlace("presupuestos", "Ir a Presupuestos", "🎯")
+        st.info("Para saberlo, configura tu **ingreso principal** (y tus ingresos fijos) en **Ingresos**, o escribe "
+                "cuánto ganas al mes.")
+        navegacion.enlace("ingresos", "Ir a Ingresos", "💰")
         return
     a, b, c, d = st.columns(4)
     a.metric("Ingreso esperado al mes", formato.dinero(cap.ingreso))

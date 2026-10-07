@@ -2,15 +2,14 @@
 
 from __future__ import annotations
 
-from decimal import Decimal
-
 import pandas as pd
 import streamlit as st
 
-from motor import categorias, perfil, planeacion, reportes
+from motor import categorias, planeacion, reportes
 from motor.modelo import ClaseCategoria
 from portal.componentes import formato
 from portal.componentes.sesion import ejecutar, libro
+from portal.navegacion import enlace
 
 
 def avance(desde, hasta, *, titulo: bool = True) -> None:
@@ -39,9 +38,7 @@ def mostrar() -> None:
     st.title("Presupuestos")
     st.caption("Ponle un tope mensual a las categorías que quieras cuidar (por ejemplo, ALIMENTACION o "
                "ENTRETENIMIENTO). TALLY te muestra cuánto llevas este mes, aquí y en el Resumen.")
-    ingresos, plan, proyeccion = st.tabs(["Tus ingresos", "¿Cuánto puedes gastar?", "Proyección del mes"])
-    with ingresos:
-        _ingresos()
+    plan, proyeccion = st.tabs(["¿Cuánto puedes gastar?", "Proyección del mes"])
     with plan:
         _plan()
     with proyeccion:
@@ -81,53 +78,6 @@ def mostrar() -> None:
             st.rerun()
 
 
-# ------------------------------------------------------------------ ingresos
-
-
-def _ingresos() -> None:
-    lib = libro()
-    st.caption("Tu ingreso **principal** (la nómina: marca tus quincenas) y tus ingresos **secundarios fijos** (una "
-               "renta, honorarios de cada mes…). Su promedio de los últimos 3 meses completos es tu ingreso esperado; "
-               "con él se calculan tu capacidad de pago (Deudas) y tus presupuestos sugeridos.")
-    de_ingreso = {c.id: categorias.etiqueta(lib, c.id) for c in lib.categorias()
-                  if c.clase is ClaseCategoria.INGRESO and c.activa and c.rubro_id}
-    ids = list(de_ingreso)
-    principal = next((c.id for c in lib.categorias() if c.principal and c.id in de_ingreso), None)
-    secundarios = [c.id for c in lib.categorias() if c.secundario and c.id in de_ingreso]
-    with st.form("ingresos_fijos", border=False):
-        elegido = st.selectbox("Ingreso principal", ids, format_func=de_ingreso.get, placeholder="Elige uno",
-                               index=ids.index(principal) if principal else None)
-        otros = st.multiselect("Ingresos secundarios fijos", ids, default=secundarios, format_func=de_ingreso.get,
-                               placeholder="Ninguno")
-        if st.form_submit_button("Guardar", type="primary"):
-            def guardar(lib):
-                for c in lib.categorias():
-                    if c.id in de_ingreso:
-                        categorias.editar(lib, c.id, principal=c.id == elegido,
-                                          secundario=c.id in otros and c.id != elegido)
-            if ejecutar(guardar, exito="Ingresos guardados"):
-                st.rerun()
-    lista = planeacion.ingresos(lib)
-    esperado = planeacion.ingreso_esperado(lib)
-    if lista:
-        st.dataframe(pd.DataFrame({"Ingreso": [i.nombre for i in lista],
-                                   "Tipo": ["Principal" if i.tipo == "principal" else "Secundario" for i in lista],
-                                   "Promedio al mes": [formato.dinero(i.promedio) for i in lista]}),
-                     hide_index=True, width="stretch")
-    st.metric("Ingreso esperado al mes", formato.dinero(esperado.monto),
-              help="Escrito por ti" if esperado.fuente == "manual" else
-              f"Promedio de {esperado.meses} mes(es) completo(s)")
-    with st.form("ingreso_manual", border=False):
-        actual = lib.perfil.ingreso_esperado
-        manual = st.number_input("¿Prefieres escribir cuánto ganas al mes? (vacío = el promedio)", min_value=0.0,
-                                 value=float(Decimal(actual) / 100) if actual else None, step=500.0, format="%.2f")
-        meta = st.slider("Meta de ahorro (% de tu ingreso)", 0, 50, value=lib.perfil.meta_ahorro, step=5)
-        if st.form_submit_button("Guardar"):
-            if ejecutar(lambda lib: perfil.ajustar(lib, ingreso_esperado=Decimal(str(manual)) if manual else None,
-                                                   meta_ahorro=meta), exito="Guardado"):
-                st.rerun()
-
-
 # -------------------------------------------------------------- sugeridos
 
 
@@ -135,7 +85,8 @@ def _plan() -> None:
     lib = libro()
     plan = planeacion.sugerir(lib)
     if not plan.ingreso:
-        st.info("Primero marca tu ingreso principal en «Tus ingresos» (o escribe cuánto ganas).")
+        st.info("Primero configura tu ingreso principal en **Ingresos** (o escribe ahí cuánto ganas al mes).")
+        enlace("ingresos", "Ir a Ingresos", "💰")
         return
     a, b, c, d = st.columns(4)
     a.metric("Ingreso esperado", formato.dinero(plan.ingreso))

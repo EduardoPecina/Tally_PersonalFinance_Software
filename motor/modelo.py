@@ -319,6 +319,8 @@ class Recurrente:
     suscripcion: bool = False
     activa: bool = True
     notas: str = ""
+    monto_2: int | None = None     # quincenal: el importe de la 2.ª quincena, si es distinto (centavos)
+    fin_de_semana: str = ""        # si cae en sábado o domingo: "antes" (el viernes), "despues" (el lunes) o "" (igual)
 
 
 @dataclass(frozen=True, slots=True)

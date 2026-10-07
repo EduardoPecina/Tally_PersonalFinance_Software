@@ -2,6 +2,28 @@
 
 Todos los cambios relevantes de TALLY se documentan aquí.
 
+## [0.17.0] — Sin publicar
+
+- **Nueva página 💰 Ingresos** (en Tu dinero). Sale de Presupuestos y tiene su lugar propio:
+  - **Tu ingreso principal:** cada cuánto te pagan (quincena, catorcena, semana o mes), a qué cuenta y cuánto. En
+    quincena, la **1.ª (la del 15) y la 2.ª (la de fin de mes)** pueden ser distintas por centavos (retenciones,
+    redondeos).
+  - **Si el día de pago cae en sábado o domingo:** se adelanta al viernes, se pasa al lunes o se queda igual. Vale
+    también para cualquier pago fijo del Calendario.
+  - **¿Cuánto te tiene que durar?** Cada pago y los días que tiene que durarte. No todas las quincenas duran lo
+    mismo: si el 15 cae en domingo te pagan el viernes 13 y ese dinero tiene que durar hasta fin de mes. TALLY
+    avisa de los periodos más largos de lo normal y cuánto tocas al día.
+  - **Hasta tu próximo pago:** con tu dinero disponible y lo que te toca pagar y cobrar antes, cuánto puedes gastar
+    al día.
+  - **Otros ingresos fijos** (una renta, honorarios…) y **tu ingreso al mes** (principal, secundarios, el que
+    escribes a mano y tu meta de ahorro).
+- **Registrar tu nómina sin teclear:** en Registrar → Ingreso, elige uno de tus ingresos fijos y la fecha; TALLY
+  llena el importe de esa quincena, la subcategoría, la cuenta y la descripción. Lo puedes corregir antes de guardar.
+- **Ingreso esperado:** mientras no tengas meses completos registrados, es lo que configuraste en tus ingresos
+  fijos. El primer mes a medias y los saldos iniciales ya no bajan el promedio (tampoco el de tus gastos).
+- **Enlaces con su cajita:** los enlaces a otras páginas (por ejemplo «Cargar datos desde Excel» en Configuración)
+  se ven como botones.
+
 ## [0.16.0] — Sin publicar
 
 - **Nueva página 🧾 Impuestos** (en Análisis), **para cualquier país**. TALLY no supone las leyes de ningún lugar:
