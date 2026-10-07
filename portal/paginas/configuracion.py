@@ -130,8 +130,12 @@ def _acerca() -> None:
 
 def mostrar() -> None:
     st.title("Configuración")
-    tu, apariencia, respaldos, resumen, acerca = st.tabs(
-        ["Tu perfil", "Apariencia", "Respaldos", "Resumen", "Acerca de TALLY"])
+    tu, seguridad_tab, apariencia, respaldos, resumen, acerca = st.tabs(
+        ["Tu perfil", "Seguridad", "Apariencia", "Respaldos", "Resumen", "Acerca de TALLY"])
+    with seguridad_tab:
+        from portal.paginas import seguridad
+
+        seguridad.mostrar()
     with tu:
         _perfil()
         st.divider()

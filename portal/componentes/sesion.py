@@ -22,7 +22,9 @@ T = TypeVar("T")
 
 @st.cache_resource(show_spinner=False)
 def _abrir(ruta: str) -> Sesion:
-    return Sesion.abrir(ruta)
+    from portal.componentes import candado              # la llave, si tus datos tienen contraseña
+
+    return Sesion.abrir(ruta, llave=candado.llave())
 
 
 def ruta_datos() -> str:
@@ -35,8 +37,16 @@ def sesion() -> Sesion:
 
 
 def olvidar_sesion() -> None:
-    """Cierra la sesión en memoria (p. ej. tras apartar un archivo dañado)."""
+    """Cierra la sesión en memoria (p. ej. tras apartar un archivo dañado, o al bloquear TALLY)."""
     _abrir.clear()
+
+
+def llave_actual() -> bytes | None:
+    """La llave con la que está abierta la sesión (si ya se abrió); no la abre."""
+    try:
+        return sesion().almacen.llave
+    except ErrorTally:
+        return None
 
 
 def libro() -> Libro:

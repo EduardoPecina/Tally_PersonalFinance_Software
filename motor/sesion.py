@@ -25,10 +25,14 @@ from motor.persistencia import Almacen
 
 
 class Sesion:
-    def __init__(self, ruta_datos: Path | str, *, reloj: Callable[[], datetime] | None = None) -> None:
+    def __init__(self, ruta_datos: Path | str, *, reloj: Callable[[], datetime] | None = None,
+                 llave: bytes | None = None) -> None:
+        """Con contraseña (motor/cifrado.py) hace falta ``llave``; sin ella, ``ErrorBloqueado``."""
         self._reloj = reloj
         self._candado = threading.RLock()  # el portal atiende cada pestaña en su propio hilo
         self.almacen = Almacen(ruta_datos)
+        if llave is not None:
+            self.almacen.desbloquear(llave)
         self.libro: Libro = self.almacen.cargar(reloj=reloj)
         if self.almacen.es_nuevo:
             with self.cambio() as libro:
@@ -49,9 +53,9 @@ class Sesion:
         return True
 
     @classmethod
-    def abrir(cls, ruta_datos: Path | str | None = None, *, reloj=None) -> Sesion:
+    def abrir(cls, ruta_datos: Path | str | None = None, *, reloj=None, llave: bytes | None = None) -> Sesion:
         """Abre (o crea) el archivo de datos en su lugar habitual."""
-        return cls(ruta_datos or rutas.archivo_datos(), reloj=reloj)
+        return cls(ruta_datos or rutas.archivo_datos(), reloj=reloj, llave=llave)
 
     @contextmanager
     def cambio(self) -> Iterator[Libro]:

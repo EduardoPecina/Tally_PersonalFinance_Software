@@ -7,9 +7,9 @@ from pathlib import Path
 
 import streamlit as st
 
-from motor import respaldos
+from motor import cifrado, respaldos
 from motor.errores import ErrorTally
-from portal.componentes.sesion import avisar, sesion
+from portal.componentes.sesion import avisar, llave_actual, sesion
 
 TIPOS = ["zip", "db"]
 
@@ -29,7 +29,8 @@ def boton_descargar(clave: str, *, principal: bool = True) -> None:
         mime="application/zip", type="primary" if principal else "secondary", icon=":material/download:",
         on_click="ignore", key=f"{clave}_descargar",
         help="Un archivo .zip con TODO: cuentas, movimientos, categorías, configuración y bitácora. Guárdalo en "
-             "una memoria USB o donde quieras; con él recuperas todo en cualquier PC.",
+             "una memoria USB o donde quieras; con él recuperas todo en cualquier PC. Si TALLY tiene contraseña, "
+             "sale cifrado: se abre con tu contraseña o con tu Kit de emergencia.",
     )
 
 
@@ -42,9 +43,14 @@ def subido(archivo) -> Path:
 
 
 def revisar_y_restaurar(ruta: Path, clave: str, *, pedir_confirmacion: bool = True, nombre: str | None = None) -> None:
-    """Muestra qué trae el respaldo y lo restaura con un botón. Antes se respalda lo actual."""
+    """Muestra qué trae el respaldo y lo restaura con un botón. Antes se respalda lo actual.
+
+    Si el respaldo tiene contraseña (y no es la de tus datos), la pide: la de ese día o la llave del Kit."""
+    secreto = pedir_contrasena_de(ruta, clave)
+    if secreto is False:
+        return
     try:
-        info = respaldos.inspeccionar(ruta)
+        info = respaldos.inspeccionar(ruta, llave=llave_actual(), secreto=secreto or None)
     except ErrorTally as error:
         st.error(str(error))
         return
@@ -63,9 +69,44 @@ def revisar_y_restaurar(ruta: Path, clave: str, *, pedir_confirmacion: bool = Tr
                                  key=f"{clave}_confirmar")
     if st.button("Restaurar este respaldo", type="primary", disabled=not confirmado, key=f"{clave}_restaurar"):
         try:
-            resultado = respaldos.restaurar(sesion(), ruta)
+            resultado = respaldos.restaurar(sesion(), ruta, secreto=secreto or None)
         except (ErrorTally, OSError) as error:
             st.error(f"No se restauró nada: {error}")
             return
+        despues_de_restaurar(resultado)
         avisar(f"Respaldo restaurado. Lo que había antes quedó en {resultado.respaldo_de_seguridad.name}")
         st.rerun()
+
+
+def pedir_contrasena_de(ruta: Path, clave: str) -> str | None | bool:
+    """``None`` si no hace falta contraseña; el texto escrito; o ``False`` si falta escribirla."""
+    try:
+        config = respaldos.contrasena_de(ruta)
+    except ErrorTally as error:
+        st.error(str(error))
+        return False
+    llave = llave_actual()
+    if config is None or (llave is not None and cifrado.huella(llave) == config.llave_id):
+        return None
+    st.info(f"🔒 Este respaldo tiene contraseña. Escribe la **contraseña que tenías ese día** o la **llave de tu Kit "
+            f"de emergencia** del {cifrado._fecha(config.kit_creado)} (termina en …{config.kit_final}).")
+    if config.pista:
+        st.caption(f"Pista de ese día: {config.pista}")
+    secreto = st.text_input("Contraseña o llave del Kit", type="password", key=f"{clave}_secreto_respaldo")
+    return secreto if secreto else False
+
+
+def despues_de_restaurar(resultado) -> None:
+    """Si tus datos quedaron con la contraseña del respaldo, TALLY entra con ella de una vez."""
+    from portal.componentes import candado
+
+    if resultado.adopto_contrasena:
+        llave = sesion().almacen.llave
+        candado.refrescar()
+        candado.entrar(llave)
+        avisar("Tus datos quedaron con la contraseña de ese respaldo (y el mismo Kit de emergencia).", "🔒")
+        if resultado.con_kit:
+            avisar("Entraste con tu Kit: pon una contraseña nueva en Configuración → Seguridad → Cambiar "
+                   "contraseña (como «actual» usa la llave de tu Kit).", "🔑")
+    else:
+        candado.refrescar()

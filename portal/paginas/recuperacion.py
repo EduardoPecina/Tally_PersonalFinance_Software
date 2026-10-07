@@ -34,9 +34,16 @@ def mostrar(error: Exception) -> None:
     if subido is not None:
         ruta = Path(tempfile.gettempdir()) / f"tally_subido_{subido.file_id}.zip"
         ruta.write_bytes(subido.getvalue())
+    secreto = None
+    if ruta is not None:
+        from portal.componentes import respaldo
+
+        secreto = respaldo.pedir_contrasena_de(ruta, "recuperacion")
+        if secreto is False:
+            ruta = None
     if ruta is not None:
         try:
-            info = respaldos.inspeccionar(ruta)
+            info = respaldos.inspeccionar(ruta, secreto=secreto or None)
             st.caption(f"{ruta.name}: {info.cuentas} cuenta(s), {info.movimientos} movimiento(s), "
                        f"creado el {info.creado_en.replace('T', ' ')}.")
         except ErrorTally as error_respaldo:
@@ -46,10 +53,13 @@ def mostrar(error: Exception) -> None:
         Sesion.apartar_archivo_danado(ruta_datos())
         olvidar_sesion()
         try:
-            respaldos.restaurar(sesion(), ruta)
+            resultado = respaldos.restaurar(sesion(), ruta, secreto=secreto or None)
         except (ErrorTally, OSError) as error_restaurar:
             st.error(f"No se pudo restaurar: {error_restaurar}")
             return
+        from portal.componentes import respaldo
+
+        respaldo.despues_de_restaurar(resultado)
         avisar("Respaldo restaurado")
         st.rerun()
 

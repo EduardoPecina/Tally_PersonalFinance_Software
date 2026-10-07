@@ -6,3 +6,5 @@ psutil==7.2.2
 pywin32==312 ; sys_platform == "win32"
 # Para exportar tablas dinámicas y movimientos a Excel (.xlsx).
 openpyxl==3.1.5
+# Para la contraseña opcional de TALLY (cifrado de tus datos con AES-256-GCM, motor/cifrado.py).
+cryptography==49.0.0
