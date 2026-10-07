@@ -197,7 +197,8 @@ def _otros() -> None:
         hoy = lib.hoy()
         seleccion = st.dataframe(pd.DataFrame({
             "Nombre": [r.nombre for r in lista],
-            "Subcategoría": [categorias.etiqueta(lib, r.categoria_id) for r in lista],
+            "Subcategoría": [categorias.etiqueta(lib, r.categoria_id) if r.categoria_id
+                             else "❓ Elige la subcategoría" for r in lista],      # la suya se borró
             "Te llegan": [_importe(r) for r in lista],
             "Cada cuánto": [recurrentes.FRECUENCIAS[r.frecuencia].split(" (")[0] for r in lista],
             "Al mes": [formato.dinero(recurrentes.al_mes(r)) for r in lista],

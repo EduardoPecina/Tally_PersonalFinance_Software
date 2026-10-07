@@ -121,6 +121,11 @@ def ahorrado(meta: Meta) -> int:
     return sum(a.centavos for a in meta.aportes)
 
 
+def de_operacion(libro: Libro, operacion_id: str) -> list[Meta]:
+    """Las metas a las que ese movimiento aportó (o de las que retiró): si lo borras, se quita de ellas."""
+    return [m for m in libro.metas() if any(a.operacion_id == operacion_id for a in m.aportes)]
+
+
 @dataclass(frozen=True, slots=True)
 class Estado:
     ahorrado: Decimal
@@ -137,7 +142,7 @@ class Estado:
 def estado(meta: Meta, hoy: date) -> Estado:
     junto = ahorrado(meta)
     falta = max(meta.objetivo - junto, 0)
-    porcentaje = min(100, int(junto * 100 // meta.objetivo)) if meta.objetivo else 0
+    porcentaje = max(0, min(100, int(junto * 100 // meta.objetivo))) if meta.objetivo else 0   # 0 si quedó en negativo
     meses = None
     por_mes = None
     if meta.fecha_limite is not None and falta:

@@ -204,15 +204,17 @@ def eliminar(libro: Libro, categoria_id: str, *, reasignar_a: str | None = None)
     """Borra una subcategoría.
 
     Si tiene movimientos, hay que indicar a qué subcategoría (del mismo tipo)
-    pasan; en la práctica es juntarlas.
+    pasan; en la práctica es juntarlas. Los pagos recurrentes y los gastos
+    deducibles que la usaban pasan a esa otra (o se quedan sin ella).
     """
     categoria = _editable(libro, categoria_id)
-    if en_uso(libro, categoria_id):
-        if reasignar_a is None:
-            raise ErrorValidacion(f"«{categoria.nombre}» tiene movimientos; elige a qué subcategoría pasarlos.")
+    if reasignar_a is not None:
         destino = libro.categoria(reasignar_a)
         if destino.id == categoria_id or destino.clase is not categoria.clase:
             raise ErrorValidacion("Los movimientos solo pueden pasar a otra subcategoría del mismo tipo.")
+    if en_uso(libro, categoria_id):
+        if reasignar_a is None:
+            raise ErrorValidacion(f"«{categoria.nombre}» tiene movimientos; elige a qué subcategoría pasarlos.")
         for op in libro.operaciones():
             if any(p.categoria_id == categoria_id for p in op.partidas):
                 partidas = tuple(
@@ -223,6 +225,10 @@ def eliminar(libro: Libro, categoria_id: str, *, reasignar_a: str | None = None)
     for r in libro.recurrentes():                     # los pagos recurrentes pasan a la otra (o quedan sin elegir)
         if r.categoria_id == categoria_id:
             libro.guardar_recurrente(replace(r, categoria_id=reasignar_a, activa=r.activa and reasignar_a is not None))
+    if any(categoria_id in c.subcategorias for c in libro.fiscal.conceptos):   # los gastos deducibles, igual
+        libro.fiscal = replace(libro.fiscal, conceptos=tuple(
+            replace(c, subcategorias=_sustituir(c.subcategorias, categoria_id, reasignar_a))
+            for c in libro.fiscal.conceptos))
     libro.quitar_categoria(categoria_id)
 
 
@@ -322,3 +328,8 @@ def _fusionar(partidas: tuple[Partida, ...]) -> tuple[Partida, ...]:
         else:
             resultado[previa] = Partida(resultado[previa].importe + p.importe, categoria_id=p.categoria_id)
     return tuple(resultado)
+
+
+def _sustituir(ids: tuple[str, ...], viejo: str, nuevo: str | None) -> tuple[str, ...]:
+    """``ids`` con ``nuevo`` en lugar de ``viejo`` (o sin ``viejo`` si no hay ``nuevo``), sin repetir."""
+    return tuple(dict.fromkeys(nuevo if i == viejo else i for i in ids if i != viejo or nuevo is not None))

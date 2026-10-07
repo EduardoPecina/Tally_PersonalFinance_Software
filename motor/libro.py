@@ -365,12 +365,28 @@ class Libro:
         )
         validar_operacion(self, nueva, original)
         self._operaciones[operacion_id] = nueva
+        self._seguir_aportes(operacion_id, nueva)
         return nueva
 
     def eliminar_operacion(self, operacion_id: str) -> Operacion:
         op = self.operacion(operacion_id)
         del self._operaciones[operacion_id]
+        self._seguir_aportes(operacion_id, None)
         return op
+
+    def _seguir_aportes(self, operacion_id: str, op: Operacion | None) -> None:
+        """Los aportes y retiros de una meta siguen a la transferencia que movió su dinero: si se borra, se quitan
+        de la meta; si se corrige, toman su fecha y su importe. Así la meta no dice que hay dinero que no está."""
+        for meta in list(self._metas.values()):
+            if not any(a.operacion_id == operacion_id for a in meta.aportes):
+                continue
+            importe = 0 if op is None else sum(p.importe for p in op.partidas if p.importe > 0)
+            aportes = tuple(
+                a if a.operacion_id != operacion_id
+                else replace(a, fecha=op.fecha, centavos=importe if a.centavos > 0 else -importe)
+                for a in meta.aportes if op is not None or a.operacion_id != operacion_id
+            )
+            self._metas[meta.id] = replace(meta, aportes=aportes)
 
     # ------------------------------------------------------------------ saldos
 

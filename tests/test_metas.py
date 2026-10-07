@@ -8,6 +8,7 @@ import pytest
 from conftest import AHORA, D
 from motor import cuentas, metas, movimientos
 from motor.errores import ErrorValidacion
+from motor.modelo import Aporte
 from motor.serializacion import instantanea, libro_desde_instantanea
 
 HOY = AHORA.date()                     # 20/07/2026
@@ -93,3 +94,34 @@ def test_borrar_la_cuenta_deja_la_meta_sin_cuenta(libro):
     m = metas.crear(libro, "Regalo", 500, cuenta_id=sin_movimientos)
     libro.quitar_cuenta(sin_movimientos)
     assert libro.meta(m.id).cuenta_id is None
+
+
+def test_borrar_o_corregir_la_transferencia_de_un_aporte_actualiza_la_meta(libro, ctas):
+    cuentas.cambiar_saldo_inicial(libro, ctas.debito, 10_000, date(2026, 1, 1))
+    m = metas.crear(libro, "Viaje", 10_000, cuenta_id=ctas.ahorro)
+    m = metas.aportar(libro, m.id, 3_000, date(2026, 7, 1), desde=ctas.debito)
+    m = metas.aportar(libro, m.id, 1_000, date(2026, 7, 2), desde=ctas.debito)
+    m = metas.retirar(libro, m.id, 500, date(2026, 7, 3), hacia=ctas.debito)
+    primero, segundo, retiro = (a.operacion_id for a in m.aportes)
+    assert metas.de_operacion(libro, primero) == [m]
+
+    movimientos.editar(libro, primero, monto=2_500, fecha=date(2026, 7, 4))      # corregido en el Historial
+    assert libro.meta(m.id).aportes[0] == Aporte(date(2026, 7, 4), 250_000, primero)
+    movimientos.editar(libro, retiro, monto=600)                                 # un retiro sigue restando
+    assert libro.meta(m.id).aportes[2].centavos == -60_000
+    movimientos.eliminar(libro, segundo)                                         # borrado en el Historial
+    m = libro.meta(m.id)
+    assert [a.operacion_id for a in m.aportes] == [primero, retiro]
+    assert metas.ahorrado(m) == libro.saldo_centavos(ctas.ahorro) == 190_000     # la meta y la cuenta cuadran
+    assert metas.por_cuenta(libro)[0].libre == 0
+    assert metas.de_operacion(libro, segundo) == []
+
+
+def test_si_la_meta_queda_en_negativo_el_avance_es_cero(libro, ctas):
+    cuentas.cambiar_saldo_inicial(libro, ctas.debito, 10_000, date(2026, 1, 1))
+    m = metas.crear(libro, "Viaje", 10_000, cuenta_id=ctas.ahorro)
+    m = metas.aportar(libro, m.id, 3_000, date(2026, 7, 1), desde=ctas.debito)
+    metas.retirar(libro, m.id, 2_000, date(2026, 7, 2), hacia=ctas.debito)
+    movimientos.eliminar(libro, m.aportes[0].operacion_id)                       # se borró el aporte, no el retiro
+    e = metas.estado(libro.meta(m.id), HOY)
+    assert (e.ahorrado, e.porcentaje) == (D(-2_000), 0)

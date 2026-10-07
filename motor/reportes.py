@@ -70,17 +70,28 @@ def resumen(libro: Libro, desde: date, hasta: date) -> Resumen:
 class Comparacion:
     actual: Resumen
     anterior: Resumen
-    diferencia: Resumen  # actual − anterior, campo por campo
+    diferencia: Resumen  # actual − anterior, campo por campo (hasta ``al``, si el periodo va a la mitad)
     desde_anterior: date
     hasta_anterior: date
+    al: date | None = None  # el periodo va a la mitad: se comparó hasta este día con los mismos días del anterior
 
 
-def comparar(libro: Libro, desde: date, hasta: date) -> Comparacion:
-    """Resumen del periodo frente al periodo anterior ("¿gasté más que el mes pasado?")."""
+def comparar(libro: Libro, desde: date, hasta: date, hoy: date | None = None) -> Comparacion:
+    """Resumen del periodo frente al periodo anterior ("¿gasté más que el mes pasado?").
+
+    Si ``hoy`` cae dentro del periodo (el mes va a la mitad), lo que llevas se compara con los mismos días del
+    periodo anterior: el 7 de octubre, del 1 al 7 de octubre contra del 1 al 7 de septiembre. Así a principio de
+    mes no parece que gastaste mucho menos solo porque el mes pasado ya terminó.
+    """
     desde_ant, hasta_ant = periodo_anterior(desde, hasta)
-    actual, anterior = resumen(libro, desde, hasta), resumen(libro, desde_ant, hasta_ant)
-    diferencia = Resumen(*(getattr(actual, f) - getattr(anterior, f) for f in Resumen.__dataclass_fields__))
-    return Comparacion(actual, anterior, diferencia, desde_ant, hasta_ant)
+    actual = base = resumen(libro, desde, hasta)
+    al = hoy if hoy is not None and desde <= hoy < hasta else None
+    if al is not None:
+        hasta_ant = min(hasta_ant, _dia_equivalente(al, desde, desde_ant))
+        base = resumen(libro, desde, al)
+    anterior = resumen(libro, desde_ant, hasta_ant)
+    diferencia = Resumen(*(getattr(base, f) - getattr(anterior, f) for f in Resumen.__dataclass_fields__))
+    return Comparacion(actual, anterior, diferencia, desde_ant, hasta_ant, al)
 
 
 def _hacia_ahorro(libro: Libro, op: Operacion) -> int:
@@ -320,18 +331,42 @@ def rango_periodo(libro: Libro, clave: str, hoy: date | None = None) -> tuple[da
 
 
 def periodo_anterior(desde: date, hasta: date) -> tuple[date, date]:
-    """El periodo inmediatamente anterior, para comparar ("¿gasté más que el mes pasado?").
+    """El periodo inmediatamente anterior, para comparar ("¿gasté más que el mes pasado?"). Siempre termina el día
+    antes de ``desde``:
 
-    Si el rango es un mes completo, el anterior es el mes completo previo; si
-    no, un rango de la misma duración que termina el día antes de ``desde``.
+    - meses completos (un mes, un año, los últimos 12 meses…): los mismos meses de antes. 2025 se compara con todo
+      2024, aunque 2024 tenga 29 de febrero;
+    - una quincena (del 1 al 15, o del 16 a fin de mes): la quincena anterior;
+    - un año exacto (del 8 de octubre al 7 de octubre): el año anterior;
+    - cualquier otro rango: uno de la misma duración.
     """
-    if desde.day == 1 and hasta == rango_mes(hasta.year, hasta.month)[1] and (desde.year, desde.month) == (
-        hasta.year, hasta.month
-    ):
-        ultimo = desde - timedelta(days=1)
-        return rango_mes(ultimo.year, ultimo.month)
     fin = desde - timedelta(days=1)
+    if desde.day == 1 and hasta == rango_mes(hasta.year, hasta.month)[1]:
+        meses = (hasta.year - desde.year) * 12 + hasta.month - desde.month + 1
+        return _sumar_meses(desde, -meses), fin
+    if desde.day == 1 and hasta == desde.replace(day=15):                        # 1.ª quincena: la 2.ª de antes
+        return fin.replace(day=16), fin
+    if desde.day == 16 and hasta == rango_mes(desde.year, desde.month)[1]:       # 2.ª quincena: la 1.ª
+        return fin.replace(day=1), fin
+    if desde == _sumar_meses(hasta, -12) + timedelta(days=1):
+        return _sumar_meses(desde, -12), fin
     return fin - (hasta - desde), fin
+
+
+def _sumar_meses(dia: date, meses: int) -> date:
+    """El mismo día, ``meses`` después (o antes); si ese mes es más corto, su último día (31 de marzo → 28 de
+    febrero)."""
+    total = dia.year * 12 + dia.month - 1 + meses
+    anio, mes = divmod(total, 12)
+    return date(anio, mes + 1, min(dia.day, calendar.monthrange(anio, mes + 1)[1]))
+
+
+def _dia_equivalente(dia: date, desde: date, desde_anterior: date) -> date:
+    """El día del periodo anterior que corresponde a ``dia``: el mismo día del mes si los periodos son de meses
+    completos (el 7 de octubre → el 7 de septiembre), o los mismos días desde el inicio si no."""
+    if desde.day == desde_anterior.day == 1:
+        return _sumar_meses(dia, -((desde.year - desde_anterior.year) * 12 + desde.month - desde_anterior.month))
+    return desde_anterior + (dia - desde)
 
 
 # ------------------------------------------------------------------ hechos

@@ -5,7 +5,7 @@ from __future__ import annotations
 import pandas as pd
 import streamlit as st
 
-from motor import bienes, categorias, consultas, cuentas, movimientos
+from motor import bienes, categorias, consultas, cuentas, metas, movimientos
 from motor.consultas import ETIQUETA_TIPO_OPERACION, ORDENES
 from motor.modelo import TipoCuenta, TipoOperacion
 from portal.componentes import estado, formato
@@ -141,6 +141,9 @@ def detalle_movimiento(operacion_id: str, tabla: str = TABLA) -> None:
     with eliminar:
         st.warning("Eliminar borra el movimiento completo (en una transferencia, los dos lados). "
                    "La bitácora conserva una copia.")
+        for meta in metas.de_operacion(lib, operacion_id):
+            st.caption(f"🏆 Es parte de tu meta **{formato.md(meta.nombre)}**: al eliminarlo, también se quita de "
+                       "la meta.")
         confirmar = st.checkbox("Sí, quiero eliminar este movimiento", key=f"confirmar_{operacion_id}")
         if st.button("Eliminar movimiento", type="primary", disabled=not confirmar, key=f"eliminar_{operacion_id}"):
             if ejecutar(lambda lib: movimientos.eliminar(lib, operacion_id), exito="Movimiento eliminado"):
