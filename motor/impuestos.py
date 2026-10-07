@@ -21,7 +21,7 @@ from datetime import date
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 
 from motor import categorias
-from motor.dinero import a_centavos, a_pesos
+from motor.dinero import a_centavos, a_pesos, formatear
 from motor.errores import ErrorValidacion
 from motor.libro import Libro
 from motor.modelo import (
@@ -307,8 +307,8 @@ def revisar(perfil: PerfilImpuestos, subtotal, reales: dict[str, Decimal], *,
     for i, real, calc in diferencias:
         if abs(real - calc) > CENTAVO:
             regla = f"{mostrar_tasa(i.tasa)} " + (f"de {i.sobre}" if i.sobre else "del subtotal")
-            problemas.append(f"{i.nombre}: dice ${real:,.2f}, debería ser ${calc:,.2f} ({regla})")
+            problemas.append(f"{i.nombre}: dice {formatear(real)}, debería ser {formatear(calc)} ({regla})")
     for i, real, _ in diferencias:
         if i.sobre and real > 0 and leidos.get(i.sobre.casefold(), CERO) == 0:
             problemas.append(f"trae {i.nombre} pero no {i.sobre} (¿se capturó un impuesto en el lugar de otro?)")
-    return [f"No cuadra (diferencia total ${variacion:,.2f})", *problemas]
+    return [f"No cuadra (diferencia total {formatear(variacion)})", *problemas]

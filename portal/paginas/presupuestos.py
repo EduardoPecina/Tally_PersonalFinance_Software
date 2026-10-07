@@ -56,13 +56,13 @@ def mostrar() -> None:
     tabla = pd.DataFrame({
         "Categoría": [r.nombre for r in rubros],
         "Presupuesto mensual": [r.presupuesto / 100 if r.presupuesto else None for r in rubros],
-        "Gastado este mes": [float(gastado.get(r.nombre, 0)) for r in rubros],
+        "Gastado este mes": [formato.dinero(gastado.get(r.nombre, 0)) for r in rubros],
     })
     editada = st.data_editor(
         tabla, hide_index=True, width="stretch", key="presupuestos_tabla", disabled=["Categoría", "Gastado este mes"],
-        column_config={"Presupuesto mensual": st.column_config.NumberColumn(min_value=0, step=100, format="dollar",
-                                                                           help="Vacío = sin presupuesto"),
-                       "Gastado este mes": st.column_config.NumberColumn(format="dollar")},
+        column_config={"Presupuesto mensual": st.column_config.NumberColumn(
+                           min_value=0, step=100, format=formato.columna_dinero(), help="Vacío = sin presupuesto"),
+                       "Gastado este mes": st.column_config.TextColumn(alignment="right")},
         height=min(38 + 35 * len(tabla), 560),
     )
     if st.button("Guardar presupuestos", type="primary"):
@@ -121,8 +121,8 @@ def _plan() -> None:
         "Sugerido": [formato.dinero(s.sugerido) for s in plan.sugerencias],
         "Tu presupuesto": [formato.dinero(s.actual) if s.actual is not None else "—" for s in plan.sugerencias],
     }), hide_index=True, width="stretch")
-    st.caption("Sugerido: tu promedio de los últimos 3 meses completos, redondeado a $50 (los intereses de "
-               "préstamos ya van en sus pagos).")
+    st.caption(f"Sugerido: tu promedio de los últimos 3 meses completos, redondeado a "
+               f"{formato.dinero_md(plan.redondeo)} (los intereses de préstamos ya van en sus pagos).")
     if st.button("Usar los sugeridos como mis presupuestos", key="usar_sugeridos"):
         def aplicar(lib):
             for s in plan.sugerencias:

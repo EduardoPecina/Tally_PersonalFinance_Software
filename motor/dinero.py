@@ -1,7 +1,8 @@
 """Conversión de importes.
 
 Internamente todo importe es un ``int`` en centavos. Hacia fuera (API del
-motor y reportes) se usa ``Decimal`` en pesos con dos decimales.
+motor y reportes) se usa ``Decimal`` con dos decimales, en tu moneda (la del
+perfil, ver motor/monedas.py; «pesos» en los nombres es por historia).
 """
 
 from decimal import Decimal, InvalidOperation
@@ -53,7 +54,7 @@ def a_pesos(centavos: int) -> Decimal:
 
 
 def formatear(importe: Decimal | int) -> str:
-    """Da formato ``$1,234.56`` (o ``-$1,234.56``) a un importe en pesos."""
-    pesos = Decimal(importe).quantize(_CENTAVO)
-    signo = "-" if pesos < 0 else ""
-    return f"{signo}${abs(pesos):,.2f}"
+    """Da formato a un importe con tu moneda: ``$1,234.56``, ``1.234,56 €``… (motor/monedas.py)."""
+    from motor import monedas
+
+    return monedas.formatear(importe)

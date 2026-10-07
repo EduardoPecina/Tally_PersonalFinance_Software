@@ -2,6 +2,26 @@
 
 Todos los cambios relevantes de TALLY se documentan aquí.
 
+## [0.19.0] — Sin publicar
+
+- **Tu moneda, la de tu país.** En la bienvenida y en Configuración → Tu perfil eliges tu moneda: peso mexicano,
+  dólar, euro, pesos argentino, colombiano, chileno, uruguayo, dominicano y cubano, sol, guaraní, boliviano, bolívar,
+  quetzal, lempira, córdoba o colón.
+  - Todo TALLY la usa con su símbolo y su formato: `$1,234.56`, `1.234,56 €`, `$ 1.234,56`, `$1.235` (sin centavos
+    en Chile, Colombia y Paraguay), `S/ 1,234.56`…
+  - La usan las métricas, las tablas, los ejes de las gráficas, los mensajes, las recomendaciones y el Excel que
+    descargas (el formato de dinero de Excel lleva tu símbolo).
+  - Cambiarla **no convierte** importes (no es un tipo de cambio): solo cambia cómo se ven. Conviene elegirla al
+    empezar.
+- **Inversiones contra tu moneda.** El tipo de cambio ya no es siempre contra el peso mexicano: un título en dólares
+  se valúa en tu moneda (USDEUR=X en España, USDARS=X en Argentina…). Los textos dicen «cuántos ARS por 1 USD»,
+  ya no «pesos por 1 USD».
+- **Umbrales que valen en cualquier moneda.** Gasto hormiga, «esta categoría subió» y el redondeo de los presupuestos
+  sugeridos se calculan en proporción a tus propios gastos, no con montos fijos en pesos mexicanos.
+- **Cargar datos lee importes de cualquier país:** `1.234,56 €`, `S/ 99.90`, `1 234,50`…
+- **Las fechas de las gráficas, en español** («12 jul», no «12 Jul»).
+- El IVA de Configuración explica que en muchos países los intereses no llevan IVA.
+
 ## [0.18.0] — Sin publicar
 
 - **Nueva página 📆 Cierre de mes** (en Análisis): la boleta de cada mes.

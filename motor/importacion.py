@@ -42,7 +42,7 @@ from dataclasses import dataclass, field
 from datetime import date
 from decimal import Decimal, InvalidOperation
 
-from motor import categorias, cuentas, temporales
+from motor import categorias, cuentas, monedas, temporales
 from motor.dinero import a_centavos, a_pesos
 from motor.errores import ErrorTally, ErrorValidacion
 from motor.libro import Libro
@@ -243,14 +243,17 @@ def leer_fecha(texto: str) -> date:
 
 
 def _importe(texto: str) -> int:
-    """$1,234.50 · 1234.5 · (150.00) · -150 · 1 234,50 → centavos con signo."""
-    limpio = texto.strip().replace("$", "").replace("MXN", "").replace(" ", "").replace(" ", "")
+    """$1,234.50 · 1234.5 · (150.00) · -150 · 1 234,50 · 1.234,50 € · S/ 99.90 → centavos con signo."""
+    limpio = re.sub(r"[^\d,.()+\-]", "", texto.strip())                # sin símbolos, letras ni espacios
     negativo = limpio.startswith("-") or (limpio.startswith("(") and limpio.endswith(")"))
     limpio = limpio.strip("-()+")
-    if "," in limpio and "." in limpio:
-        limpio = limpio.replace(",", "")
+    if "," in limpio and "." in limpio:                                 # el último separador es el decimal
+        limpio = (limpio.replace(".", "").replace(",", ".") if limpio.rfind(",") > limpio.rfind(".")
+                  else limpio.replace(",", ""))
     elif "," in limpio:
         limpio = limpio.replace(",", ".") if re.fullmatch(r"\d+,\d{1,2}", limpio) else limpio.replace(",", "")
+    elif re.fullmatch(r"\d{1,3}(\.\d{3})+", limpio) and monedas.activa().decimal == ",":
+        limpio = limpio.replace(".", "")                                # 1.234 con punto de miles
     try:
         valor = Decimal(limpio)
     except InvalidOperation:

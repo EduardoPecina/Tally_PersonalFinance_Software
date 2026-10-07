@@ -23,8 +23,8 @@ from dataclasses import dataclass, replace
 from datetime import date, timedelta
 from decimal import Decimal, InvalidOperation
 
-from motor import categorias
-from motor.dinero import a_centavos, a_pesos
+from motor import categorias, monedas
+from motor.dinero import a_centavos, a_pesos, formatear
 from motor.errores import ErrorValidacion
 from motor.libro import Libro
 from motor.modelo import (
@@ -60,14 +60,14 @@ def normalizar_simbolo(texto: str) -> str:
     return simbolo
 
 
-def registrar_compra(libro: Libro, cuenta_id: str, fecha: date, simbolo: str, titulos, precio, *, moneda: str = "MXN",
+def registrar_compra(libro: Libro, cuenta_id: str, fecha: date, simbolo: str, titulos, precio, *, moneda: str = "",
                      tipo_cambio=None, comision=0, notas: str = "") -> OperacionValor:
-    """Compraste ``titulos`` de ``simbolo`` a ``precio`` cada uno (en ``moneda``)."""
+    """Compraste ``titulos`` de ``simbolo`` a ``precio`` cada uno (en ``moneda``; vacía = la tuya)."""
     return _registrar(libro, cuenta_id, fecha, TipoOperacionValor.COMPRA, simbolo, titulos, precio, moneda,
                       tipo_cambio, comision, notas)
 
 
-def registrar_venta(libro: Libro, cuenta_id: str, fecha: date, simbolo: str, titulos, precio, *, moneda: str = "MXN",
+def registrar_venta(libro: Libro, cuenta_id: str, fecha: date, simbolo: str, titulos, precio, *, moneda: str = "",
                     tipo_cambio=None, comision=0, notas: str = "") -> OperacionValor:
     """Vendiste ``titulos`` de ``simbolo`` a ``precio`` cada uno. No puedes vender más de los que tenías."""
     return _registrar(libro, cuenta_id, fecha, TipoOperacionValor.VENTA, simbolo, titulos, precio, moneda,
@@ -197,13 +197,14 @@ class Valuacion:
 
 def valuar(libro: Libro, cuenta_id: str, precios: dict[str, tuple[Decimal, str]], tipos_cambio: dict[str, Decimal],
            hoy: date | None = None) -> Valuacion:
-    """Valor aproximado con los ``precios`` dados (símbolo → (precio, moneda)) y ``tipos_cambio`` (moneda → pesos).
+    """Valor aproximado con los ``precios`` dados (símbolo → (precio, moneda)) y ``tipos_cambio`` (moneda → cuánto
+    de tu moneda vale una unidad).
 
     Es pura aritmética: no sale a internet. Los precios vienen de :mod:`motor.cotizaciones` o los escribe el
     usuario.
     """
     hoy = hoy or libro.hoy()
-    tipos = {"MXN": Decimal(1), **tipos_cambio}
+    tipos = {**tipos_cambio, monedas.de(libro): Decimal(1)}
     todas = posiciones(libro, cuenta_id)
     filas, faltan = [], []
     for posicion in (p for p in todas if p.titulos):
@@ -247,7 +248,7 @@ def ajustar_a_valor_oficial(libro: Libro, cuenta_id: str, valor_oficial, fecha: 
         raise ErrorValidacion(f"No encuentro la subcategoría de ingreso «{SUBCATEGORIA_RENDIMIENTO}». Créala de "
                               "nuevo en Categorías → Ingresos.")
     op = construir_con_signo(TipoOperacion.RENDIMIENTO, fecha, cuenta.id, subcategoria.id, a_pesos(diferencia),
-                             f"Ajuste al valor oficial ({a_pesos(oficial):,.2f} MXN)")
+                             f"Ajuste al valor oficial ({formatear(a_pesos(oficial))})")
     op = libro.agregar_operacion(op)
     libro.guardar_cuenta(replace(cuenta, plusvalia_registrada=cuenta.plusvalia_registrada + diferencia))
     return op
@@ -265,13 +266,14 @@ def valor_estimado(libro: Libro, cuenta_id: str, valuacion: Valuacion) -> Decima
 
 def _registrar(libro, cuenta_id, fecha, tipo, simbolo, titulos, precio, moneda, tipo_cambio, comision, notas):
     cuenta = _cuenta_de_inversion(libro, cuenta_id)
-    moneda = (moneda or "MXN").strip().upper()
+    base = monedas.de(libro)
+    moneda = (moneda or base).strip().upper()
     if not _MONEDA.match(moneda):
         raise ErrorValidacion("La moneda va en tres letras: MXN, USD, EUR…")
-    if moneda == "MXN":
+    if moneda == base:
         tipo_cambio = Decimal(1)
     elif tipo_cambio in (None, ""):
-        raise ErrorValidacion(f"Escribe el tipo de cambio de ese día (pesos por 1 {moneda}).")
+        raise ErrorValidacion(f"Escribe el tipo de cambio de ese día (cuántos {base} por 1 {moneda}).")
     valor = OperacionValor(
         id=libro.nuevo_id(), cuenta_id=cuenta.id, fecha=fecha, tipo=TipoOperacionValor(tipo),
         simbolo=normalizar_simbolo(simbolo), titulos=_decimal(titulos, "Los títulos"),

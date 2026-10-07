@@ -39,7 +39,7 @@ def _reparto(clave: str, etiquetas: dict[str, str]) -> list[tuple[str, float]]:
         num_rows="dynamic", hide_index=True, width="stretch", key=f"{clave}_reparto",
         column_config={
             "Subcategoría": st.column_config.SelectboxColumn(options=list(por_etiqueta), required=True),
-            "Importe": st.column_config.NumberColumn(min_value=0.01, format="$%.2f", required=True),
+            "Importe": st.column_config.NumberColumn(min_value=0.01, format=formato.columna_dinero(), required=True),
         },
     )
     return [(por_etiqueta[f["Subcategoría"]], f["Importe"]) for f in tabla.to_dict("records")

@@ -7,7 +7,7 @@ from datetime import datetime, timedelta
 import pandas as pd
 import streamlit as st
 
-from motor import cotizaciones, evolucion
+from motor import cotizaciones, evolucion, monedas
 from motor.evolucion import Evolucion
 from motor.libro import Libro
 from portal import navegacion
@@ -52,7 +52,8 @@ def mostrar() -> None:
     desde, hasta = _periodo(lib, elegidas, oficial=vista == "oficial")
     if vista == "titulo":
         _historial_de_precios(lib, elegidas)
-        evo = evolucion.por_titulo(lib, elegidas, desde, hasta, cotizaciones.mercado_guardado(), elegidos)
+        evo = evolucion.por_titulo(lib, elegidas, desde, hasta, cotizaciones.mercado_guardado(base=monedas.de(lib)),
+                                   elegidos)
         if not evo.nombres:
             st.info("Aún no registras títulos ni inversiones a plazo en estas cuentas. Regístralos en **Cuentas → "
                     "Ver movimientos** de tu cuenta de inversión.")
@@ -113,7 +114,7 @@ def _historial_de_precios(lib: Libro, cuenta_ids: list[str]) -> None:
         st.session_state[AUTO_HECHO] = True                   # lo automático, una vez por visita
         faltan = {s: cotizaciones.desde_pendiente(s, d, guardado) for s, d in pedidos.items()}
         with st.spinner("Consultando el historial de precios…"):
-            consulta = cotizaciones.consultar_historial(faltan, lib.hoy())
+            consulta = cotizaciones.consultar_historial(faltan, lib.hoy(), base=monedas.de(lib))
         cotizaciones.guardar_historial(consulta)
         st.session_state[CONSULTA] = consulta
         guardado = cotizaciones.historial_guardado()
@@ -185,7 +186,7 @@ def _mostrar(evo: Evolucion, vista: str) -> None:
     }), hide_index=True, width="stretch")
 
     if vista == "titulo":
-        st.caption("Estimado: precio de cierre de cada día por los títulos que tenías, en pesos al tipo de cambio de "
+        st.caption("Estimado: precio de cierre de cada día por los títulos que tenías, en tu moneda al tipo de cambio de "
                    "ese día; las inversiones a plazo, con interés simple. Lo oficial es lo que registras con "
                    "«Cuadrar con tu estado de cuenta» en cada cuenta (vista «Oficial»).")
         if evo.estimados:

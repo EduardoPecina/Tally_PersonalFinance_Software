@@ -284,7 +284,7 @@ def _tabla(lib, cuenta_id: str, propuestas: list[bancos.Propuesta], clave: str):
             "Fecha": st.column_config.DateColumn(format="DD/MM/YYYY", disabled=True, width="small"),
             "Descripción": st.column_config.TextColumn(width="medium"),
             "Movimiento": st.column_config.SelectboxColumn(options=[SALE, ENTRA], required=True, width="small"),
-            "Importe": st.column_config.NumberColumn(format="dollar", disabled=True, width="small"),
+            "Importe": st.column_config.NumberColumn(format=formato.columna_dinero(), disabled=True, width="small"),
             "Subcategoría o cuenta": st.column_config.SelectboxColumn(options=[ELIGE, *opciones], required=True,
                                                                          width="medium"),
             "Nota de TALLY": st.column_config.TextColumn(disabled=True, width="medium"),

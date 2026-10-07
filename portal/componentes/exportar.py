@@ -6,14 +6,27 @@ import io
 
 import pandas as pd
 
-FORMATO_PESOS = '"$"#,##0.00;-"$"#,##0.00'
+from motor import monedas
+
+
+def formato_dinero() -> str:
+    """El formato de Excel para tu moneda: ``"$"#,##0.00`` o ``#,##0.00 "€"``. Excel pone los separadores de tu
+    Windows (1.234,56 o 1,234.56)."""
+    m = monedas.activa()
+    numero = "#,##0" + ("." + "0" * m.decimales if m.decimales else "")
+    simbolo = f'"{m.simbolo}"'
+    espacio = " " if m.espacio else ""
+    positivo = f"{numero}{espacio}{simbolo}" if m.despues else f"{simbolo}{espacio}{numero}"
+    return f"{positivo};-{positivo}"
 
 
 def excel(hojas: dict[str, pd.DataFrame], *, columnas_dinero: set[str] = frozenset()) -> bytes:
-    """Un .xlsx con una hoja por tabla: encabezados en negritas, columnas con ancho cómodo y pesos con formato."""
+    """Un .xlsx con una hoja por tabla: encabezados en negritas, columnas con ancho cómodo y dinero con el formato
+    de tu moneda."""
     from openpyxl.styles import Font
 
     salida = io.BytesIO()
+    formato = formato_dinero()
     with pd.ExcelWriter(salida, engine="openpyxl") as escritor:
         for nombre, tabla in hojas.items():
             hoja_nombre = nombre[:31]
@@ -27,7 +40,7 @@ def excel(hojas: dict[str, pd.DataFrame], *, columnas_dinero: set[str] = frozens
                 hoja.column_dimensions[letra].width = min(max(10, largo + 2), 60)
                 if columna in columnas_dinero or pd.api.types.is_float_dtype(tabla[columna]):
                     for fila in range(2, len(tabla) + 2):
-                        hoja.cell(row=fila, column=i).number_format = FORMATO_PESOS
+                        hoja.cell(row=fila, column=i).number_format = formato
             hoja.freeze_panes = "B2" if len(tabla.columns) > 2 else "A2"
     return salida.getvalue()
 

@@ -17,7 +17,7 @@ from datetime import date, timedelta
 from decimal import ROUND_CEILING, Decimal
 
 from motor import planeacion, prestamos
-from motor.dinero import a_centavos, a_pesos
+from motor.dinero import a_centavos, a_pesos, formatear
 from motor.errores import ErrorValidacion
 from motor.libro import Libro
 from motor.modelo import Aporte, ClaseCategoria, Meta, TipoCuenta
@@ -111,7 +111,7 @@ def retirar(libro: Libro, meta_id: str, monto, fecha: date | None = None, *, hac
 
 
 def _texto(centavos: int) -> str:
-    return f"${a_pesos(centavos):,.2f}"
+    return formatear(a_pesos(centavos))
 
 
 # ===================================================================== cómo vas

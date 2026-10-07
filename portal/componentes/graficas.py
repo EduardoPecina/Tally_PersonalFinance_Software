@@ -10,11 +10,31 @@ import altair as alt
 import pandas as pd
 import streamlit as st
 
+from motor import monedas
 from portal.componentes.formato import dinero
 
 COLOR = "#6B53F1"  # acento de la marca (.streamlit/config.toml)
 TEXTO_SECUNDARIO = "#52514e"
 SELECCION = "eleccion"
+
+
+FECHAS = alt.TimeLocale(           # los ejes de fechas en español: «12 jul», no «12 Jul»
+    dateTime="%A, %e de %B de %Y, %X", date="%d/%m/%Y", time="%H:%M:%S", periods=["a. m.", "p. m."],
+    days=["domingo", "lunes", "martes", "miércoles", "jueves", "viernes", "sábado"],
+    shortDays=["dom", "lun", "mar", "mié", "jue", "vie", "sáb"],
+    months=["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre",
+            "noviembre", "diciembre"],
+    shortMonths=["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"])
+
+
+def _altair(grafica, **opciones):
+    """``st.altair_chart`` con los números de tu moneda: el eje ``$,.0f`` sale como $1,000, 1.000 €, S/ 1,000…"""
+    m = monedas.activa()
+    espacio = " " if m.espacio else ""
+    moneda = ["", f"{espacio}{m.simbolo}"] if m.despues else [f"{m.simbolo}{espacio}", ""]
+    local = alt.Locale(number=alt.NumberLocale(decimal=m.decimal, thousands=m.miles, grouping=[3], currency=moneda),
+                       time=FECHAS)
+    return st.altair_chart(grafica.configure(locale=local), **opciones)
 
 
 def _clic(campo: str) -> alt.Parameter:
@@ -25,9 +45,9 @@ def _clic(campo: str) -> alt.Parameter:
 def _mostrar(grafica, clave: str | None, campo: str) -> str | None:
     """Dibuja la gráfica. Con ``clave``, se le puede dar clic y devuelve el nombre elegido (o ``None``)."""
     if clave is None:
-        st.altair_chart(grafica, width="stretch")
+        _altair(grafica, width="stretch")
         return None
-    evento = st.altair_chart(grafica, width="stretch", key=clave, on_select="rerun", selection_mode=SELECCION)
+    evento = _altair(grafica, width="stretch", key=clave, on_select="rerun", selection_mode=SELECCION)
     try:
         puntos = evento["selection"][SELECCION]
     except (KeyError, TypeError):
@@ -81,7 +101,7 @@ def linea(puntos: list[tuple[date, Decimal]], titulo_valor: str = "Patrimonio") 
         tooltip=[alt.Tooltip("Fecha:T", title="Fecha", format="%d/%m/%Y"),
                  alt.Tooltip("Texto:N", title=titulo_valor)],
     ).add_params(cercano)
-    st.altair_chart((trazo + puntos_ocultos).properties(height=260), width="stretch")
+    _altair((trazo + puntos_ocultos).properties(height=260), width="stretch")
 
 
 # ------------------------------------------------------------ varias series
@@ -179,7 +199,7 @@ def lineas_por_periodo(datos: pd.DataFrame, orden: list[str], titulo_valor: str 
     puntos = base.mark_point(size=70, filled=True).encode(
         tooltip=[alt.Tooltip("Periodo:N", title="Periodo"), alt.Tooltip("Grupo:N", title=titulo_grupo),
                  alt.Tooltip("Texto:N", title=titulo_valor)])
-    st.altair_chart((base.mark_line(strokeWidth=2) + puntos).properties(height=360), width="stretch")
+    _altair((base.mark_line(strokeWidth=2) + puntos).properties(height=360), width="stretch")
 
 
 def ingresos_y_gastos(datos: pd.DataFrame, orden: list[str]) -> None:
@@ -197,7 +217,7 @@ def ingresos_y_gastos(datos: pd.DataFrame, orden: list[str]) -> None:
         tooltip=[alt.Tooltip("Periodo:N", title="Periodo"), alt.Tooltip("Grupo:N", title="Qué"),
                  alt.Tooltip("Texto:N", title="Importe")],
     )
-    st.altair_chart(grafica.properties(height=360), width="stretch")
+    _altair(grafica.properties(height=360), width="stretch")
 
 
 # ------------------------------------------------------------- inversiones
@@ -245,7 +265,7 @@ def valor_y_lo_invertido(puntos: list[tuple[date, Decimal, Decimal]]) -> None:
         tooltip=[alt.Tooltip("Fecha:T", title="Fecha", format="%d/%m/%Y"), alt.Tooltip("Texto:N", title="Valor"),
                  alt.Tooltip("Metiste:N", title="Lo que metiste"), alt.Tooltip("Ganancia:N", title="Ganancia")],
     ).add_params(cercano)
-    st.altair_chart((lineas + regla + marcas).properties(height=320), width="stretch")
+    _altair((lineas + regla + marcas).properties(height=320), width="stretch")
 
 
 def valor_por_serie(series: dict[str, list[tuple[date, Decimal]]]) -> None:
@@ -274,7 +294,7 @@ def valor_por_serie(series: dict[str, list[tuple[date, Decimal]]]) -> None:
         tooltip=[alt.Tooltip("Fecha:T", title="Fecha", format="%d/%m/%Y"), alt.Tooltip("Grupo:N", title="Qué"),
                  alt.Tooltip("Texto:N", title="Valor")],
     ).add_params(cercano)
-    st.altair_chart((base.mark_line(strokeWidth=2) + marcas).properties(height=320), width="stretch")
+    _altair((base.mark_line(strokeWidth=2) + marcas).properties(height=320), width="stretch")
 
 
 def ganancias(filas: list[tuple[str, Decimal]]) -> None:
@@ -295,4 +315,4 @@ def ganancias(filas: list[tuple[str, Decimal]]) -> None:
         tooltip=[alt.Tooltip("Periodo:N", title="Periodo"), alt.Tooltip("Texto:N", title="Ganancia")],
     )
     cero = alt.Chart(pd.DataFrame({"y": [0]})).mark_rule(color=GRIS).encode(y="y:Q")
-    st.altair_chart((barras_ + cero).properties(height=300), width="stretch")
+    _altair((barras_ + cero).properties(height=300), width="stretch")

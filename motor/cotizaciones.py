@@ -78,16 +78,17 @@ class Cotizacion:
 @dataclass(frozen=True, slots=True)
 class Consulta:
     precios: dict[str, Cotizacion]
-    tipos: dict[str, Decimal]            # moneda → pesos por unidad
+    tipos: dict[str, Decimal]            # moneda → cuánto de tu moneda (``base``) vale una unidad
     aviso: str = ""                      # qué faltó (vacío si todo salió bien)
     sin_conexion: bool = False
     falla_proveedor: bool = False        # ninguna respuesta útil aunque hubo conexión: ¿cambió o cayó el servicio?
     momento: datetime = field(default_factory=datetime.now)
+    base: str = "MXN"                    # tu moneda
 
 
-def simbolo_tipo_de_cambio(moneda: str) -> str:
-    """El símbolo del tipo de cambio a pesos: USD → USDMXN=X."""
-    return f"{moneda.upper()}MXN=X"
+def simbolo_tipo_de_cambio(moneda: str, base: str = "MXN") -> str:
+    """El símbolo del tipo de cambio a tu moneda: USD → USDMXN=X (en México), USDEUR=X (en España)…"""
+    return f"{moneda.upper()}{base.upper()}=X"
 
 
 # ------------------------------------------------------------------ proveedor
@@ -166,8 +167,8 @@ def _intentar(simbolo: str, pedir: Callable, tipo: type):
         return tipo(simbolo, error=str(error))
 
 
-def consultar(simbolos: list[str], enviar: Enviar | None = None) -> Consulta:
-    """Precios de ``simbolos`` y los tipos de cambio que hagan falta para pasarlos a pesos."""
+def consultar(simbolos: list[str], enviar: Enviar | None = None, base: str = "MXN") -> Consulta:
+    """Precios de ``simbolos`` y los tipos de cambio que hagan falta para pasarlos a tu moneda (``base``)."""
     enviar = enviar or _enviar_por_omision()
     unicos = list(dict.fromkeys(simbolos))
     if not unicos:
@@ -179,13 +180,13 @@ def consultar(simbolos: list[str], enviar: Enviar | None = None) -> Consulta:
             "bloquea, escribe los precios a mano."))
     uno = partial(consultar_uno, enviar=enviar)
     resultado = {unicos[0]: primera, **_en_paralelo(unicos[1:], uno)}
-    monedas = sorted({c.moneda for c in resultado.values() if c.ok and c.moneda and c.moneda != "MXN"})
-    cambios = _en_paralelo([simbolo_tipo_de_cambio(m) for m in monedas], uno)
+    monedas = sorted({c.moneda for c in resultado.values() if c.ok and c.moneda and c.moneda != base})
+    cambios = _en_paralelo([simbolo_tipo_de_cambio(m, base) for m in monedas], uno)
     tipos = {m: c.precio for m, c in zip(monedas, cambios.values()) if c.ok}
     avisos = [f"{s}: {c.error}" for s, c in resultado.items() if not c.ok]
-    avisos += [f"tipo de cambio {m}/MXN: no se pudo consultar" for m in monedas if m not in tipos]
+    avisos += [f"tipo de cambio {m}/{base}: no se pudo consultar" for m in monedas if m not in tipos]
     falla = not any(c.ok for c in resultado.values()) and any(c.falla_proveedor for c in resultado.values())
-    return Consulta(resultado, tipos, "; ".join(avisos), falla_proveedor=falla)
+    return Consulta(resultado, tipos, "; ".join(avisos), falla_proveedor=falla, base=base)
 
 
 def _enviar_por_omision() -> Enviar:
@@ -225,7 +226,7 @@ def guardar(consulta: Consulta, ruta: Path | None = None) -> None:
         if c.ok:
             datos["precios"][simbolo] = {"valor": str(c.precio), "moneda": c.moneda or "MXN", "actualizado": momento}
     for moneda, valor in consulta.tipos.items():
-        datos["tipos"][moneda] = {"valor": str(valor), "moneda": "MXN", "actualizado": momento}
+        datos["tipos"][moneda] = {"valor": str(valor), "moneda": consulta.base, "actualizado": momento}
     try:
         ruta.parent.mkdir(parents=True, exist_ok=True)
         temporal = ruta.with_name(ruta.name + ".tmp")
@@ -327,9 +328,10 @@ def leer_historial(simbolo: str, texto: str) -> Historial:
     return Historial(simbolo, salida, str(meta.get("currency") or "").upper())
 
 
-def consultar_historial(pedidos: dict[str, date], hoy: date, enviar: EnviarHistorial | None = None
-                        ) -> ConsultaHistorial:
-    """Cierres diarios de cada símbolo desde su fecha (``pedidos``) y de los tipos de cambio a pesos que hagan falta.
+def consultar_historial(pedidos: dict[str, date], hoy: date, enviar: EnviarHistorial | None = None,
+                        base: str = "MXN") -> ConsultaHistorial:
+    """Cierres diarios de cada símbolo desde su fecha (``pedidos``) y de los tipos de cambio a tu moneda (``base``)
+    que hagan falta.
 
     Como :func:`consultar`: si la primera consulta no tiene conexión, ya no se intentan las demás.
     """
@@ -350,10 +352,10 @@ def consultar_historial(pedidos: dict[str, date], hoy: date, enviar: EnviarHisto
     series = {simbolos[0]: primera, **_en_paralelo(simbolos[1:], lambda s: uno(s, pedidos[s]))}
     desde_moneda: dict[str, date] = {}
     for s, h in series.items():
-        if h.ok and h.moneda and h.moneda != "MXN":
+        if h.ok and h.moneda and h.moneda != base:
             desde_moneda[h.moneda] = min(desde_moneda.get(h.moneda, pedidos[s]), pedidos[s])
     for moneda, desde in sorted(desde_moneda.items()):
-        simbolo = simbolo_tipo_de_cambio(moneda)
+        simbolo = simbolo_tipo_de_cambio(moneda, base)
         if simbolo not in pedidos:
             series[simbolo] = uno(simbolo, desde)
     avisos = [f"{s}: {h.error}" for s, h in series.items() if not h.ok]
@@ -419,15 +421,16 @@ def desde_pendiente(simbolo: str, desde: date, guardado: dict[str, SerieGuardada
     return desde
 
 
-def mercado_guardado(ruta_historial: Path | None = None, ruta_precios: Path | None = None
+def mercado_guardado(ruta_historial: Path | None = None, ruta_precios: Path | None = None, base: str = "MXN"
                      ) -> dict[str, tuple[str, dict[date, Decimal]]]:
     """Todo lo que la PC sabe de precios: historial diario más los últimos precios y tipos de cambio consultados.
 
-    ``{símbolo: (moneda, {fecha: precio})}``; los tipos de cambio van como ``USDMXN=X`` en pesos.
+    ``{símbolo: (moneda, {fecha: precio})}``; los tipos de cambio van como ``USDMXN=X`` (en tu moneda, ``base``).
     """
     mercado = {s: (g.moneda, dict(g.cierres)) for s, g in historial_guardado(ruta_historial).items()}
     precios, tipos = ultimos(ruta_precios)
-    ultimos_por_simbolo = {**precios, **{simbolo_tipo_de_cambio(m): g for m, g in tipos.items()}}
+    ultimos_por_simbolo = {**precios, **{simbolo_tipo_de_cambio(m, base): g for m, g in tipos.items()
+                                         if g.moneda == base}}
     for simbolo, g in ultimos_por_simbolo.items():
         moneda, cierres = mercado.setdefault(simbolo, (g.moneda, {}))
         if moneda == g.moneda and g.actualizado.date() not in cierres:

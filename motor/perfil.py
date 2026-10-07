@@ -9,8 +9,8 @@ from __future__ import annotations
 from dataclasses import replace
 from decimal import Decimal, InvalidOperation
 
+from motor import monedas
 from motor.dinero import a_centavos
-
 from motor.errores import ErrorValidacion
 from motor.libro import Libro
 from motor.modelo import Perfil
@@ -24,12 +24,14 @@ def necesita_bienvenida(libro: Libro) -> bool:
     return libro.perfil is None
 
 
-def configurar(libro: Libro, nombre: str) -> Perfil:
+def configurar(libro: Libro, nombre: str, moneda: str | None = None) -> Perfil:
     nombre = normalizar_nombre(nombre)
     if libro.perfil is None:
         libro.perfil = Perfil(nombre=nombre, creado_en=libro.ahora())
     else:
         libro.perfil = replace(libro.perfil, nombre=nombre)
+    if moneda is not None:
+        libro.perfil = replace(libro.perfil, moneda=monedas.moneda(moneda).codigo)
     return libro.perfil
 
 
@@ -54,6 +56,7 @@ def ajustar(
     iva=None,
     ingreso_esperado: object = _SIN_CAMBIO,
     meta_ahorro: int | None = None,
+    moneda: str | None = None,
 ) -> Perfil:
     """Cambia las preferencias (página Configuración). Solo cambia lo que se indique."""
     from motor.reportes import PERIODOS
@@ -107,5 +110,7 @@ def ajustar(
         if isinstance(meta_ahorro, bool) or not 0 <= int(meta_ahorro) <= 90:
             raise ErrorValidacion("La meta de ahorro va de 0 a 90 % de tu ingreso.")
         cambios["meta_ahorro"] = int(meta_ahorro)
+    if moneda is not None:
+        cambios["moneda"] = monedas.moneda(moneda).codigo
     libro.perfil = replace(libro.perfil, **cambios)
     return libro.perfil

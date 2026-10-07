@@ -23,16 +23,17 @@ from dataclasses import dataclass, field, replace
 from datetime import date, datetime, timedelta
 from decimal import Decimal
 
-from motor import categorias, metas, planeacion, recurrentes, reportes, tarjetas, temporales
-from motor.dinero import a_centavos, a_pesos
+from motor import categorias, metas, monedas, planeacion, recurrentes, reportes, tarjetas, temporales
+from motor.dinero import a_centavos, a_pesos, formatear
 from motor.errores import ErrorValidacion
 from motor.libro import Libro
 from motor.modelo import CierreMes, ClaseCategoria, Operacion, TipoCuenta, TipoOperacion
 
 CERO = Decimal("0.00")
-UMBRAL_HORMIGA = Decimal(100)          # un gasto «hormiga»: menos de esto
+# Umbrales en proporción a tus gastos del mes (redondeados), para que valgan igual en pesos, euros o soles:
+HORMIGA = Decimal("0.01")              # un gasto «hormiga»: menos del 1 % de lo que gastas al mes (≈ $100 de $11,000)
 SUBE_PORCENTAJE = Decimal(20)          # una categoría «subió» si gastaste 20 % más que tu promedio…
-SUBE_MINIMO = Decimal(200)             # …y al menos 200 más
+SUBE_MINIMO = Decimal("0.02")          # …y al menos el 2 % de tus gastos del mes más (≈ $200 de $11,000)
 INTERESES = ("INTERESES DE TARJETAS", "INTERESES DE PRESTAMOS", "COMISIONES BANCARIAS", "ANUALIDADES")
 DIAS_AVISO = 10                        # los primeros días del mes, el Resumen te recuerda cerrar el anterior
 
@@ -88,6 +89,7 @@ class Rubro:
     nombre: str
     gastado: Decimal
     promedio: Decimal | None           # en los meses previos (None si no hay historial)
+    minimo: Decimal = Decimal(200)     # cuánto más, al menos, para decir que subió
 
     @property
     def diferencia(self) -> Decimal | None:
@@ -96,11 +98,12 @@ class Rubro:
     @property
     def subio(self) -> bool:
         d = self.diferencia
-        return d is not None and d >= SUBE_MINIMO and (not self.promedio or d * 100 >= self.promedio * SUBE_PORCENTAJE)
+        return d is not None and d >= self.minimo and (not self.promedio or d * 100 >= self.promedio * SUBE_PORCENTAJE)
 
 
 @dataclass(frozen=True, slots=True)
 class Hormiga:
+    umbral: Decimal                    # «chico»: menos de esto
     veces: int
     total: Decimal
     ejemplos: list[tuple[str, int, Decimal]]     # (descripción, veces, total), los que más suman
@@ -205,14 +208,14 @@ def reporte(libro: Libro, anio: int, mes: int, hoy: date | None = None) -> Repor
         n = len(sumas)
         promedio = Numeros((sum((s.ingresos for s in sumas), CERO) / n).quantize(Decimal("0.01")),
                            (sum((s.gastos for s in sumas), CERO) / n).quantize(Decimal("0.01")))
-    rubros = _rubros(libro, desde, hasta, previos)
+    rubros = _rubros(libro, desde, hasta, previos, monedas.redondo(numeros.gastos * SUBE_MINIMO))
     patrimonio_inicio = reportes.indicadores(libro, desde - timedelta(days=1)).patrimonio_neto
     patrimonio_fin = reportes.indicadores(libro, min(hasta, hoy)).patrimonio_neto
     fondo = metas.fondo(libro, hasta + timedelta(days=1))
     datos = dict(
         anio=anio, mes=mes, desde=desde, hasta=hasta, en_curso=hasta >= hoy, numeros=numeros, anterior=anterior_,
         promedio=promedio, meta_ahorro=libro.perfil.meta_ahorro if libro.perfil else 10, rubros=rubros,
-        hormiga=_hormiga(libro, desde, hasta), suscripciones=_suscripciones(libro, desde, hasta),
+        hormiga=_hormiga(libro, desde, hasta, monedas.redondo(numeros.gastos * HORMIGA)), suscripciones=_suscripciones(libro, desde, hasta),
         presupuestos=reportes.presupuestos(libro, desde, hasta), ingresos_fijos=_ingresos_fijos(libro, desde, hasta, hoy),
         deudas=_deudas(libro, desde, hasta), intereses=_intereses(libro, desde, hasta),
         metas=_metas(libro, desde, hasta), fondo_meses=fondo.meses_cubiertos,
@@ -238,7 +241,8 @@ def resultado(libro: Libro, desde: date, hasta: date) -> Numeros:
     return Numeros(r.ingresos, r.gastos)
 
 
-def _rubros(libro: Libro, desde: date, hasta: date, previos: list[tuple[date, date]]) -> list[Rubro]:
+def _rubros(libro: Libro, desde: date, hasta: date, previos: list[tuple[date, date]], minimo: Decimal
+            ) -> list[Rubro]:
     actual = reportes.gastos_por_rubro(libro, desde, hasta)
     promedios: dict[str, Decimal] = defaultdict(Decimal)
     for a, b in previos:
@@ -247,10 +251,10 @@ def _rubros(libro: Libro, desde: date, hasta: date, previos: list[tuple[date, da
     n = len(previos)
     nombres = [k for k, v in actual.items() if v > 0] + sorted(k for k in promedios if k not in actual and promedios[k] > 0)
     return [Rubro(nombre, actual.get(nombre, CERO),
-                  (promedios[nombre] / n).quantize(Decimal("0.01")) if n else None) for nombre in nombres]
+                  (promedios[nombre] / n).quantize(Decimal("0.01")) if n else None, minimo) for nombre in nombres]
 
 
-def _hormiga(libro: Libro, desde: date, hasta: date) -> Hormiga:
+def _hormiga(libro: Libro, desde: date, hasta: date, umbral: Decimal) -> Hormiga:
     montos: dict[str, list[Decimal]] = defaultdict(list)
     nombres: dict[str, str] = {}                      # cómo se escribió (se agrupa sin mayúsculas)
     for op in libro.operaciones(desde, hasta):
@@ -258,13 +262,13 @@ def _hormiga(libro: Libro, desde: date, hasta: date) -> Hormiga:
             continue
         partidas = [p for p in op.partidas_de_categoria() if libro.categoria(p.categoria_id).clase is ClaseCategoria.GASTO]
         monto = a_pesos(sum(p.importe for p in partidas))
-        if partidas and 0 < monto < UMBRAL_HORMIGA:
+        if partidas and 0 < monto < umbral:
             nombre = " ".join(op.descripcion.split()) or libro.categoria(partidas[0].categoria_id).nombre
             montos[nombre.casefold()].append(monto)
             nombres.setdefault(nombre.casefold(), nombre)
     ejemplos = sorted(((nombres[k], len(v), sum(v, CERO)) for k, v in montos.items()),
                       key=lambda e: (-e[2], -e[1], e[0].casefold()))
-    return Hormiga(sum(e[1] for e in ejemplos), sum((e[2] for e in ejemplos), CERO), ejemplos[:5])
+    return Hormiga(umbral, sum(e[1] for e in ejemplos), sum((e[2] for e in ejemplos), CERO), ejemplos[:5])
 
 
 def _suscripciones(libro: Libro, desde: date, hasta: date) -> list[tuple[str, Decimal]]:
@@ -356,7 +360,7 @@ def _pendientes(libro: Libro, desde: date, hasta: date, hoy: date) -> list[Pendi
 
 
 def _dinero(valor: Decimal) -> str:
-    return f"${valor:,.2f}"
+    return formatear(valor)
 
 
 def recomendaciones(r: Reporte) -> list[str]:
@@ -384,7 +388,7 @@ def recomendaciones(r: Reporte) -> list[str]:
         lista.append(f"Pagaste {_dinero(r.intereses)} de intereses y comisiones. Pagar tus tarjetas completas "
                      "(para no generar intereses) te ahorra ese dinero.")
     if r.hormiga.veces >= 15 or (n.gastos and r.hormiga.total * 10 >= n.gastos):
-        lista.append(f"Tuviste {r.hormiga.veces} gastos chicos (menos de {_dinero(UMBRAL_HORMIGA)}) que sumaron "
+        lista.append(f"Tuviste {r.hormiga.veces} gastos chicos (menos de {_dinero(r.hormiga.umbral)}) que sumaron "
                      f"{_dinero(r.hormiga.total)}. Uno por uno no se nota; juntos, sí.")
     if r.fondo_meses is not None and r.fondo_meses < metas.MESES_FONDO[0]:
         lista.append(f"Tu fondo de emergencia cubre {r.fondo_meses} meses de tus gastos esenciales; lo recomendable "

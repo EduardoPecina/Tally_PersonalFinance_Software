@@ -22,13 +22,14 @@ from dataclasses import dataclass
 from datetime import date, timedelta
 from decimal import Decimal
 
-from motor import prestamos, tarjetas
+from motor import monedas, prestamos, tarjetas
 from motor.dinero import a_pesos
 from motor.libro import Libro
 from motor.modelo import ClaseCategoria, TipoCuenta, TipoOperacion
 
 MESES_PROMEDIO = 3
-REDONDEO = 50                  # los presupuestos sugeridos se redondean a múltiplos de $50
+REDONDEO = Decimal("0.005")    # los sugeridos se redondean a un número redondo cerca del 0.5 % de lo que gastas al
+                               # mes ($50 si gastas $11,000; 10 € si gastas 2,000 €), para que valga en cualquier moneda
 CERO = Decimal(0)
 
 
@@ -172,6 +173,7 @@ class Plan:
     para_gastar: Decimal       # ingreso − deudas − ahorro
     sugerencias: list[Sugerencia]
     factor: Decimal            # 1 = te alcanza; < 1 = se ajustó para que te alcance
+    redondeo: Decimal = Decimal(50)   # los sugeridos son múltiplos de esto
 
     @property
     def total_sugerido(self) -> Decimal:
@@ -209,17 +211,17 @@ def sugerir(libro: Libro, hoy: date | None = None) -> Plan:
     promedios = gasto_promedio(libro, hoy)
     total = sum(promedios.values(), CERO)
     factor = Decimal(1) if not ingreso or total <= para_gastar else (para_gastar / total)
+    paso = monedas.redondo(total * REDONDEO)
     sugerencias = []
     for rubro in libro.rubros():
         if rubro.clase is not ClaseCategoria.GASTO or rubro.id not in promedios:
             continue
         base = promedios[rubro.id] * factor
-        redondeado = Decimal(math.ceil(base / REDONDEO) * REDONDEO) if factor == 1 else Decimal(
-            math.floor(base / REDONDEO) * REDONDEO)
+        redondeado = Decimal(math.ceil(base / paso) * paso) if factor == 1 else Decimal(math.floor(base / paso) * paso)
         sugerencias.append(Sugerencia(rubro.id, rubro.nombre, promedios[rubro.id], redondeado,
                                       a_pesos(rubro.presupuesto) if rubro.presupuesto else None))
     sugerencias.sort(key=lambda s: -s.promedio)
-    return Plan(ingreso, deudas, ahorro, para_gastar, sugerencias, factor.quantize(Decimal("0.0001")))
+    return Plan(ingreso, deudas, ahorro, para_gastar, sugerencias, factor.quantize(Decimal("0.0001")), paso)
 
 
 # ------------------------------------------------------- proyección del mes

@@ -37,7 +37,7 @@ from decimal import Decimal
 
 from motor import bienes, prestamos, reportes
 from motor.consultas import ETIQUETA_TIPO_OPERACION
-from motor.dinero import a_centavos, a_pesos
+from motor.dinero import a_centavos, a_pesos, formatear
 from motor.libro import Libro
 from motor.modelo import (
     CATEGORIA_AJUSTE,
@@ -192,7 +192,7 @@ def _calculados(libro: Libro, origen: Origen) -> list[Movimiento]:
             cambio = (bienes.valuar(libro, cuenta_id, avaluo.fecha).revaluacion
                       - bienes.valuar(libro, cuenta_id, avaluo.fecha - timedelta(days=1)).revaluacion)
             if cambio:
-                filas.append(_calculado(avaluo.fecha, f"Avalúo de {nombre}: {a_pesos(avaluo.valor):,.2f}",
+                filas.append(_calculado(avaluo.fecha, f"Avalúo de {nombre}: {formatear(a_pesos(avaluo.valor))}",
                                         "Avalúo", cambio, origen.signo, debe=True))
     return sorted(filas, key=lambda m: m.fecha, reverse=True)
 
