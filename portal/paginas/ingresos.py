@@ -117,6 +117,13 @@ def _principal() -> None:
             st.caption(f"Ahora tu ingreso principal es **{formato.md(categorias.etiqueta(lib, actual.id))}**, pero aún "
                        "no le dices cada cuánto te pagan.")
     _formulario(r, principal=True)
+    if r is not None:
+        with st.popover("Quitar mi ingreso principal", icon=":material/delete:"):
+            st.markdown(f"Se borra «{formato.md(r.nombre)}» (cada cuánto te pagan y cuánto). Tus ingresos ya "
+                        "registrados no se tocan, y puedes volver a configurarlo cuando quieras.")
+            if st.button("Sí, quitarlo", type="primary", key="ing_quitar_principal"):
+                if ejecutar(lambda li: recurrentes.eliminar(li, r.id), f"Se quitó «{r.nombre}»"):
+                    st.rerun()
 
 
 def _formulario(r: Recurrente | None, *, principal: bool) -> None:

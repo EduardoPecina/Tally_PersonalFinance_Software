@@ -1,8 +1,8 @@
 """Impuestos, para cualquier país: tus gastos deducibles y el cálculo (y la revisión) de un recibo o factura.
 
-TALLY no sabe las leyes de cada país (y cambian cada año): tú defines las reglas, y para empezar hay **plantillas**
-(México, Argentina, España…) que puedes cambiar. Todo es una referencia: lo oficial lo dice tu autoridad fiscal o
-tu contador.
+TALLY no sabe las leyes de cada país (y cambian cada año): tú defines las reglas, todas editables y borrables. La
+página trae ejemplos para guiarte (México, España, Argentina, Colombia…), pero nada se agrega solo. Todo es una
+referencia: lo oficial lo dice tu autoridad fiscal o tu contador.
 
 **Gastos deducibles.** Un *concepto* (gastos médicos, colegiaturas, alquiler…) junta subcategorías de TALLY y dice
 qué parte del gasto se deduce (100 %, 40 %…), hasta cuánto al año y si deja fuera lo pagado en efectivo. Además puede
@@ -112,56 +112,14 @@ def ajustar_topes(libro: Libro, *, tope_total=None, tope_porcentaje=None) -> Non
     libro.fiscal = replace(libro.fiscal, tope_total=total, tope_porcentaje=porcentaje)
 
 
-# Plantillas: (nombre, subcategorías, % deducible, tope en pesos o None, sin efectivo, notas[, fuera del tope total]).
-PLANTILLAS_DEDUCIBLES = {
-    "México (persona física, declaración anual)": dict(
-        conceptos=(
-            ("Honorarios médicos, dentales y de psicología",
-             ("CONSULTAS MEDICAS", "DENTISTA", "PSICOLOGIA Y TERAPIA", "HOSPITAL", "ANALISIS Y ESTUDIOS"), 100, None,
-             True, "Con factura (CFDI) a tu nombre. Incluye nutriólogos y análisis clínicos."),
-            ("Lentes ópticos graduados", ("LENTES Y OPTICA",), 100, 2500, True, "Con factura; hasta $2,500 al año."),
-            ("Primas de seguro de gastos médicos", ("SEGURO DE GASTOS MEDICOS",), 100, None, True, ""),
-            ("Colegiaturas", ("COLEGIATURAS",), 100, None, True,
-             "Tienen tope por nivel y por alumno (preescolar, primaria, secundaria, bachillerato): ajústalo.", True),
-            ("Donativos", ("DONATIVOS",), 100, None, True,
-             "A donatarias autorizadas; hasta el 7 % de tus ingresos del año anterior.", True),
-        ),
-        tope_porcentaje=15,
-        notas="Tope total: el 15 % de tus ingresos o 5 UMA anuales, lo que sea menor (no aplica a colegiaturas ni "
-              "donativos). Lo pagado en efectivo no cuenta.",
-    ),
-    "Argentina (Ganancias, empleado)": dict(
-        conceptos=(
-            ("Honorarios médicos y paramédicos", ("CONSULTAS MEDICAS", "DENTISTA", "PSICOLOGIA Y TERAPIA",
-                                                  "HOSPITAL", "ANALISIS Y ESTUDIOS"), 40, None, True,
-             "Se deduce el 40 % de lo facturado, con tope del 5 % de tu ganancia neta."),
-            ("Cuota médico asistencial (prepaga)", ("SEGURO DE GASTOS MEDICOS",), 100, None, False,
-             "Tope del 5 % de tu ganancia neta."),
-            ("Alquiler de vivienda", ("RENTA",), 40, None, True, "El 40 % del alquiler, con tope anual."),
-            ("Servicio doméstico", ("SERVICIO DOMESTICO",), 100, None, False, "Con tope anual."),
-        ),
-        notas="Los topes se actualizan seguido: revísalos en ARCA (ex AFIP).",
-    ),
-}
+def quitar_deducibles(libro: Libro) -> None:
+    """Borra todos tus conceptos deducibles, el tope total y las notas (para empezar de cero)."""
+    libro.fiscal = replace(libro.fiscal, conceptos=(), tope_total=None, tope_porcentaje=None, notas="")
 
 
-def agregar_plantilla_deducibles(libro: Libro, nombre: str) -> int:
-    """Agrega los conceptos de una plantilla (los que ya tengas con ese nombre se respetan). Devuelve cuántos."""
-    plantilla = PLANTILLAS_DEDUCIBLES[nombre]
-    nuevos = 0
-    for concepto, subs, porcentaje, tope, sin_efectivo, notas, *fuera in plantilla["conceptos"]:
-        if any(c.nombre.casefold() == concepto.casefold() for c in libro.fiscal.conceptos):
-            continue
-        ids = [c.id for n in subs if (c := categorias.buscar(libro, n)) and c.clase is ClaseCategoria.GASTO]
-        if ids:
-            guardar_concepto(libro, concepto, ids, porcentaje=porcentaje, tope=tope, sin_efectivo=sin_efectivo,
-                             notas=notas, fuera_del_tope=bool(fuera and fuera[0]))
-            nuevos += 1
-    if plantilla.get("tope_porcentaje") and libro.fiscal.tope_porcentaje is None:
-        libro.fiscal = replace(libro.fiscal, tope_porcentaje=Decimal(plantilla["tope_porcentaje"]))
-    if plantilla.get("notas") and not libro.fiscal.notas:
-        libro.fiscal = replace(libro.fiscal, notas=plantilla["notas"])
-    return nuevos
+def ajustar_notas(libro: Libro, notas: str) -> None:
+    """Tus notas de deducibles (requisitos, dónde revisar los topes de tu país…)."""
+    libro.fiscal = replace(libro.fiscal, notas=notas.strip())
 
 
 @dataclass(frozen=True, slots=True)
@@ -290,33 +248,6 @@ def guardar_perfil(libro: Libro, nombre: str, impuestos, *, notas: str = "",
 
 def eliminar_perfil(libro: Libro, perfil_id: str) -> None:
     libro.fiscal = replace(libro.fiscal, perfiles=tuple(p for p in libro.fiscal.perfiles if p.id != perfil_id))
-
-
-_DOS_TERCIOS = Decimal(2) / Decimal(3) * 100
-PLANTILLAS_IMPUESTOS = {
-    "México · Honorarios (régimen general)": (
-        (Impuesto("IVA", Decimal(16)), Impuesto("Retención ISR", Decimal(10), retenido=True),
-         Impuesto("Retención IVA", _DOS_TERCIOS, "IVA", retenido=True)),
-        "Cuando le facturas a una empresa (persona moral), te retiene el 10 % de ISR y 2/3 del IVA."),
-    "México · Honorarios en RESICO": (
-        (Impuesto("IVA", Decimal(16)), Impuesto("Retención ISR", Decimal("1.25"), retenido=True),
-         Impuesto("Retención IVA", _DOS_TERCIOS, "IVA", retenido=True)),
-        "En RESICO la retención de ISR es del 1.25 %."),
-    "México · Venta con IVA, sin retenciones": ((Impuesto("IVA", Decimal(16)),), "A personas físicas o en mostrador."),
-    "España · Autónomo (IVA 21 % e IRPF 15 %)": (
-        (Impuesto("IVA", Decimal(21)), Impuesto("Retención IRPF", Decimal(15), retenido=True)),
-        "Los nuevos autónomos pueden retener el 7 % los primeros años."),
-    "Argentina · Responsable inscripto (IVA 21 %)": ((Impuesto("IVA", Decimal(21)),), ""),
-    "Colombia · IVA 19 %": ((Impuesto("IVA", Decimal(19)),), ""),
-}
-
-
-def agregar_plantilla_impuestos(libro: Libro, nombre: str) -> PerfilImpuestos:
-    impuestos, notas = PLANTILLAS_IMPUESTOS[nombre]
-    base, n = nombre, 2
-    while any(p.nombre.casefold() == nombre.casefold() for p in libro.fiscal.perfiles):
-        nombre, n = f"{base} ({n})", n + 1
-    return guardar_perfil(libro, nombre, impuestos, notas=notas)
 
 
 @dataclass(frozen=True, slots=True)

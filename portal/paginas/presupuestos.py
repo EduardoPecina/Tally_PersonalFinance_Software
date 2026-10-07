@@ -76,6 +76,17 @@ def mostrar() -> None:
             st.info("No cambiaste nada.")
         elif ejecutar(accion, exito=f"{len(cambios)} presupuesto(s) guardado(s)"):
             st.rerun()
+    con_presupuesto = [r for r in rubros if r.presupuesto]
+    if con_presupuesto:
+        st.caption("Para quitar uno, borra su importe en la tabla y guarda.")
+        with st.popover("Quitar todos mis presupuestos", icon=":material/delete_sweep:"):
+            st.markdown(f"Se quitan tus **{len(con_presupuesto)} presupuesto(s)**. Tus gastos no se tocan.")
+            if st.button("Sí, quitarlos", type="primary", key="presupuestos_quitar_todos"):
+                def quitar(lib):
+                    for r in con_presupuesto:
+                        categorias.fijar_presupuesto(lib, r.id, None)
+                if ejecutar(quitar, exito="Presupuestos quitados"):
+                    st.rerun()
 
 
 # -------------------------------------------------------------- sugeridos

@@ -365,23 +365,25 @@ def iva_de_tarjeta(libro: Libro, tarjeta: Cuenta) -> Decimal:
 
 
 def pago_minimo_estimado(libro: Libro, tarjeta_id: str, hoy: date | None = None) -> PagoMinimo | None:
-    """El pago mínimo estimado del último corte (``None`` si no hay corte o no debes nada de él)."""
+    """El pago mínimo estimado del último corte, menos lo que ya abonaste después del corte (``None`` si no hay
+    corte, no debías nada de él o ya lo pagaste completo)."""
     tarjeta = _tarjeta(libro, tarjeta_id)
     corte = ciclo_por_pagar(libro, tarjeta_id, hoy)
-    if corte is None or not corte.deuda_al_corte:
-        return None
+    if corte is None or not corte.deuda_al_corte or not corte.por_liquidar:
+        return None                                       # nada que pagar, o ya lo pagaste
     exigible = corte.pago_para_no_generar_intereses
+    pagado = exigible - corte.por_liquidar                # lo que ya abonaste después del corte
     mensual = (tarjeta.tasa_anual or Decimal(0)) / 100 / 12
     iva = iva_de_tarjeta(libro, tarjeta) / 100
     no_pagado = max(Decimal(0), -corte.saldo_inicial - corte.abonos)     # lo que arrastras del corte anterior
     intereses = (no_pagado * mensual * (1 + iva)).quantize(Decimal("0.01"))
     linea = a_pesos(tarjeta.limite_credito) if tarjeta.limite_credito else Decimal(0)
     minimo = max(exigible * PORCENTAJE_SALDO + intereses, linea * PORCENTAJE_LINEA)
-    minimo = min(minimo, exigible + intereses).quantize(Decimal("0.01"))
+    minimo = max(min(minimo, exigible + intereses) - pagado, Decimal(0)).quantize(Decimal("0.01"))
     meses = total = None
     if tarjeta.tasa_anual:
-        meses, total = _solo_minimo(exigible, mensual * (1 + iva), linea)
-    return PagoMinimo(minimo, exigible, intereses, bool(tarjeta.tasa_anual), meses, total)
+        meses, total = _solo_minimo(corte.por_liquidar, mensual * (1 + iva), linea)
+    return PagoMinimo(minimo, corte.por_liquidar, intereses, bool(tarjeta.tasa_anual), meses, total)
 
 
 def _solo_minimo(saldo: Decimal, tasa_mes: Decimal, linea: Decimal) -> tuple[int | None, Decimal]:

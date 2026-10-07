@@ -32,6 +32,7 @@ from motor.transferencias import registrar_transferencia
 
 CERO = Decimal(0)
 CENTAVO = Decimal("0.01")
+DIAS_DE_ADELANTO = 7         # un pago hasta 7 días antes de la fecha cuenta como el de ese mes
 MAXIMO_MESES = 600
 SUBCATEGORIA_INTERESES = "INTERESES DE PRESTAMOS"
 SUBCATEGORIA_CARGOS = "COMISIONES BANCARIAS"
@@ -309,7 +310,7 @@ def estado(libro: Libro, cuenta_id: str, hoy: date | None = None) -> Estado:
         for nombre, extra in (("+10 % al mes", base.pago * Decimal("0.10")), ("+25 % al mes", base.pago / 4)):
             sugerencias.append((nombre, proyectar(libro, cuenta_id, extra_mensual=extra.quantize(CENTAVO), hoy=hoy)))
     return Estado(deuda, base.pago, interes + iva, restantes, base, a_pesos(pagado), a_pesos(cargos),
-                  _siguiente_pago(p, hoy) if deuda else None, sugerencias)
+                  _proximo_pendiente(libro, p, hoy) if deuda else None, sugerencias)
 
 
 def pagos_mensuales(libro: Libro, hoy: date | None = None) -> Decimal:
@@ -362,6 +363,16 @@ def _sumar_meses(dia: date, meses: int, dia_pago: int | None = None) -> date:
 def _meses_entre(inicio: date, fin: date) -> int:
     meses = (fin.year - inicio.year) * 12 + fin.month - inicio.month
     return meses - (1 if fin.day < inicio.day else 0)
+
+
+def _proximo_pendiente(libro: Libro, p: Prestamo, hoy: date) -> date:
+    """El próximo pago que te falta: hoy o después, y si ya lo adelantaste (un pago en los 7 días antes), el
+    siguiente. Así Deudas, el Calendario y el Resumen dicen lo mismo."""
+    fecha = _siguiente_pago(p, hoy - timedelta(days=1))
+    adelantado = any(op.tipo is TipoOperacion.TRANSFERENCIA
+                     and any(pa.cuenta_id == p.cuenta_id and pa.importe > 0 for pa in op.partidas)
+                     for op in libro.operaciones(fecha - timedelta(days=DIAS_DE_ADELANTO), hoy))
+    return _siguiente_pago(p, fecha) if adelantado else fecha
 
 
 def _siguiente_pago(p: Prestamo, hoy: date) -> date:

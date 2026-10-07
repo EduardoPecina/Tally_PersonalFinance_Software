@@ -1,5 +1,5 @@
 """Impuestos (motor/impuestos.py): tus gastos deducibles del año y el cálculo/revisión de un recibo o factura. Para
-cualquier país: tú defines las reglas, y hay plantillas para empezar."""
+cualquier país: tú defines las reglas (con ejemplos por país para guiarte) y todo se edita o se borra."""
 
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ from motor import categorias, impuestos
 from motor.dinero import a_pesos
 from motor.modelo import ClaseCategoria, ConceptoDeducible, PerfilImpuestos
 from portal.componentes import exportar, formato
-from portal.componentes.sesion import aplicar, ejecutar, libro
+from portal.componentes.sesion import ejecutar, libro
 
 SUBTOTAL = "(el subtotal)"
 EFECTO = {False: "Se suma", True: "Se retiene (se resta)"}
@@ -21,7 +21,7 @@ EFECTO = {False: "Se suma", True: "Se retiene (se resta)"}
 def mostrar() -> None:
     st.title("Impuestos")
     st.caption("Tus gastos deducibles del año y el cálculo de un recibo o factura, para cualquier país: tú pones las "
-               "reglas (o empiezas con una plantilla). " + impuestos.AVISO)
+               "reglas, con ejemplos para guiarte. " + impuestos.AVISO)
     deducibles, recibo, configurar = st.tabs(["🧾 Gastos deducibles", "🧮 Calcular y revisar un recibo",
                                               "⚙️ Configurar"])
     with deducibles:
@@ -39,7 +39,7 @@ def _deducibles() -> None:
     lib = libro()
     if not lib.fiscal.conceptos:
         st.info("Aún no tienes conceptos deducibles. En **⚙️ Configurar** agrega los tuyos (gastos médicos, "
-                "colegiaturas, alquiler…) o empieza con la plantilla de tu país.", icon="🧾")
+                "colegiaturas, alquiler…); ahí hay ejemplos por país.", icon="🧾")
         return
     hoy = lib.hoy()
     anios = sorted({op.fecha.year for op in lib.operaciones()} | {hoy.year}, reverse=True)
@@ -117,8 +117,8 @@ def _recibo() -> None:
     lib = libro()
     perfiles = lib.fiscal.perfiles
     if not perfiles:
-        st.info("Primero agrega un perfil de impuestos en **⚙️ Configurar**: los tuyos o una plantilla (México, "
-                "España, Argentina, Colombia…).", icon="🧮")
+        st.info("Primero arma un perfil de impuestos en **⚙️ Configurar** con tus tasas (IVA, retenciones…); ahí hay "
+                "ejemplos de México, España, Argentina, Colombia y más.", icon="🧮")
         return
     ids = [p.id for p in perfiles]
     perfil = next(p for p in perfiles if p.id == st.selectbox(
@@ -164,8 +164,33 @@ def _describir(perfil: PerfilImpuestos) -> str:
 
 # ------------------------------------------------------------- configurar
 
+EJEMPLOS_DEDUCIBLES = """
+| País | Conceptos que la gente suele poner | Tope total |
+|---|---|---|
+| México (declaración anual) | Médicos, dentista y psicólogo (100 %, sin efectivo) · lentes graduados (tope de 2,500 al año) · seguro de gastos médicos · colegiaturas y donativos (marca «No entra en el tope total») | 15 % de tus ingresos o 5 UMA, lo que sea menor |
+| Argentina (Ganancias) | Médicos (40 %) · prepaga · alquiler (40 %) · servicio doméstico | Cada uno con su tope: revisa ARCA |
+| España (IRPF) | Casi todo son deducciones de tu comunidad autónoma: alquiler, guardería, gastos de estudios… | Según tu comunidad |
+| Colombia (renta) | Dependientes · medicina prepagada · intereses de vivienda | Un % de tu ingreso con límite en UVT: revisa la DIAN |
+| Otro país | Lo que tu autoridad fiscal permita deducir | Si hay uno |
+"""
+
+EJEMPLOS_PERFILES = """
+| Caso | Renglones del perfil (Impuesto · Tasa · Sobre · Efecto) |
+|---|---|
+| México · honorarios a una empresa | IVA · 16 · subtotal · se suma — Retención ISR · 10 · subtotal · se retiene — Retención IVA · 2/3 · IVA · se retiene |
+| México · RESICO a una empresa | IVA · 16 · subtotal · se suma — Retención ISR · 1.25 · subtotal · se retiene — Retención IVA · 2/3 · IVA · se retiene |
+| México · venta al público | IVA · 16 (8 en la frontera) · subtotal · se suma |
+| España · autónomo | IVA · 21 · subtotal · se suma — IRPF · 15 (7 los primeros años) · subtotal · se retiene |
+| Argentina · responsable inscripto | IVA · 21 · subtotal · se suma |
+| Colombia · servicios | IVA · 19 · subtotal · se suma — Retención en la fuente · 11 · subtotal · se retiene — ReteIVA · 15 · IVA · se retiene |
+| Perú · recibo por honorarios | Retención de cuarta categoría · 8 · subtotal · se retiene |
+| Chile · boleta de honorarios | Retención · la de este año (revísala en el SII) · subtotal · se retiene |
+"""
+
 
 def _configurar() -> None:
+    st.caption("Aquí todo lo pones tú y todo se puede **editar o borrar**. Los ejemplos son solo una guía: TALLY no "
+               "agrega nada por su cuenta. " + impuestos.AVISO)
     st.subheader("Gastos deducibles")
     _conceptos()
     st.divider()
@@ -175,23 +200,25 @@ def _configurar() -> None:
 
 def _conceptos() -> None:
     lib = libro()
-    a, b = st.columns([3, 1], vertical_alignment="bottom")
-    plantilla = a.selectbox("Empezar con una plantilla", list(impuestos.PLANTILLAS_DEDUCIBLES), index=None,
-                            placeholder="Elige tu país (opcional)", key="imp_plantilla_ded")
-    if b.button("Agregar plantilla", disabled=plantilla is None, key="imp_agregar_ded", width="stretch"):
-        n = aplicar(lambda li: impuestos.agregar_plantilla_deducibles(li, plantilla))
-        if n is not None:
-            st.toast(f"Se agregaron {n} concepto(s). Revísalos: las reglas cambian cada año.", icon="🧾")
-            st.rerun()
+    with st.expander("💡 ¿Cómo armo mis deducibles? Ejemplos por país"):
+        st.markdown(
+            "1. **Crea un concepto** por cada gasto que tu país te deja deducir (por ejemplo «Gastos médicos»).\n"
+            "2. **Elige las subcategorías** de TALLY donde registras esos gastos (CONSULTAS MEDICAS, DENTISTA…).\n"
+            "3. Si solo cuenta **una parte**, pon el porcentaje (40 %). Si tiene **tope al año**, ponlo.\n"
+            "4. Marca **«No cuenta lo pagado en efectivo»** si tu país lo pide.\n"
+            "5. Si hay un **tope para todos juntos**, ponlo abajo (un monto, un % de tus ingresos o los dos).")
+        st.markdown(formato.md(EJEMPLOS_DEDUCIBLES))
     for c in lib.fiscal.conceptos:
-        with st.expander(f"{c.nombre} · {c.porcentaje.normalize():f} %"
-                         + (f" · tope {formato.dinero(a_pesos(c.tope))}" if c.tope else "")
-                         + (" · sin efectivo" if c.sin_efectivo else "")
-                         + (" · fuera del tope total" if c.fuera_del_tope else "")):
+        a, b = st.columns([6, 1])
+        with a.expander(f"✏️ {c.nombre} · {c.porcentaje.normalize():f} %"
+                        + (f" · tope {formato.dinero(a_pesos(c.tope))}" if c.tope else "")
+                        + (" · sin efectivo" if c.sin_efectivo else "")
+                        + (" · fuera del tope total" if c.fuera_del_tope else "")):
             _formulario_concepto(c)
-            if st.button("Borrar concepto", key=f"imp_borrar_ded_{c.id}"):
-                if ejecutar(lambda li, c=c: impuestos.eliminar_concepto(li, c.id), f"Se borró «{c.nombre}»"):
-                    st.rerun()
+        if b.button("Borrar", key=f"imp_borrar_ded_{c.id}", icon=":material/delete:", width="stretch",
+                    help=f"Borra «{c.nombre}». Tus gastos no se tocan."):
+            if ejecutar(lambda li, c=c: impuestos.eliminar_concepto(li, c.id), f"Se borró «{c.nombre}»"):
+                st.rerun()
     with st.expander("➕ Nuevo concepto deducible", expanded=not lib.fiscal.conceptos):
         _formulario_concepto(None)
     with st.form("imp_topes", border=False):
@@ -201,10 +228,20 @@ def _conceptos() -> None:
                                value=float(a_pesos(lib.fiscal.tope_total)) if lib.fiscal.tope_total else 0.0)
         porcentaje = b.number_input("% de tus ingresos del año", min_value=0.0, max_value=100.0, step=1.0,
                                     value=float(lib.fiscal.tope_porcentaje or 0))
-        if st.form_submit_button("Guardar tope"):
-            if ejecutar(lambda li: impuestos.ajustar_topes(li, tope_total=total or None,
-                                                           tope_porcentaje=porcentaje or None), "Tope guardado"):
+        notas = st.text_input("Notas (requisitos, dónde revisar los topes de tu país…)", value=lib.fiscal.notas)
+        if st.form_submit_button("Guardar tope y notas"):
+            def guardar(li):
+                impuestos.ajustar_topes(li, tope_total=total or None, tope_porcentaje=porcentaje or None)
+                impuestos.ajustar_notas(li, notas)
+            if ejecutar(guardar, "Guardado"):
                 st.rerun()
+    if lib.fiscal.conceptos or lib.fiscal.tope_total or lib.fiscal.tope_porcentaje or lib.fiscal.notas:
+        with st.popover("Borrar todos mis deducibles", icon=":material/delete_sweep:"):
+            st.markdown(f"Se borran tus **{len(lib.fiscal.conceptos)} concepto(s)**, el tope total y las notas. Tus "
+                        "gastos no se tocan.")
+            if st.button("Sí, borrar todo", type="primary", key="imp_quitar_deducibles"):
+                if ejecutar(impuestos.quitar_deducibles, "Se borraron tus deducibles"):
+                    st.rerun()
 
 
 def _formulario_concepto(c: ConceptoDeducible | None) -> None:
@@ -231,7 +268,7 @@ def _formulario_concepto(c: ConceptoDeducible | None) -> None:
         fuera = st.checkbox("No entra en el tope total", value=c.fuera_del_tope if c else False,
                             help="En México, por ejemplo, las colegiaturas y los donativos tienen su propio límite.")
         notas = st.text_input("Notas (requisitos, topes por nivel…)", value=c.notas if c else "")
-        if st.form_submit_button("Guardar" if c else "Agregar concepto", type="primary"):
+        if st.form_submit_button("Guardar cambios" if c else "Agregar concepto", type="primary"):
             if ejecutar(lambda li: impuestos.guardar_concepto(
                     li, nombre, elegidas, porcentaje=porcentaje, tope=tope or None, sin_efectivo=sin_efectivo,
                     notas=notas, fuera_del_tope=fuera, concepto_id=c.id if c else None), "Concepto guardado"):
@@ -240,51 +277,72 @@ def _formulario_concepto(c: ConceptoDeducible | None) -> None:
 
 def _perfiles() -> None:
     lib = libro()
-    a, b = st.columns([3, 1], vertical_alignment="bottom")
-    plantilla = a.selectbox("Agregar una plantilla", list(impuestos.PLANTILLAS_IMPUESTOS), index=None,
-                            placeholder="México, España, Argentina, Colombia…", key="imp_plantilla_imp")
-    if b.button("Agregar", disabled=plantilla is None, key="imp_agregar_imp", width="stretch"):
-        if ejecutar(lambda li: impuestos.agregar_plantilla_impuestos(li, plantilla), f"Se agregó «{plantilla}»"):
-            st.rerun()
+    st.caption("Un **perfil** son los impuestos de un tipo de recibo o factura que das o recibes: con él TALLY "
+               "calcula cuánto te llega y revisa si un recibo cuadra.")
+    with st.expander("💡 ¿Cómo armo un perfil? Ejemplos por país"):
+        st.markdown(
+            "1. **Ponle nombre**: «Mis honorarios», «Ventas en la tienda»…\n"
+            "2. **Un impuesto por renglón**, en orden. **Tasa** en %: 16, 1.25, o una fracción como 2/3.\n"
+            "3. **Sobre**: casi siempre el subtotal. Si un impuesto se calcula sobre otro (la retención de 2/3 del IVA "
+            "en México, la ReteIVA en Colombia), elige ese otro: tiene que ir arriba.\n"
+            "4. **Efecto**: *se suma* si lo cobras aparte (IVA); *se retiene* si te lo quitan del pago (ISR, IRPF, "
+            "retención en la fuente).")
+        st.markdown(formato.md(EJEMPLOS_PERFILES))
+        st.markdown("**¿No sabes cuánto pagas de ISR o IRPF?** Usa una tasa aproximada: lo que pagaste (o te "
+                    "retuvieron) en el año entre tus ingresos del año.")
+        a, b, c = st.columns(3)
+        pagado = a.number_input("Impuesto del año", min_value=0.0, step=1000.0, format="%.2f", key="imp_aprox_isr")
+        ingreso = b.number_input("Ingresos del año", min_value=0.0, step=1000.0, format="%.2f",
+                                 key="imp_aprox_ingreso")
+        c.metric("Tu tasa aproximada", f"{pagado / ingreso * 100:.2f} %" if ingreso else "—")
     for p in lib.fiscal.perfiles:
-        with st.expander(p.nombre):
+        a, b = st.columns([6, 1])
+        with a.expander(f"✏️ {p.nombre}"):
             st.caption(_describir(p))
             _formulario_perfil(p)
-            if st.button("Borrar perfil", key=f"imp_borrar_perfil_{p.id}"):
-                if ejecutar(lambda li, p=p: impuestos.eliminar_perfil(li, p.id), f"Se borró «{p.nombre}»"):
-                    st.rerun()
-    with st.expander("➕ Nuevo perfil (tus propias tasas)", expanded=not lib.fiscal.perfiles):
+        if b.button("Borrar", key=f"imp_borrar_perfil_{p.id}", icon=":material/delete:", width="stretch",
+                    help=f"Borra el perfil «{p.nombre}»."):
+            if ejecutar(lambda li, p=p: impuestos.eliminar_perfil(li, p.id), f"Se borró «{p.nombre}»"):
+                st.rerun()
+    with st.expander("➕ Nuevo perfil", expanded=not lib.fiscal.perfiles):
         _formulario_perfil(None)
+
+
+def _tasa_texto(tasa: Decimal) -> str:
+    """Para editar: 66.666… → «2/3»; 16 → «16»."""
+    mostrada = impuestos.mostrar_tasa(tasa)
+    return mostrada.split(" ")[0] if "/" in mostrada else f"{tasa.normalize():f}"
 
 
 def _formulario_perfil(p: PerfilImpuestos | None) -> None:
     clave = p.id if p else "nuevo"
-    nombres = [i.nombre for i in p.impuestos] if p else []
+    lista = list(p.impuestos) if p else []
     datos = pd.DataFrame({
-        "Impuesto": nombres or ["IVA", ""],
-        "Tasa (%)": [f"{i.tasa.normalize():f}" if i.tasa != impuestos._DOS_TERCIOS else "2/3" for i in p.impuestos]
-        if p else ["16", ""],
-        "Sobre": [i.sobre or SUBTOTAL for i in p.impuestos] if p else [SUBTOTAL, SUBTOTAL],
-        "Efecto": [EFECTO[i.retenido] for i in p.impuestos] if p else [EFECTO[False], EFECTO[True]],
+        "Impuesto": [i.nombre for i in lista] or [""],
+        "Tasa (%)": [_tasa_texto(i.tasa) for i in lista] or [""],
+        "Sobre": [i.sobre or SUBTOTAL for i in lista] or [SUBTOTAL],
+        "Efecto": [EFECTO[i.retenido] for i in lista] or [EFECTO[False]],
     })
     with st.form(f"imp_perfil_{clave}", border=False):
         nombre = st.text_input("Nombre del perfil", value=p.nombre if p else "",
-                               placeholder="Honorarios, arrendamiento, mis ventas…")
-        st.caption("Un impuesto por renglón, en orden. «Sobre»: el subtotal u otro impuesto de arriba (por ejemplo, "
-                   "una retención de 2/3 del IVA). La tasa acepta fracciones: 2/3.")
+                               placeholder="Mis honorarios, ventas de la tienda…")
+        st.caption("Un impuesto por renglón, en orden (agrega renglones con el ➕ de la tabla). «Sobre»: escribe "
+                   "«(el subtotal)» o el nombre de otro impuesto de arriba. Renglones sin nombre no se guardan.")
         tabla = st.data_editor(datos, num_rows="dynamic", hide_index=True, width="stretch",
                                key=f"imp_tabla_{clave}",
                                column_config={
-                                   "Sobre": st.column_config.SelectboxColumn(
-                                       options=[SUBTOTAL, *[n for n in nombres if n]] if p else None, required=True)
-                                   if p else st.column_config.TextColumn(
-                                       help="Escribe «(el subtotal)» o el nombre de otro impuesto de arriba."),
+                                   "Impuesto": st.column_config.TextColumn(help="IVA, Retención ISR, IRPF…"),
+                                   "Tasa (%)": st.column_config.TextColumn(help="16, 1.25 o una fracción: 2/3"),
+                                   "Sobre": st.column_config.TextColumn(
+                                       default=SUBTOTAL,
+                                       help="«(el subtotal)» o el nombre de otro impuesto de arriba."),
                                    "Efecto": st.column_config.SelectboxColumn(options=list(EFECTO.values()),
-                                                                              required=True)})
+                                                                              default=EFECTO[False])})
         notas = st.text_input("Notas", value=p.notas if p else "")
-        if st.form_submit_button("Guardar perfil", type="primary"):
+        if st.form_submit_button("Guardar cambios" if p else "Guardar perfil", type="primary"):
             filas = [{"nombre": str(f["Impuesto"] or "").strip(), "tasa": str(f["Tasa (%)"] or "0"),
-                      "sobre": "" if (f["Sobre"] or SUBTOTAL) == SUBTOTAL else str(f["Sobre"]).strip(),
+                      "sobre": "" if str(f["Sobre"] or SUBTOTAL).strip() in (SUBTOTAL, "subtotal", "el subtotal")
+                      else str(f["Sobre"]).strip(),
                       "retenido": f["Efecto"] == EFECTO[True]} for _, f in tabla.iterrows()]
             if ejecutar(lambda li: impuestos.guardar_perfil(li, nombre, filas, notas=notas,
                                                             perfil_id=p.id if p else None), "Perfil guardado"):
