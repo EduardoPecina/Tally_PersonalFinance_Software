@@ -30,7 +30,9 @@ from __future__ import annotations
 
 import csv
 import io
+import logging
 import re
+import unicodedata
 from collections import Counter, defaultdict
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
@@ -209,6 +211,9 @@ def _texto_de_pdf(datos: bytes, contrasena: str) -> str:
         from pypdf import PdfReader
     except ImportError:
         raise ErrorValidacion("Falta un componente para leer PDF. Vuelve a correr INSTALAR.bat.") from None
+    registro = logging.getLogger("pypdf")
+    nivel = registro.level
+    registro.setLevel(logging.ERROR)                  # avisos técnicos de fuentes que no le importan al usuario
     try:
         lector = PdfReader(io.BytesIO(datos))
         if lector.is_encrypted and not lector.decrypt(contrasena or ""):
@@ -225,11 +230,28 @@ def _texto_de_pdf(datos: bytes, contrasena: str) -> str:
     except Exception:
         raise ErrorValidacion("No pude leer este PDF. Si tu banca en línea te deja descargar tus movimientos en "
                               "Excel o CSV, usa ese archivo: es más confiable.") from None
-    texto = "\n".join(paginas)
+    finally:
+        registro.setLevel(nivel)
+    texto = _sin_encabezados(paginas)
     if not re.search(r"\d", texto):
         raise ErrorValidacion("Este PDF no tiene texto que TALLY pueda leer (parece una imagen escaneada). "
                               "Descarga tus movimientos en Excel o CSV desde tu banca en línea.")
     return texto
+
+
+_NUMERO_DE_PAGINA = re.compile(r"\b(P[AÁ]GINA|PAGE|HOJA)\s*\d+\s*(DE|/|OF)\s*\d+\b", re.IGNORECASE)
+
+
+def _sin_encabezados(paginas: list[str]) -> str:
+    """Quita lo que el banco repite en cada hoja (nombre del producto, número de cuenta, «Página 2 de 6»), para
+    que no se pegue a la descripción de un movimiento."""
+    renglones = [[" ".join(ln.split()) for ln in p.splitlines()] for p in paginas]
+    veces = Counter(ln for hoja in renglones for ln in set(hoja) if ln)
+    repetidos = {ln for ln, n in veces.items() if n >= 2 and not _FECHA_AL_INICIO.match(ln)} if len(paginas) > 1 else set()
+    limpio = []
+    for hoja in renglones:
+        limpio.extend(ln for ln in hoja if ln and ln not in repetidos and not _NUMERO_DE_PAGINA.fullmatch(ln))
+    return "\n".join(limpio)
 
 
 # ===================================================================== fechas e importes
@@ -504,6 +526,8 @@ class Lectura:
     cargos_negativos: bool | None = None         # solo con un importe con signo: cómo se entendió el signo
     omitidos: int = 0                            # renglones con fecha que no tenían un importe válido
     avisos: tuple[str, ...] = ()
+    total_cargos: int | None = None              # lo que el propio estado de cuenta dice que suman (PDF)
+    total_abonos: int | None = None
 
     @property
     def entra(self) -> int:
@@ -633,83 +657,201 @@ _FECHA_AL_INICIO = re.compile(
     r"^\s*(\d{4}[/\-.]\d{1,2}[/\-.]\d{1,2}"
     r"|\d{1,2}[/\-.]\d{1,2}(?:[/\-.]\d{2,4})?"
     r"|\d{1,2}[\s/\-.]?[A-Za-zÁÉÍÓÚáéíóú]{3,10}\.?(?:[\s/\-.]\d{4}|[/\-.]\d{2}(?!\d))?)(?=\s|$)")
-_IMPORTE_AL_FINAL = re.compile(
-    r"(?:^|\s)([-−(+]?\s?\$?\s?(?:\d{1,3}(?:[,.']\d{3})+|\d+)[.,]\d{2}\)?(?:-|\s?CR)?)"
-    r"\s*(?:MXN|USD|EUR|M\.?N\.?)?\s*$", re.IGNORECASE)
+_UN_IMPORTE = r"[-\u2212(+]?\s?\$?\s?(?:\d{1,3}(?:[,.']\d{3})+|\d+)[.,]\d{2}\)?"
+_IMPORTE_AL_FINAL = re.compile(rf"(?:^|\s)({_UN_IMPORTE}(?:-|\s?CR)?)\s*(?:MXN|USD|EUR|M\.?N\.?)?\s*$",
+                               re.IGNORECASE)
+_IMPORTE = re.compile(rf"(?<![\d.,])({_UN_IMPORTE})(?![\d])")
 _NO_ES_MOVIMIENTO = ("PAGO MINIMO", "PAGO PARA NO GENERAR", "LIMITE DE CREDITO", "CREDITO DISPONIBLE",
-                     "FECHA LIMITE", "FECHA DE CORTE", "PERIODO DEL", "SALDO", "TOTAL", "SUBTOTAL")
+                     "FECHA LIMITE", "FECHA DE CORTE", "PERIODO DEL")
+_EMPIEZA_COMO_RESUMEN = ("SALDO", "SUBTOTAL", "TOTAL DE", "TOTAL CARGOS", "TOTAL ABONOS", "TOTAL IMPORTE",
+                         "TOTAL A PAGAR", "TOTAL DEPOSITOS", "TOTAL RETIROS")
 _SALDO_INICIAL = ("SALDO ANTERIOR", "SALDO INICIAL", "SALDO AL CORTE ANTERIOR")
-_PALABRAS_ENTRA = ("ABONO", "DEPOSITO", "DEP EFECTIVO", "RECIBIDO", "RECIBIDA", "NOMINA", "SU PAGO", "GRACIAS",
-                   "DEVOLUCION", "REEMBOLSO", "BONIFICACION", "CASHBACK", "INTERESES GANADOS", "RENDIMIENTO",
-                   "REVERSO", "CANCELACION", "SPEI RECIBIDO", "TRASPASO A FAVOR")
+_SALDO_FINAL = ("SALDO FINAL", "SALDO AL CORTE", "SALDO ACTUAL", "NUEVO SALDO")
+_TOTAL_CARGOS = ("TOTAL IMPORTE CARGOS", "TOTAL DE CARGOS", "TOTAL CARGOS", "TOTAL DE RETIROS", "TOTAL RETIROS")
+_TOTAL_ABONOS = ("TOTAL IMPORTE ABONOS", "TOTAL DE ABONOS", "TOTAL ABONOS", "TOTAL DE DEPOSITOS",
+                 "TOTAL DEPOSITOS")
+_FIN_DE_DETALLE = ("TOTAL", "SALDO", "PAGINA", "DETALLE", "FECHA", "RESUMEN", "ESTADO DE CUENTA", "PERIODO")
+_PALABRAS_ENTRA = ("ABONO", "DEPOSITO", "DEP EFECTIVO", "RECIBID", "NOMINA", "SU PAGO", "GRACIAS", "DEVOLUCION",
+                   "REEMBOLSO", "BONIFICACION", "CASHBACK", "INTERESES GANADOS", "RENDIMIENTO", "REVERSO",
+                   "CANCELACION", "TRASPASO A FAVOR")
+_PALABRAS_SALE = ("RETIRO", "ENVIAD", "COMPRA", "CARGO", "COMISION", "DOMICILIACION", "DISPOSICION", "PAGO DE SERV")
+_MAXIMO_POR_TRAMO = 14          # renglones sin saldo entre dos saldos que se pueden resolver (2^14 combinaciones)
+
+
+@dataclass(slots=True)
+class _Renglon:
+    fila: int
+    fecha: date
+    descripcion: str
+    importes: list[str]
+    detalle: list[str]
 
 
 def _de_texto_libre(texto: str, *, credito: bool, hoy: date) -> Lectura:
     referencia = _fecha_de_referencia(texto, hoy)
-    renglones = []                      # (fila, fecha, descripción, importes, saldo inicial?)
-    saldo_previo: int | None = None
+    renglones: list[_Renglon] = []
+    resumen: dict[str, int | None] = dict.fromkeys(("inicial", "final", "cargos", "abonos"))
     omitidos = 0
+    actual: _Renglon | None = None
     for numero, crudo in enumerate(texto.splitlines(), start=1):
         linea = " ".join(crudo.split())
         if not linea:
             continue
-        resto, importes = linea, []
-        while len(importes) < 4 and (m := _IMPORTE_AL_FINAL.search(resto)):
-            importes.insert(0, m.group(1))
-            resto = resto[:m.start()]
-        k = clave(resto)
-        if any(k.startswith(p) or f" {p}" in f" {k}" for p in _SALDO_INICIAL) and importes and saldo_previo is None:
-            saldo_previo = leer_importe(importes[-1])
+        leido = _renglon(numero, linea, referencia)
+        if isinstance(leido, _Renglon):
+            renglones.append(leido)
+            actual = leido
             continue
-        fecha_txt = _FECHA_AL_INICIO.match(resto)
-        if not fecha_txt:
-            continue
-        fecha = _fecha_sin_anio(fecha_txt.group(1), referencia)
-        if fecha is None:
-            continue
-        resto = resto[fecha_txt.end():]
-        if (otra := _FECHA_AL_INICIO.match(resto)) and _fecha_sin_anio(otra.group(1), referencia):
-            resto = resto[otra.end():]                                  # fecha de liquidación
-        descripcion = " ".join(resto.split())
-        kd = clave(descripcion)
-        if not re.search(r"[A-Za-z]", descripcion) or any(kd.startswith(p) or f" {p} " in f" {kd} "
-                                                            for p in _NO_ES_MOVIMIENTO):
-            continue
-        if not importes:
-            omitidos += 1
-            continue
-        valores = [leer_importe(i) for i in importes]
-        if valores[0] is None or valores[0] == 0:
-            omitidos += 1
-            continue
-        renglones.append((numero, fecha, descripcion, importes, valores))
+        omitidos += leido == "sin importe"
+        for llave, frases in (("inicial", _SALDO_INICIAL), ("final", _SALDO_FINAL), ("cargos", _TOTAL_CARGOS),
+                              ("abonos", _TOTAL_ABONOS)):
+            if resumen[llave] is None:
+                resumen[llave] = _importe_despues(linea, frases)
+        k = clave(linea)
+        if leido or _IMPORTE.search(linea) or any(k.startswith(p) or f" {p}" in f" {k}" for p in _FIN_DE_DETALLE):
+            actual = None                                        # aquí termina el detalle del movimiento
+        elif actual is not None and len(actual.detalle) < 3 and (extra := _detalle(linea)):
+            actual.detalle.append(extra)
+
+    montos, pistas = [], []
+    for r in renglones:
+        valores = [leer_importe(i) for i in r.importes]
+        saldo = valores[1] if len(valores) >= 2 else None
+        signo = (1 if credito else -1) if _marcado(r.importes[0]) else None     # «-850.00» o «850.00 CR»
+        montos.append((abs(valores[0]), saldo, signo))
+        pistas.append(_pista(r.descripcion, credito))
+    seguros = _signos_por_saldo(montos, resumen["inicial"], resumen["final"], credito, pistas)
 
     movimientos = []
-    for numero, fecha, descripcion, importes, valores in renglones:
-        monto = abs(valores[0])
-        saldo = valores[1] if len(valores) >= 2 else None
-        signo, seguro = None, False
-        if saldo is not None and saldo_previo is not None and abs(saldo - saldo_previo) == monto:
-            signo, seguro = (1 if saldo > saldo_previo else -1) * (-1 if credito else 1), True
-        elif _marcado(importes[0]):
-            signo, seguro = (1 if credito else -1), True               # «-850.00» o «850.00 CR»
-        if saldo is not None:
-            saldo_previo = saldo
+    for i, (r, (monto, _, signo)) in enumerate(zip(renglones, montos)):
+        descripcion = " · ".join([r.descripcion, *r.detalle])
+        seguro = signo is not None or i in seguros
+        if i in seguros:
+            signo = seguros[i]
         if signo is None:
-            kd = clave(descripcion)
-            entra = any(f" {p} " in f" {kd} " for p in _PALABRAS_ENTRA) or (credito and " PAGO " in f" {kd} ")
-            signo = 1 if entra else -1
-        movimientos.append(Movimiento(numero, fecha, descripcion, monto * signo, supuesto=not seguro))
-    avisos = ("Leí este texto lo mejor que pude: revisa cada renglón y compara los totales con tu estado de cuenta. "
-              "En los marcados con 🔍 no supe con certeza si el dinero entró o salió: cámbialo en la columna "
-              "«Movimiento» si hace falta.",) if any(m.supuesto for m in movimientos) else (
-              "Leí este texto lo mejor que pude: revisa cada renglón y compara los totales con tu estado de cuenta.",)
-    return Lectura(tuple(movimientos), None, None, omitidos, avisos)
+            signo = 1 if pistas[i] > 0 else -1                   # sin pistas, lo más común: salió
+        movimientos.append(Movimiento(r.fila, r.fecha, descripcion, monto * signo, supuesto=not seguro))
+    entra = sum(m.centavos for m in movimientos if m.centavos > 0)
+    sale = -sum(m.centavos for m in movimientos if m.centavos < 0)
+    verificado = (resumen["cargos"] is not None or resumen["abonos"] is not None) and \
+        resumen["cargos"] in (None, sale) and resumen["abonos"] in (None, entra)
+    avisos = [] if verificado else [
+        "Leí este texto lo mejor que pude: revisa cada renglón y compara los totales con tu estado de cuenta."]
+    if any(m.supuesto for m in movimientos):
+        avisos.append("En los marcados con 🔍 no supe con certeza si el dinero entró o salió: cámbialo en la columna "
+                      "«Movimiento» si hace falta.")
+    return Lectura(tuple(movimientos), None, None, omitidos, tuple(avisos), resumen["cargos"], resumen["abonos"])
+
+
+def _renglon(numero: int, linea: str, referencia: date) -> _Renglon | str | None:
+    """Un movimiento («fecha … descripción … importe [saldo]»), "sin importe" si tiene fecha y texto pero no
+    importe, o ``None`` si no es un movimiento."""
+    resto, importes = linea, []
+    while len(importes) < 4 and (m := _IMPORTE_AL_FINAL.search(resto)):
+        importes.insert(0, m.group(1))
+        resto = resto[:m.start()]
+    fecha_txt = _FECHA_AL_INICIO.match(resto)
+    if not fecha_txt or (fecha := _fecha_sin_anio(fecha_txt.group(1), referencia)) is None:
+        return None
+    resto = resto[fecha_txt.end():]
+    if (otra := _FECHA_AL_INICIO.match(resto)) and _fecha_sin_anio(otra.group(1), referencia):
+        resto = resto[otra.end():]                                      # fecha de liquidación
+    descripcion = " ".join(resto.split())
+    descripcion = re.sub(r"\b(RECIBID[OA]|ENVIAD[OA])(?=[A-Za-zÁÉÍÓÚÑáéíóúñ])", r"\1 ", descripcion,
+                         flags=re.IGNORECASE)                    # «SPEI RECIBIDOBANCO» → «SPEI RECIBIDO BANCO»
+    kd = clave(descripcion)
+    if (not re.search(r"[A-Za-z]", descripcion) or kd.startswith(_EMPIEZA_COMO_RESUMEN)
+            or any(f" {p} " in f" {kd} " for p in _NO_ES_MOVIMIENTO)):
+        return None
+    if not importes or not leer_importe(importes[0]):
+        return "sin importe"
+    return _Renglon(numero, fecha, descripcion, importes, [])
+
+
+def _pista(descripcion: str, credito: bool) -> int:
+    """+1 si las palabras dicen que el dinero entró (ABONO, RECIBIDO, NÓMINA…), −1 si salió (RETIRO, ENVIADO,
+    COMPRA…), 0 si no dicen nada. En una tarjeta, un PAGO es dinero que entra."""
+    k = f" {clave(descripcion)}"
+    if any(f" {p}" in k for p in _PALABRAS_ENTRA) or (credito and " PAGO" in k):
+        return 1
+    if any(f" {p}" in k for p in _PALABRAS_SALE):
+        return -1
+    return 0
+
+
+def _detalle(linea: str) -> str:
+    """El concepto que el banco pone en los renglones de abajo (el comercio, para qué fue, quién te pagó),
+    sin referencias, claves ni folios."""
+    texto = re.split(r"\b(?:REFERENCIA|REF\.?|FOLIO|AUTORIZACION|AUT\.?|RASTREO|CLABE)\b", linea,
+                     flags=re.IGNORECASE)[0]
+    texto = re.sub(r"\b\d{4,}(?=[A-Za-zÁÉÍÓÚÑáéíóúñ])", "", texto)       # «0000000Concepto» → «Concepto»
+    palabras = [w for w in texto.split() if sum(c.isalpha() for c in w) >= max(2, 0.7 * len(w))]
+    limpio = " ".join(palabras)
+    return limpio if sum(c.isalpha() for c in limpio) >= 5 else ""
+
+
+def _plano(texto: str) -> str:
+    """MAYÚSCULAS sin acentos, conservando números y signos (para buscar frases sin perder los importes)."""
+    return "".join(c for c in unicodedata.normalize("NFD", texto.upper()) if not unicodedata.combining(c))
+
+
+def _importe_despues(linea: str, frases) -> int | None:
+    """El primer importe que sigue a una frase («SALDO ANTERIOR 1,000.00»)."""
+    plano = " ".join(_plano(linea).split())
+    for frase in frases:
+        inicio = 0
+        while (i := plano.find(frase, inicio)) >= 0:
+            inicio = i + len(frase)
+            if frase == "SALDO AL CORTE" and plano[inicio:].startswith(" ANTERIOR"):
+                continue
+            if m := _IMPORTE.search(plano, inicio):
+                return leer_importe(m.group(1))
+    return None
+
+
+def _signos_por_saldo(montos, inicial: int | None, final: int | None, credito: bool,
+                      pistas: list[int]) -> dict[int, int]:
+    """Índice del renglón → signo, cuando los saldos lo dejan sin duda. Entre dos saldos conocidos, los
+    importes con su signo deben sumar la diferencia: si solo una combinación lo cumple, es la buena. Si
+    cuadran varias (p. ej. una nómina que se reparte completa en tres envíos), gana la única que no contradice
+    las palabras del banco (NÓMINA entra, ENVIADO sale)."""
+    factor = -1 if credito else 1                       # en una tarjeta, el saldo es lo que debes
+    resueltos: dict[int, int] = {}
+    previo, tramo = inicial, []
+
+    def resolver(cierre: int) -> None:
+        conocidos = sum(montos[i][0] * montos[i][2] for i in tramo if montos[i][2] is not None)
+        dudosos = [i for i in tramo if montos[i][2] is None]
+        objetivo = (cierre - previo) * factor - conocidos
+        if not dudosos or len(dudosos) > _MAXIMO_POR_TRAMO:
+            return
+        soluciones = []
+        for mascara in range(1 << len(dudosos)):
+            suma = sum(montos[i][0] * (1 if mascara >> n & 1 else -1) for n, i in enumerate(dudosos))
+            if suma == objetivo:
+                soluciones.append(mascara)
+        if len(soluciones) > 1:
+            soluciones = [m for m in soluciones
+                          if all(pistas[i] * (1 if m >> n & 1 else -1) >= 0 for n, i in enumerate(dudosos))]
+        if len(soluciones) == 1:                        # una sola forma de cuadrar: sin duda
+            for n, i in enumerate(dudosos):
+                resueltos[i] = 1 if soluciones[0] >> n & 1 else -1
+
+    for i, (_, saldo, _) in enumerate(montos):
+        tramo.append(i)
+        if saldo is None:
+            continue
+        if previo is not None:
+            resolver(saldo)
+        previo, tramo = saldo, []
+    if tramo and previo is not None and final is not None:
+        resolver(final)
+    return resueltos
 
 
 def _marcado(importe: str) -> bool:
     t = importe.strip()
-    return t.startswith(("-", "−", "(")) or t.endswith(("-", ")")) or t.upper().endswith("CR")
+    return t.startswith(("-", "\u2212", "(")) or t.endswith(("-", ")")) or t.upper().endswith("CR")
 
 
 def _fecha_de_referencia(texto: str, hoy: date) -> date:
@@ -769,7 +911,10 @@ _RUIDO = {
     "CREDITO", "REF", "REFERENCIA", "AUT", "AUTORIZACION", "FOLIO", "SUC", "SUCURSAL", "MX", "MEX", "MEXICO",
     "CDMX", "DF", "SA", "CV", "DE", "DEL", "LA", "EL", "LOS", "LAS", "EN", "POR", "POS", "TPV", "WWW", "COM",
     "MXN", "USD", "NO", "NUM", "CON", "AL", "INT", "NAL", "VISA", "MASTERCARD", "MC", "AMEX", "OPERACION",
-    "MOV", "CTA", "CUENTA", "FECHA", "HORA", "TRX", "TRANS", "PURCHASE", "ONLINE", "INTERNET",
+    "MOV", "CTA", "CUENTA", "FECHA", "HORA", "TRX", "TRANS", "PURCHASE", "ONLINE", "INTERNET", "SPEI", "ENVIADO",
+    "ENVIADA", "RECIBIDO", "RECIBIDA", "ENE", "FEB", "MAR", "ABR", "MAY", "JUN", "JUL", "AGO", "SEP", "OCT", "NOV",
+    "DIC", "ENERO", "FEBRERO", "MARZO", "ABRIL", "MAYO", "JUNIO", "JULIO", "AGOSTO", "SEPTIEMBRE", "OCTUBRE",
+    "NOVIEMBRE", "DICIEMBRE",
 }
 
 
@@ -1027,14 +1172,25 @@ def de_respaldo(libro: Libro, movimiento: Movimiento) -> str:
     return destino_subcategoria(categoria.id) if categoria and categoria.activa else ""
 
 
+def se_parecen(a: tuple[str, ...], b: tuple[str, ...]) -> bool:
+    """Misma descripción, o casi: el mismo comercio (primera palabra) y la mayoría de las palabras."""
+    if not a or not b:
+        return False
+    juntas, comunes = set(a) | set(b), set(a) & set(b)
+    return set(a) == set(b) or (a[0] == b[0] and len(comunes) / len(juntas) >= 0.5)
+
+
 def propagar(elegidos: list[tuple[Movimiento, str]]) -> list[tuple[Movimiento, str]]:
-    """A los que quedaron sin elegir les pone lo que elegiste para otro con la misma descripción (y sentido)."""
-    conocidos: dict[tuple, str] = {}
+    """A los que quedaron sin elegir les pone lo que elegiste para otro con la misma descripción, o casi (y el
+    mismo sentido: lo que sale con lo que sale)."""
+    conocidos = [(nucleo(m.descripcion), m.centavos > 0, destino) for m, destino in elegidos if destino]
+    resultado = []
     for m, destino in elegidos:
-        palabras = nucleo(m.descripcion)
-        if destino and palabras:
-            conocidos.setdefault((palabras, m.centavos > 0), destino)
-    return [(m, destino or conocidos.get((nucleo(m.descripcion), m.centavos > 0), "")) for m, destino in elegidos]
+        if not destino:
+            palabras, entra = nucleo(m.descripcion), m.centavos > 0
+            destino = next((d for p, e, d in conocidos if e == entra and se_parecen(palabras, p)), "")
+        resultado.append((m, destino))
+    return resultado
 
 
 # ===================================================================== cargar

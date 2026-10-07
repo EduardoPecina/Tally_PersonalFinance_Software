@@ -132,12 +132,32 @@ def _lectura(fuente: bancos.Fuente, cuenta, clave: str) -> bancos.Lectura | None
     c.metric("Entró", formato.dinero(a_pesos(lectura.entra)))
     st.caption(f"Periodo: {formato.rango(lectura.desde, lectura.hasta)}. Compara estos totales con tu estado de "
                "cuenta: si coinciden, TALLY leyó bien tu archivo.")
+    _comparar_con_el_banco(lectura)
     for aviso in lectura.avisos:
         st.warning(aviso, icon="🔍")
     if lectura.omitidos:
         st.warning(f"{lectura.omitidos} renglón(es) tenían un importe que no entendí y no se tomaron en cuenta.",
                    icon="⚠️")
     return lectura
+
+
+def _comparar_con_el_banco(lectura: bancos.Lectura) -> None:
+    """Si el estado de cuenta trae sus propios totales, la mejor prueba de que TALLY lo leyó bien."""
+    comparaciones = [(que, dice, leido) for que, dice, leido in (("cargos", lectura.total_cargos, lectura.sale),
+                                                                ("abonos", lectura.total_abonos, lectura.entra))
+                     if dice is not None]
+    if not comparaciones:
+        return
+    distintos = [(q, d, ld) for q, d, ld in comparaciones if d != ld]
+    if not distintos:
+        st.success("Coincide con los totales que imprime tu banco: "
+                   + " y ".join(f"{q} {formato.dinero_md(a_pesos(d))}" for q, d, _ in comparaciones) + ".",
+                   icon="✅")
+        return
+    for que, dice, leido in distintos:
+        st.warning(f"Tu estado de cuenta dice que los {que} suman **{formato.dinero_md(a_pesos(dice))}** y TALLY "
+                   f"leyó **{formato.dinero_md(a_pesos(leido))}**. Revisa la tabla: puede faltar o sobrar algún "
+                   "movimiento, o alguno estar al revés (entra/sale).", icon="⚠️")
 
 
 def _columnas(fuente: bancos.Fuente, detectadas: bancos.Columnas | None, clave: str) -> bancos.Columnas | None:
@@ -227,7 +247,7 @@ def _tabla(lib, cuenta_id: str, propuestas: list[bancos.Propuesta], clave: str):
                "elegiste antes o por el nombre del comercio. Cámbiala donde no te convenza. "
                + (f"**{duplicados}** ya estaban en TALLY (⏭️): no se cargan, salvo que los marques. "
                   if duplicados else "")
-               + "Si eliges la subcategoría de un movimiento, se usa también para los que se llaman igual.")
+               + "Si eliges la subcategoría de un movimiento, se usa también para los que se llaman igual o casi igual.")
     editada = st.data_editor(
         datos, key=f"banco_editor_{clave}", hide_index=True, width="stretch", num_rows="fixed",
         height=min(38 + 35 * len(datos), 520),

@@ -48,20 +48,22 @@ Saldo anterior                                            5,000.00
 """
 
 
-def pdf(lineas: list[str]) -> bytes:
-    """Un PDF mínimo con texto (como el estado de cuenta que manda el banco)."""
+def pdf(lineas: list[str], *mas_paginas: list[str]) -> bytes:
+    """Un PDF mínimo con texto (como el estado de cuenta que manda el banco), de una o varias páginas."""
     def escapar(t):
         return t.replace("\\", "\\\\").replace("(", "\\(").replace(")", "\\)")
 
-    contenido = "BT /F1 9 Tf 30 800 Td 12 TL\n" + "".join(f"({escapar(ln)}) Tj T*\n" for ln in lineas) + "ET"
-    objetos = [
-        "<< /Type /Catalog /Pages 2 0 R >>",
-        "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
-        "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 842] /Contents 4 0 R "
-        "/Resources << /Font << /F1 5 0 R >> >> >>",
-        f"<< /Length {len(contenido.encode('cp1252'))} >>\nstream\n{contenido}\nendstream",
-        "<< /Type /Font /Subtype /Type1 /BaseFont /Courier /Encoding /WinAnsiEncoding >>",
-    ]
+    paginas = [lineas, *mas_paginas]
+    fuente = 3 + 2 * len(paginas)
+    objetos = ["<< /Type /Catalog /Pages 2 0 R >>",
+               f"<< /Type /Pages /Kids [{' '.join(f'{3 + 2 * i} 0 R' for i in range(len(paginas)))}] "
+               f"/Count {len(paginas)} >>"]
+    for i, hoja in enumerate(paginas):
+        contenido = "BT /F1 9 Tf 30 800 Td 12 TL\n" + "".join(f"({escapar(ln)}) Tj T*\n" for ln in hoja) + "ET"
+        objetos += [f"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 842] /Contents {4 + 2 * i} 0 R "
+                    f"/Resources << /Font << /F1 {fuente} 0 R >> >> >>",
+                    f"<< /Length {len(contenido.encode('cp1252'))} >>\nstream\n{contenido}\nendstream"]
+    objetos.append("<< /Type /Font /Subtype /Type1 /BaseFont /Courier /Encoding /WinAnsiEncoding >>")
     salida = b"%PDF-1.4\n"
     posiciones = []
     for n, objeto in enumerate(objetos, start=1):
@@ -72,6 +74,45 @@ def pdf(lineas: list[str]) -> bytes:
     salida += "".join(f"{p:010d} 00000 n \n" for p in posiciones).encode()
     salida += f"trailer\n<< /Size {len(objetos) + 1} /Root 1 0 R >>\nstartxref\n{xref}\n%%EOF\n".encode()
     return salida
+
+
+# Imita el formato de un estado de cuenta de débito mexicano: el saldo solo en algunos renglones, el concepto
+# en los renglones de abajo (con referencias y claves), el encabezado repetido en cada hoja y los totales del banco.
+# Todo inventado.
+DEBITO_PAGINA_1 = """Cuenta Ficticia Plus
+PAGINA 1 / 2
+Periodo DEL 01/03/2026 AL 31/03/2026
+No. de Cuenta 0000000000
+Saldo Promedio 1,000.00   Saldo Anterior 500.00
+Depositos / Abonos (+) 3 9,100.00
+Retiros / Cargos (-) 5 9,250.00
+Saldo Promedio Gravable 0.00   Saldo Final 350.00
+Detalle de Movimientos Realizados
+FECHA                                                              SALDO
+OPER LIQ DESCRIPCION   REFERENCIA   CARGOS   ABONOS   OPERACION   LIQUIDACION
+02/MAR 02/MAR RETIRO CAJERO AUTOMATICO          500.00
+MAR02 10:00 BCO 0000 FOLIO:1111   Referencia ******0000
+05/MAR 06/MAR SPEI RECIBIDOBANCO FICTICIO              100.00     100.00
+0000000Regalo cumple   Referencia 0000000000 000
+00000000000000000000
+PERSONA FICTICIA UNO""".splitlines()
+DEBITO_PAGINA_2 = """Cuenta Ficticia Plus
+PAGINA 2 / 2
+No. de Cuenta 0000000000
+15/MAR 15/MAR PAGO DE NOMINA                         6,000.00
+EMPRESA FICTICIA SA DE CV   Referencia 0000
+15/MAR 15/MAR SPEI ENVIADO BILLETERA FICTICIA   1,900.00
+0000000Ahorro Marzo   Referencia 0000
+YO BILLETERA FICTICIA
+15/MAR 15/MAR SPEI ENVIADO CASA DE BOLSA FICTICIA   1,500.00
+0000000Inversion Marzo   Referencia 0000
+15/MAR 15/MAR SPEI ENVIADO TARJETA FICTICIA   2,600.00     100.00     100.00
+0000000Pago TDC   Referencia 0000
+20/MAR 20/MAR SPEI RECIBIDOBANCO FICTICIO              3,000.00
+25/MAR 25/MAR RETIRO CAJERO AUTOMATICO          2,750.00
+Total de Movimientos
+TOTAL IMPORTE CARGOS 9,250.00   TOTAL MOVIMIENTOS CARGOS 5
+TOTAL IMPORTE ABONOS 9,100.00   TOTAL MOVIMIENTOS ABONOS 3""".splitlines()
 
 
 def centavos(lectura):
@@ -457,3 +498,49 @@ def test_nombres_iguales_de_cuenta_y_subcategoria_no_se_confunden(libro, ctas, c
     importacion.cargar(libro, archivo, mapeo)
     (op,) = libro.operaciones()
     assert op.tipo.value == "gasto"
+
+
+def test_estado_de_debito_en_varias_hojas_con_saldo_en_algunos_renglones():
+    fuente = bancos.leer("estado.pdf", pdf(DEBITO_PAGINA_1, DEBITO_PAGINA_2))
+    lectura = bancos.interpretar(fuente, hoy=date(2026, 10, 1))
+    assert [(m.fecha, m.centavos) for m in lectura.movimientos] == [
+        (date(2026, 3, 2), -50_000), (date(2026, 3, 5), 10_000), (date(2026, 3, 15), 600_000),
+        (date(2026, 3, 15), -190_000), (date(2026, 3, 15), -150_000), (date(2026, 3, 15), -260_000),
+        (date(2026, 3, 20), 300_000), (date(2026, 3, 25), -275_000)]
+    # Con los saldos, sin dudas: hasta la nómina que se reparte completa en tres envíos (las dos formas cuadran
+    # con el saldo; las palabras NÓMINA y ENVIADO deciden).
+    assert lectura.supuestos == 0
+    assert (lectura.total_cargos, lectura.total_abonos) == (lectura.sale, lectura.entra) == (925_000, 910_000)
+    assert lectura.avisos == ()                                  # coincide con los totales del banco
+    descripciones = [m.descripcion for m in lectura.movimientos]
+    assert descripciones[0] == "RETIRO CAJERO AUTOMATICO"                         # sin folios ni referencias
+    assert descripciones[1] == "SPEI RECIBIDO BANCO FICTICIO · Regalo cumple · PERSONA FICTICIA UNO"
+    assert descripciones[3] == "SPEI ENVIADO BILLETERA FICTICIA · Ahorro Marzo · YO BILLETERA FICTICIA"
+    assert not any("Cuenta Ficticia Plus" in d or "PAGINA" in d for d in descripciones)   # sin encabezados
+
+
+def test_el_mismo_estado_pegado_como_texto():
+    lectura = bancos.interpretar(bancos.de_texto("\n".join(DEBITO_PAGINA_1 + DEBITO_PAGINA_2)), hoy=date(2026, 10, 1))
+    assert len(lectura.movimientos) == 8 and lectura.supuestos == 0
+    assert (lectura.sale, lectura.entra) == (925_000, 910_000)
+
+
+def test_si_no_cuadra_con_los_totales_del_banco_avisa():
+    sin_un_retiro = [ln for ln in DEBITO_PAGINA_2 if not ln.startswith("25/MAR")]
+    lectura = bancos.interpretar(bancos.de_texto("\n".join(DEBITO_PAGINA_1 + sin_un_retiro)), hoy=date(2026, 10, 1))
+    assert lectura.sale != lectura.total_cargos and lectura.avisos
+
+
+def test_un_comercio_que_empieza_con_total_no_se_descarta():
+    texto = "Periodo al 31/07/2026\n04/JUL TOTAL PLAY FICTICIO 599.00\n05/JUL TOTAL CARGOS 599.00\n"
+    lectura = bancos.interpretar(bancos.de_texto(texto), hoy=date(2026, 10, 1))
+    assert [m.descripcion for m in lectura.movimientos] == ["TOTAL PLAY FICTICIO"]
+
+
+def test_propagar_a_los_casi_iguales():
+    julio = mov("SPEI ENVIADO BILLETERA FICTICIA · Ahorro Julio · YO BILLETERA FICTICIA", -100)
+    agosto = mov("SPEI ENVIADO BILLETERA FICTICIA · Ahorro Agosto · YO BILLETERA FICTICIA", -200)
+    otro = mov("SPEI ENVIADO CASA DE BOLSA FICTICIA · Inversion", -300)
+    entra = mov("SPEI RECIBIDO BILLETERA FICTICIA · Ahorro Julio", 400)
+    resultado = bancos.propagar([(julio, "cuenta:x"), (agosto, ""), (otro, ""), (entra, "")])
+    assert [d for _, d in resultado] == ["cuenta:x", "cuenta:x", "", ""]
