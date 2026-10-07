@@ -2,6 +2,25 @@
 
 Todos los cambios relevantes de TALLY se documentan aquí.
 
+## [0.13.1] — Sin publicar
+
+Mejor lectura del PDF del estado de cuenta, probada con el formato de un banco mexicano real (sin guardar sus
+datos; las pruebas usan una copia inventada del formato):
+
+- **Entró o salió, con certeza:** el saldo no viene en cada renglón, pero entre dos saldos conocidos solo una
+  combinación de entradas y salidas cuadra. También usa el «Saldo anterior» y el «Saldo final» del resumen. Si
+  cuadran varias (una nómina que se reparte completa en tres envíos), deciden las palabras del banco (NÓMINA
+  entra, ENVIADO sale).
+- **Comparación con los totales del banco:** si el estado de cuenta trae «Total cargos» y «Total abonos», TALLY
+  dice ✅ si coinciden con lo que leyó, o ⚠️ cuánto falta.
+- **El concepto completo:** toma los renglones de abajo de cada movimiento (el comercio, para qué fue, quién te
+  pagó), sin referencias, claves ni folios.
+- **Sin encabezados:** quita lo que el banco repite en cada hoja (producto, número de cuenta, «Página 2 de 6»).
+- Separa palabras pegadas («SPEI RECIBIDOBANCO» → «SPEI RECIBIDO BANCO»).
+- Un comercio que empieza con «TOTAL» (Total Play) ya no se confunde con un renglón de totales.
+- Lo que eliges para un movimiento se aplica también a los **casi iguales** (el mismo envío en meses distintos).
+- Sin avisos técnicos de fuentes al leer algunos PDF.
+
 ## [0.13.0] — Sin publicar
 
 - **Importar los movimientos de tu banco** (Cargar datos → *Desde tu banco*):
