@@ -309,7 +309,8 @@ def instalar_librerias():
 
 # Lo mínimo que debe traer el programa para instalarse. Si falta algo, casi siempre es porque se corrió
 # INSTALAR.bat desde DENTRO del ZIP y Windows borró su copia temporal (o la extracción quedó a medias).
-ARCHIVOS_NECESARIOS = ("motor/respaldos.py", "motor/persistencia.py", "motor/rutas.py", "portal/app.py",
+ARCHIVOS_NECESARIOS = ("motor/respaldos.py", "motor/persistencia.py", "motor/cifrado.py", "motor/rutas.py",
+                       "portal/app.py",
                        "requirements-lock.txt", "INSTALAR.bat")
 AVISO_ZIP = ("Descomprime el ZIP primero: clic derecho en el archivo .zip → «Extraer todo», abre la carpeta que se "
              "crea y corre INSTALAR.bat desde ahí. (Si lo corres desde dentro del ZIP, Windows puede borrar su copia "

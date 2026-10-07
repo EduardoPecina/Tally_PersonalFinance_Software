@@ -861,3 +861,191 @@ def test_iva_en_configuracion(raiz, con_datos):
     [b for b in at.button if b.label == "Guardar"][1].click().run()   # el segundo «Guardar» de Tu perfil: el IVA
     sin_errores(at)
     assert sesion_en(raiz).libro.perfil.iva == 21
+
+
+# ------------------------------------------------------------ contraseña
+
+
+@pytest.fixture
+def scrypt_rapido(monkeypatch):
+    from motor import cifrado
+
+    monkeypatch.setattr(cifrado, "SCRYPT", {"n": 2 ** 10, "r": 8, "p": 1})
+
+
+def campo(at: AppTest, etiqueta: str):
+    return [t for t in at.text_input if t.label == etiqueta][-1]
+
+
+def _con_contrasena(raiz, contrasena="mi perro come tacos"):
+    from motor import cifrado, seguridad
+
+    kit = cifrado.nuevo_kit()
+    seguridad.activar(sesion_en(raiz), contrasena, contrasena, kit, kit, carpeta_respaldos=raiz / "Respaldos")
+    return kit
+
+
+def test_poner_contrasena_paso_a_paso(raiz, con_datos, scrypt_rapido):
+    at = abrir(_pagina("configuracion"))
+    assert "Seguridad" in [t.label for t in at.tabs]
+    boton(at, "Establecer una contraseña para TALLY").click().run()
+    sin_errores(at)
+    # Paso 1: contraseñas distintas → aviso claro; iguales → siguiente.
+    campo(at, "Contraseña").input("mi perro come tacos")
+    campo(at, "Escríbela otra vez").input("mi perro come churros")
+    boton(at, "Siguiente").click().run()
+    assert any("no son iguales" in e.value for e in at.error)
+    campo(at, "Contraseña").input("mi perro come tacos")
+    campo(at, "Escríbela otra vez").input("mi perro come tacos")
+    campo(at, "Pista (opcional)").input("mi mascota y su comida")
+    boton(at, "Siguiente").click().run()
+    sin_errores(at)
+    kit = at.session_state["_seg_kit"]
+    assert any(c.value == kit for c in at.code)
+    # Paso 2: no se puede seguir sin confirmar que se guardó el Kit.
+    assert next(b for b in at.button if b.key == "seg_kit_siguiente").disabled
+    at.checkbox(key="seg_kit_guardado").check().run()
+    next(b for b in at.button if b.key == "seg_kit_siguiente").click().run()
+    # Paso 3: una llave equivocada no avanza; la correcta (en minúsculas y sin guiones) sí.
+    campo(at, "Escribe la llave de tu Kit").input(kit[:-1] + ("A" if kit[-1] != "A" else "B"))
+    campo(at, "Escribe tu contraseña otra vez").input("mi perro come tacos")
+    boton(at, "Comprobar").click().run()
+    assert at.error
+    campo(at, "Escribe la llave de tu Kit").input(kit.lower().replace("-", ""))
+    campo(at, "Escribe tu contraseña otra vez").input("mi perro come tacos")
+    boton(at, "Comprobar").click().run()
+    sin_errores(at)
+    # Paso 4: activar.
+    assert sesion_en(raiz).libro.perfil.nombre == "Usuario Ficticio"
+    next(b for b in at.button if b.key == "seg_activar").click().run()
+    sin_errores(at)
+    assert any("ya tiene contraseña" in str(t.value) for t in at.toast)
+    assert b"Usuario Ficticio" not in (raiz / "Datos" / "tally.db").read_bytes()
+    assert "_seg_contrasena" not in at.session_state                 # la contraseña no se queda en memoria
+    assert [t.label for t in at.tabs if t.label == "Quitar la contraseña"]
+    # Bloquear ahora → pide contraseña.
+    next(b for b in at.button if b.key == "bloquear_ahora").click().run()
+    assert at.title[0].value == "🔒 Tus datos están protegidos"
+    assert not [b for b in at.button if b.label == "Bloquear ahora"]
+
+
+def test_pantalla_de_entrada(raiz, con_datos, scrypt_rapido):
+    _con_contrasena(raiz)
+    at = abrir()
+    assert at.title[0].value == "🔒 Tus datos están protegidos"
+    assert not any("Usuario Ficticio" in str(m.value) for m in at.markdown)       # nada visible sin contraseña
+    campo(at, "Contraseña").input("no es esta para nada")
+    boton(at, "Entrar").click().run()
+    assert any("no es la contraseña" in e.value for e in at.error)
+    campo(at, "Contraseña").input("mi perro come tacos")
+    boton(at, "Entrar").click().run()
+    sin_errores(at)
+    assert at.title[0].value != "🔒 Tus datos están protegidos"
+    at.switch_page(_pagina("historial")).run()
+    sin_errores(at)
+    # Bloqueo automático: tras 10 minutos sin usar TALLY.
+    from portal.componentes import candado
+
+    candado._estado_de(str(raiz / "Datos" / "tally.db")).ultimo_uso -= 11 * 60
+    at.run()
+    assert at.title[0].value == "🔒 Tus datos están protegidos"
+
+
+def test_entrar_con_varios_intentos_fallidos_pide_esperar(raiz, con_datos, scrypt_rapido):
+    _con_contrasena(raiz)
+    at = abrir()
+    for _ in range(3):
+        campo(at, "Contraseña").input("no es esta para nada")
+        boton(at, "Entrar").click().run()
+    assert any("Olvidaste tu contraseña" in c.value for c in at.caption)
+    campo(at, "Contraseña").input("mi perro come tacos")
+    boton(at, "Entrar").click().run()
+    assert any("espera" in w.value for w in at.warning)                # aun con la buena, hay que esperar
+    from portal.componentes import candado
+
+    candado._estado_de(str(raiz / "Datos" / "tally.db")).intentos.acierto()
+
+
+def test_olvide_mi_contrasena_con_el_kit(raiz, con_datos, scrypt_rapido):
+    kit = _con_contrasena(raiz)
+    at = abrir()
+    campo(at, "Llave de tu Kit de emergencia").input(" " + kit.lower() + " ")
+    campo(at, "Contraseña nueva").input("frase nueva y larga")
+    campo(at, "Escríbela otra vez").input("frase nueva y larga")
+    boton(at, "Poner mi contraseña nueva y entrar").click().run()
+    sin_errores(at)
+    assert at.title[0].value != "🔒 Tus datos están protegidos"
+    from motor import seguridad
+
+    assert seguridad.entrar(raiz / "Datos" / "tally.db", "frase nueva y larga")
+
+
+def test_cambiar_y_quitar_la_contrasena_desde_configuracion(raiz, con_datos, scrypt_rapido):
+    from motor import seguridad
+    from portal.componentes import candado
+
+    kit = _con_contrasena(raiz)
+    ruta = raiz / "Datos" / "tally.db"
+    candado._estado_de(str(ruta)).llave = seguridad.entrar(ruta, "mi perro come tacos")
+    at = abrir(_pagina("configuracion"))
+    sin_errores(at)
+    campo(at, "Contraseña actual (o la llave de tu Kit)").input("mi perro come tacos")
+    campo(at, "Contraseña nueva").input("frase nueva y larga")
+    campo(at, "Escríbela otra vez").input("frase nueva y larga")
+    boton(at, "Cambiar contraseña").click().run()
+    sin_errores(at)
+    assert seguridad.entrar(ruta, "frase nueva y larga")
+    campo(at, "Llave de tu Kit").input(kit)
+    boton(at, "Comprobar").click().run()
+    assert any("Tu Kit abre tus datos" in s.value for s in at.success)
+    campo(at, "Escribe tu contraseña (o la llave de tu Kit)").input("frase nueva y larga")
+    boton(at, "Quitar la contraseña").click().run()
+    assert any("Marca la casilla" in e.value for e in at.error)
+    campo(at, "Escribe tu contraseña (o la llave de tu Kit)").input("frase nueva y larga")
+    next(c for c in at.checkbox if c.label == "Sí, quiero quitar la contraseña").check()
+    boton(at, "Quitar la contraseña").click().run()
+    sin_errores(at)
+    assert seguridad.config(ruta) is None
+    assert b"Usuario Ficticio" in ruta.read_bytes() or sesion_en(raiz).libro.perfil.nombre == "Usuario Ficticio"
+    at.switch_page(_pagina("historial")).run()
+    sin_errores(at)
+
+
+def _restaurar_app(ruta: str) -> None:
+    from pathlib import Path
+
+    from portal.componentes import respaldo
+
+    respaldo.revisar_y_restaurar(Path(ruta), "prueba", pedir_confirmacion=False)
+
+
+def test_restaurar_respaldo_con_contrasena_en_tally_nuevo(raiz, tmp_path_factory, scrypt_rapido):
+    from motor import seguridad
+
+    vieja = tmp_path_factory.mktemp("pc_vieja")
+    s = Sesion(vieja / "Datos" / "tally.db")
+    with s.cambio() as lib:
+        perfil.configurar(lib, "Usuario Ficticio")
+        cuentas.crear(lib, "Débito de la otra PC", "debito", saldo_inicial=777)
+    kit = _con_contrasena(vieja)
+    s = Sesion(vieja / "Datos" / "tally.db", llave=seguridad.entrar(vieja / "Datos" / "tally.db",
+                                                                      "mi perro come tacos"))
+    respaldo = respaldos.crear(s, vieja / "Respaldos")
+
+    at = AppTest.from_function(_restaurar_app, args=(str(respaldo),), default_timeout=30)
+    at.run()
+    sin_errores(at)
+    assert any("Este respaldo tiene contraseña" in i.value for i in at.info)
+    assert not [b for b in at.button if b.label == "Restaurar este respaldo"]       # primero la contraseña
+    at.text_input(key="prueba_secreto_respaldo").input("no es la buena").run()
+    assert any("No coincide" in e.value for e in at.error)
+    at.text_input(key="prueba_secreto_respaldo").input(kit.lower()).run()
+    sin_errores(at)
+    assert any(m.label == "Perfil" and m.value == "Usuario Ficticio" for m in at.metric)
+    boton(at, "Restaurar este respaldo").click().run()
+    sin_errores(at)
+    ruta = raiz / "Datos" / "tally.db"
+    assert seguridad.config(ruta) is not None                          # adoptó la contraseña del respaldo
+    llave = seguridad.entrar(ruta, "mi perro come tacos")
+    lib = Sesion(ruta, llave=llave).libro
+    assert cuentas.saldo(lib, cuentas.buscar(lib, "Débito de la otra PC").id) == 777

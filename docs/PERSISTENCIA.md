@@ -72,6 +72,50 @@ que los dos siempre buscan los datos en el mismo lugar.
   subcategorías. Al abrir datos del esquema 1, `Sesion` los pone al día una
   sola vez (`motor/catalogo.py`) y lo anota en la bitácora.
 
+## Contraseña y cifrado (opcional)
+
+Viene apagado. Al activarlo (`motor/seguridad.py`):
+
+- Se crea una **llave maestra** aleatoria de 256 bits que nunca se guarda en
+  claro. Se guarda **envuelta dos veces** (AES-256-GCM):
+  - una con una llave derivada de la contraseña (scrypt, n=2¹⁵, r=8, p=1);
+  - otra con el **Kit de emergencia**: 22 caracteres aleatorios en Crockford
+    base32 más 2 de verificación. Tolera minúsculas, espacios, guiones y
+    O/0, I/L/1; los errores de tecleo se detectan antes de probar.
+- Cada registro (`entidades.datos` y los campos de la bitácora) se cifra
+  aparte con AES-256-GCM. El dato adicional autenticado es su lugar
+  (`entidad:{tipo}:{id}`, `bitacora:{campo}:…`): un registro movido o
+  modificado no se abre en silencio.
+- La conversión se hace en **una sola transacción**, con `secure_delete`,
+  `wal_checkpoint(TRUNCATE)` y `VACUUM`, para no dejar restos legibles.
+  Después se relee y se compara con lo de antes; si no coincide, se deshace.
+- `meta.cifrado` guarda la configuración: las dos llaves envueltas, la
+  huella de la llave, la pista y las fechas. No guarda contraseñas.
+- `VERSION_ESQUEMA` sube a 6: una versión anterior de TALLY pide actualizar
+  en vez de leer mal.
+- La llave vive solo en la memoria del portal (`portal/componentes/candado.py`).
+  Se olvida al bloquear o tras el tiempo de bloqueo automático. Después de 3
+  intentos fallidos, la espera crece (2, 4, 8… hasta 60 s).
+- **Cambiar la contraseña** solo vuelve a envolver la llave maestra: el Kit
+  y los respaldos viejos siguen sirviendo.
+- **Quitar la contraseña** descifra todo, incluidos los respaldos de la
+  carpeta.
+
+### Respaldos con contraseña
+
+- Se crean sin la llave: son una copia del contenido cifrado.
+  `version_formato` 6.
+- El manifiesto lleva las llaves envueltas, pero no el resumen (nombre,
+  montos).
+- Para restaurar:
+  - en la misma instalación, con la sesión abierta, se usa la llave actual;
+  - si no, la contraseña de ese día o el Kit;
+  - una instalación sin contraseña adopta la del respaldo.
+- Al activar la contraseña, los respaldos de la carpeta se cifran. Al
+  quitarla, se descifran.
+- El instalador puede respaldar y mover datos cifrados sin conocer la
+  contraseña.
+
 ## Bitácora
 
 Cada guardado compara el estado anterior con el nuevo y anota en la tabla

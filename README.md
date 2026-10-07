@@ -13,7 +13,8 @@ Excel.
 
 ## Privacidad
 
-- Sin cuentas de usuario, sin inicio de sesión, sin correo.
+- Sin cuentas de usuario y sin correo. La **contraseña es opcional** y vive
+  solo en tu PC (ver [Contraseña de TALLY](#contraseña-de-tally-opcional)).
 - Sin conexión bancaria, sin nube y sin telemetría.
 - Funciona sin Internet. Los datos viven en `C:\Users\<tu usuario>\TALLY`,
   solo en tu PC: fuera de OneDrive y de cualquier nube.
@@ -107,6 +108,39 @@ el acceso directo **Mis datos de TALLY**, dentro de `Escritorio\TALLY`.
 2. En la PC nueva: instala TALLY y, en la bienvenida, elige **«Ya usaba
    TALLY»** y sube el `.zip`. También sirve el archivo `tally.db` de la otra
    PC.
+
+### Contraseña de TALLY (opcional)
+
+TALLY abre sin contraseña. Si quieres, en **Configuración → Seguridad →
+Establecer una contraseña para TALLY** le pones una en 4 pasos:
+
+1. **Eliges tu contraseña** (mínimo 8 caracteres; mejor una frase) y una pista
+   opcional.
+2. **Guardas tu Kit de emergencia**: una llave de repuesto como
+   `ABCD-EFGH-…`. La descargas, la imprimes, te la mandas por correo o le
+   tomas foto. Si olvidas tu contraseña, con esa llave entras y pones otra
+   sin perder nada.
+3. **Compruebas** que guardaste el Kit y recuerdas la contraseña. Sin esto no
+   se activa.
+4. **Activas.** Antes, TALLY hace un respaldo; luego cifra tus datos y tus
+   respaldos guardados, y comprueba que todo quedó idéntico (si no, lo
+   deshace).
+
+Desde entonces:
+
+- TALLY pide la contraseña al abrir, y **se bloquea solo** si no lo usas un
+  rato (10 minutos, ajustable). También hay un botón **Bloquear ahora**.
+- Tus datos y respaldos se guardan **cifrados** (AES-256): quien copie el
+  archivo solo ve letras sin sentido.
+- Los respaldos se abren en **cualquier PC** con la contraseña de ese día o
+  con tu Kit. En tu PC, con TALLY abierto, se restauran sin pedir nada.
+- Puedes cambiar la contraseña (el Kit sigue siendo el mismo), bajar una
+  copia **sin contraseña** para una USB o **quitar la contraseña** y volver a
+  como estaba.
+
+**La única regla:** si pierdes tu contraseña **y** tu Kit, nadie puede abrir
+tus datos, ni TALLY ni un técnico. Por eso no hay recuperación por correo:
+sería una puerta trasera.
 
 ### Pasar tu historial de Excel a TALLY
 

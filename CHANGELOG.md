@@ -2,6 +2,31 @@
 
 Todos los cambios relevantes de TALLY se documentan aquí.
 
+## [0.12.0] — Sin publicar
+
+- **Contraseña opcional para TALLY** (Configuración → Seguridad → *Establecer una contraseña para TALLY*). Viene
+  apagada. Un asistente de 4 pasos, explicado sin tecnicismos:
+  1. Tu contraseña (mínimo 8 caracteres) y una pista opcional.
+  2. Tu **Kit de emergencia**: una llave de repuesto para entrar si olvidas la contraseña. La descargas (.txt),
+     la imprimes (.html), te la mandas por correo o le tomas foto.
+  3. Comprobar el Kit y la contraseña. Sin esto no se activa nada.
+  4. Activar. Antes hace un respaldo y, si la verificación no coincide, lo deshace solo.
+- Con contraseña:
+  - **Tus datos y respaldos se guardan cifrados** (AES-256-GCM, un registro a la vez) y no quedan restos
+    legibles en el disco.
+  - **Pantalla de entrada** con la pista. Tras 3 intentos fallidos, la espera crece.
+  - **«¿Olvidaste tu contraseña?»**: entras con tu Kit y pones una nueva, sin perder nada.
+  - **Bloqueo automático** si no usas TALLY un rato (10 minutos, ajustable) y botón **Bloquear ahora**.
+  - **Respaldos cifrados en cualquier PC**: se abren con la contraseña de ese día o con el Kit, y la PC nueva
+    se queda con la misma contraseña y el mismo Kit. En tu PC se restauran sin pedir nada.
+  - **Cambiar la contraseña** (el Kit no cambia), **comprobar el Kit** (te lo recuerda cada 90 días),
+    **copia sin contraseña** para una USB y **quitar la contraseña** (todo vuelve a estar sin cifrar).
+  - Si pierdes tu contraseña **y** tu Kit, TALLY no borra nada: aparta tus datos cifrados y te deja empezar de
+    nuevo o restaurar una copia sin contraseña.
+- El esquema de datos y el formato de respaldo pasan a la versión 6: una versión anterior de TALLY pide
+  actualizar en vez de leer mal.
+- Nueva dependencia: `cryptography`. `INSTALAR.bat` la instala.
+
 ## [0.11.0] — Sin publicar
 
 - **Nueva página 💳 Deudas** (en Tu dinero): tus tarjetas y préstamos, cuánto pagar y cómo salir sin ahogarte.

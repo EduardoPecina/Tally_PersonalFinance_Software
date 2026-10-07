@@ -10,6 +10,11 @@ Con él se reconstruye el historial completo en cualquier PC. Restaurar nunca
 sobrescribe en silencio: primero se valida el archivo, luego se crea un
 respaldo de seguridad de lo actual y al final se reemplaza todo en una sola
 transacción.
+
+Con contraseña (motor/cifrado.py), cada registro de ``datos.json`` va cifrado
+y el manifiesto lleva las «cajas» que abren la llave (con la contraseña de ese
+día o con el Kit de emergencia), sin nombre ni montos. Se crea copiando lo
+cifrado tal cual (no hace falta la llave) y se abre en cualquier PC.
 """
 
 from __future__ import annotations
@@ -25,17 +30,17 @@ from dataclasses import asdict, dataclass
 from datetime import datetime
 from pathlib import Path
 
-from motor import auditoria, catalogo, rutas
+from motor import auditoria, catalogo, cifrado, rutas
 from motor.config import VERSION
-from motor.errores import ErrorDatos
+from motor.errores import ErrorBloqueado, ErrorDatos
 from motor.libro import Libro
 from motor.persistencia import Almacen
 from motor.serializacion import libro_desde_instantanea
 from motor.sesion import Sesion
 
 FORMATO = "tally-respaldo"
-VERSION_FORMATO = 5  # 2: categorías con subcategorías (TALLY 0.4). 3: títulos e inversiones a plazo (TALLY 0.7).
-# 4: bienes y su depreciación (TALLY 0.10). 5: préstamos (TALLY 0.11).
+VERSION_FORMATO = 6  # 2: categorías con subcategorías (TALLY 0.4). 3: títulos e inversiones a plazo (TALLY 0.7).
+# 4: bienes y su depreciación (TALLY 0.10). 5: préstamos (TALLY 0.11). 6: respaldos cifrados (TALLY 0.12).
 #                      Los anteriores se ponen al día al restaurar
 MANIFIESTO = "manifiesto.json"
 DATOS = "datos.json"
@@ -54,24 +59,31 @@ class InfoRespaldo:
     movimientos: int
     primera_fecha: str | None
     ultima_fecha: str | None
+    cifrado: bool = False
 
 
 @dataclass(frozen=True, slots=True)
 class ResultadoRestauracion:
     restaurado: InfoRespaldo
     respaldo_de_seguridad: Path
+    adopto_contrasena: bool = False      # tus datos quedaron con la contraseña de ese respaldo
+    con_kit: bool = False                # se abrió con el Kit: conviene poner una contraseña nueva
 
 
 # -------------------------------------------------------------------- crear
 
 
-def crear(sesion: Sesion, destino: Path | str | None = None, *, prefijo: str = "respaldo") -> Path:
+def crear(sesion: Sesion, destino: Path | str | None = None, *, prefijo: str = "respaldo",
+          sin_contrasena: bool = False) -> Path:
     """Crea un respaldo de lo guardado.
 
     ``destino`` puede ser una carpeta (se elige un nombre con fecha y hora) o
     la ruta completa del ``.zip``. Por omisión, la carpeta ``Respaldos``.
+
+    Si tus datos tienen contraseña, el respaldo sale cifrado; con ``sin_contrasena`` (y TALLY abierto con tu
+    contraseña) sale sin cifrar, para guardarlo en un lugar seguro.
     """
-    return _crear_desde(sesion.almacen, sesion.libro.ahora(), destino, prefijo)
+    return _crear_desde(sesion.almacen, sesion.libro.ahora(), destino, prefijo, sin_contrasena=sin_contrasena)
 
 
 DE_SEGURIDAD_A_CONSERVAR = 5
@@ -106,7 +118,10 @@ def leer_perfil(ruta_datos: Path | str):
     with tempfile.TemporaryDirectory() as temporal:
         copia = Path(temporal) / "copia.db"
         _copia_de_lectura(ruta_datos, copia)
-        return Almacen(copia).cargar().perfil
+        almacen = Almacen(copia)
+        if almacen.config_cifrado() is not None:
+            return None                                    # con contraseña: el perfil está cifrado
+        return almacen.cargar().perfil
 
 
 def respaldo_del_dia(sesion: Sesion, carpeta: Path | str | None = None) -> Path | None:
@@ -159,7 +174,8 @@ def respaldar_archivo_de_datos(
         copia = Path(temporal) / "copia.db"
         _copia_de_lectura(ruta_datos, copia)
         almacen = Almacen(copia)
-        almacen.cargar()
+        if almacen.config_cifrado() is None:
+            almacen.cargar()                               # valida los datos (con contraseña se copian tal cual)
         ruta = _crear_desde(almacen, datetime.now(), carpeta, prefijo)
     rotar(ruta.parent, prefijo, DE_SEGURIDAD_A_CONSERVAR)
     return ruta
@@ -184,10 +200,7 @@ def copiar_archivo_de_datos(origen: Path | str, destino: Path | str) -> Path:
             referencia = Path(carpeta) / "referencia.db"
             _copia_de_lectura(origen, referencia)            # segunda lectura, independiente de la copia
             esperado, obtenido = Almacen(referencia), Almacen(temporal)
-            esperado.cargar()
-            obtenido.cargar()
-            if (esperado.estado_guardado != obtenido.estado_guardado
-                    or len(esperado.bitacora()) != len(obtenido.bitacora())):
+            if esperado.leer_crudo() != obtenido.leer_crudo():          # igual con o sin contraseña
                 raise ErrorDatos("La copia de tus datos no coincide con el original; no se movió nada.")
         os.replace(temporal, destino)
     finally:
@@ -195,11 +208,19 @@ def copiar_archivo_de_datos(origen: Path | str, destino: Path | str) -> Path:
     return destino
 
 
-def _crear_desde(almacen: Almacen, momento: datetime, destino: Path | str | None, prefijo: str) -> Path:
+def _crear_desde(almacen: Almacen, momento: datetime, destino: Path | str | None, prefijo: str, *,
+                 sin_contrasena: bool = False) -> Path:
     destino = Path(destino or rutas.carpeta_respaldos())
     ruta = _ruta_libre(destino, prefijo, momento) if destino.suffix.lower() != ".zip" else destino
     ruta.parent.mkdir(parents=True, exist_ok=True)
 
+    config = almacen.config_cifrado()
+    if config is not None and sin_contrasena and not almacen.desbloqueado:
+        raise ErrorBloqueado("Para sacar una copia sin contraseña, primero entra con tu contraseña.")
+    if config is not None and not sin_contrasena:
+        crudo = almacen.leer_crudo()
+        contenido = {"secuencia": crudo["secuencia"], "entidades": crudo["entidades"], "bitacora": crudo["bitacora"]}
+        return _escribir_zip(ruta, contenido, momento, None, config)
     libro = almacen.libro_guardado()
     contenido = {
         "secuencia": libro.secuencia,
@@ -209,15 +230,25 @@ def _crear_desde(almacen: Almacen, momento: datetime, destino: Path | str | None
             for r in almacen.bitacora(mas_recientes_primero=False)
         ],
     }
+    return _escribir_zip(ruta, contenido, momento, _resumen(libro), None)
+
+
+def _escribir_zip(ruta: Path, contenido: dict, momento: datetime | str, resumen: dict | None,
+                  config: cifrado.Config | None, *, version_formato: int = VERSION_FORMATO,
+                  version_app: str = VERSION) -> Path:
     datos = json.dumps(contenido, ensure_ascii=False, sort_keys=True, indent=1).encode("utf-8")
     manifiesto = {
         "formato": FORMATO,
-        "version_formato": VERSION_FORMATO,
-        "version_app": VERSION,
-        "creado_en": momento.isoformat(timespec="seconds"),
+        "version_formato": version_formato,
+        "version_app": version_app,
+        "creado_en": momento if isinstance(momento, str) else momento.isoformat(timespec="seconds"),
         "sha256": hashlib.sha256(datos).hexdigest(),
-        "resumen": _resumen(libro),
     }
+    if config is None:
+        manifiesto["resumen"] = resumen
+    else:                       # sin nombre ni montos: solo lo necesario para abrirlo con la contraseña o el Kit
+        manifiesto["cifrado"] = {k: v for k, v in json.loads(config.a_json()).items()
+                                 if k not in ("bloqueo_minutos", "kit_comprobado")}
     temporal = ruta.with_name(ruta.name + ".tmp")
     try:
         with open(temporal, "wb") as archivo:
@@ -254,18 +285,65 @@ def _resumen(libro: Libro) -> dict:
 # --------------------------------------------------------------- leer/validar
 
 
-def inspeccionar(ruta: Path | str) -> InfoRespaldo:
-    """Valida un respaldo y resume su contenido, sin tocar los datos actuales."""
-    info, _, _ = _leer(Path(ruta))
-    return info
+@dataclass(frozen=True, slots=True)
+class _Leido:
+    info: InfoRespaldo
+    libro: Libro
+    bitacora: list[auditoria.Registro]
+    config: cifrado.Config | None = None      # la contraseña del respaldo (si tiene)
+    llave: bytes | None = None
+    con_kit: bool = False
 
 
-def _leer(ruta: Path, reloj=None) -> tuple[InfoRespaldo, Libro, list[auditoria.Registro]]:
+def inspeccionar(ruta: Path | str, *, llave: bytes | None = None, secreto: str | None = None) -> InfoRespaldo:
+    """Valida un respaldo y resume su contenido, sin tocar los datos actuales.
+
+    Si tiene contraseña hace falta ``llave`` (la de tu sesión) o ``secreto`` (la contraseña de ese día o la llave
+    del Kit); si no, ``ErrorBloqueado``.
+    """
+    return _leer(Path(ruta), llave=llave, secreto=secreto).info
+
+
+def contrasena_de(ruta: Path | str) -> cifrado.Config | None:
+    """La contraseña de un respaldo (o de un ``tally.db``), sin abrirlo: ``None`` si no tiene."""
+    ruta = Path(ruta)
     if not ruta.is_file():
         raise ErrorDatos("No se encontró el archivo de respaldo.")
     with open(ruta, "rb") as archivo:
         if archivo.read(len(_FIRMA_SQLITE)) == _FIRMA_SQLITE:
-            return _leer_archivo_de_datos(ruta, reloj)
+            with tempfile.TemporaryDirectory() as temporal:
+                copia = Path(temporal) / "copia.db"
+                _copia_de_lectura(ruta, copia)
+                return Almacen(copia).config_cifrado()
+    manifiesto, _ = _abrir_zip(ruta)
+    return _config_de(manifiesto)
+
+
+def _config_de(manifiesto: dict) -> cifrado.Config | None:
+    datos = manifiesto.get("cifrado")
+    return cifrado.Config.de_json(json.dumps(datos)) if datos else None
+
+
+def _llave_para(config: cifrado.Config, llave: bytes | None, secreto: str | None) -> tuple[bytes, bool]:
+    """La llave maestra de un respaldo: la de tu sesión si es la misma, o la que abre tu contraseña o tu Kit."""
+    if llave is not None and cifrado.huella(llave) == config.llave_id:
+        return llave, False
+    if not secreto:
+        raise ErrorBloqueado(f"Este respaldo tiene contraseña. Escribe la contraseña que tenías ese día o la llave "
+                             f"de tu Kit de emergencia del {cifrado._fecha(config.kit_creado)} (termina en "
+                             f"…{config.kit_final}).")
+    try:
+        return cifrado.abrir_con_contrasena(config, secreto), False
+    except Exception:                                         # no es la contraseña: ¿será el Kit?
+        try:
+            cifrado.normalizar_kit(secreto)
+        except Exception:
+            raise cifrado.ErrorContrasena("No coincide con la contraseña de ese respaldo ni con su Kit de "
+                                          "emergencia.") from None
+        return cifrado.abrir_con_kit(config, secreto), True
+
+
+def _abrir_zip(ruta: Path) -> tuple[dict, bytes]:
     try:
         with zipfile.ZipFile(ruta) as zz:
             nombres = set(zz.namelist())
@@ -277,21 +355,35 @@ def _leer(ruta: Path, reloj=None) -> tuple[InfoRespaldo, Libro, list[auditoria.R
             datos = zz.read(DATOS)
     except (zipfile.BadZipFile, json.JSONDecodeError, KeyError, OSError) as error:
         raise ErrorDatos(f"El archivo de respaldo está dañado ({error}).") from error
-
     if manifiesto.get("formato") != FORMATO:
         raise ErrorDatos("El archivo no es un respaldo de TALLY.")
     if not isinstance(manifiesto.get("version_formato"), int) or manifiesto["version_formato"] > VERSION_FORMATO:
         raise ErrorDatos("El respaldo es de una versión más nueva de TALLY. Actualiza el programa.")
     if hashlib.sha256(datos).hexdigest() != manifiesto.get("sha256"):
         raise ErrorDatos("El respaldo está incompleto o fue modificado (la huella no coincide).")
+    return manifiesto, datos
 
+
+def _leer(ruta: Path, reloj=None, *, llave: bytes | None = None, secreto: str | None = None) -> _Leido:
+    if not ruta.is_file():
+        raise ErrorDatos("No se encontró el archivo de respaldo.")
+    with open(ruta, "rb") as archivo:
+        if archivo.read(len(_FIRMA_SQLITE)) == _FIRMA_SQLITE:
+            return _leer_archivo_de_datos(ruta, reloj, llave=llave, secreto=secreto)
+    manifiesto, datos = _abrir_zip(ruta)
+    config = _config_de(manifiesto)
+    llave_respaldo, con_kit = _llave_para(config, llave, secreto) if config else (None, False)
     try:
         contenido = json.loads(datos)
-        libro = libro_desde_instantanea(contenido["entidades"], contenido.get("secuencia", 0), reloj=reloj)
+        entidades, bitacora_cruda = contenido["entidades"], contenido.get("bitacora", [])
+        if config is not None:
+            entidades, bitacora_cruda = _descifrar_contenido(entidades, bitacora_cruda,
+                                                             cifrado.Cifrador(llave_respaldo))
+        libro = libro_desde_instantanea(entidades, contenido.get("secuencia", 0), reloj=reloj)
         bitacora = [
             auditoria.Registro(id=0, **{k: r[k] for k in ("fecha_hora", "entidad", "entidad_id", "accion")},
                                antes=r.get("antes"), despues=r.get("despues"))
-            for r in contenido.get("bitacora", [])
+            for r in bitacora_cruda
         ]
     except (json.JSONDecodeError, KeyError, TypeError) as error:
         raise ErrorDatos(f"El contenido del respaldo está dañado ({error}).") from error
@@ -306,20 +398,48 @@ def _leer(ruta: Path, reloj=None) -> tuple[InfoRespaldo, Libro, list[auditoria.R
         movimientos=resumen["movimientos"],
         primera_fecha=resumen["primera_fecha"],
         ultima_fecha=resumen["ultima_fecha"],
+        cifrado=config is not None,
     )
-    return info, libro, bitacora
+    return _Leido(info, libro, bitacora, config, llave_respaldo, con_kit)
+
+
+def _descifrar_contenido(entidades: dict, bitacora: list[dict], cifrador: cifrado.Cifrador) -> tuple[dict, list]:
+    planas = {tipo: {i: cifrador.descifrar(v, cifrado.contexto_entidad(tipo, i)) for i, v in porid.items()}
+              for tipo, porid in entidades.items()}
+    registros = []
+    for r in bitacora:
+        clave = (r["fecha_hora"], r["entidad"], r["entidad_id"], r["accion"])
+        registros.append({**r, **{campo: None if r.get(campo) is None else cifrador.descifrar(
+            r[campo], cifrado.contexto_bitacora(campo, *clave)) for campo in ("antes", "despues")}})
+    return planas, registros
+
+
+def _cifrar_contenido(entidades: dict, bitacora: list[dict], cifrador: cifrado.Cifrador) -> tuple[dict, list]:
+    cifradas = {tipo: {i: cifrador.cifrar(v, cifrado.contexto_entidad(tipo, i)) for i, v in porid.items()}
+                for tipo, porid in entidades.items()}
+    registros = []
+    for r in bitacora:
+        clave = (r["fecha_hora"], r["entidad"], r["entidad_id"], r["accion"])
+        registros.append({**r, **{campo: None if r.get(campo) is None else cifrador.cifrar(
+            r[campo], cifrado.contexto_bitacora(campo, *clave)) for campo in ("antes", "despues")}})
+    return cifradas, registros
 
 
 _FIRMA_SQLITE = b"SQLite format 3\x00"
 
 
-def _leer_archivo_de_datos(ruta: Path, reloj=None) -> tuple[InfoRespaldo, Libro, list[auditoria.Registro]]:
+def _leer_archivo_de_datos(ruta: Path, reloj=None, *, llave: bytes | None = None,
+                           secreto: str | None = None) -> _Leido:
     """Un ``tally.db`` también sirve para restaurar (por ejemplo, el de otra PC). Se lee en solo lectura, sobre
     una copia, y se valida igual que al abrirlo."""
     with tempfile.TemporaryDirectory() as temporal:
         copia = Path(temporal) / "copia.db"
         _copia_de_lectura(ruta, copia)
         almacen = Almacen(copia)
+        config = almacen.config_cifrado()
+        llave_datos, con_kit = _llave_para(config, llave, secreto) if config else (None, False)
+        if llave_datos is not None:
+            almacen.desbloquear(llave_datos)
         libro = almacen.cargar(reloj=reloj)
         bitacora = almacen.bitacora(mas_recientes_primero=False)
     resumen = _resumen(libro)
@@ -327,22 +447,81 @@ def _leer_archivo_de_datos(ruta: Path, reloj=None) -> tuple[InfoRespaldo, Libro,
         ruta=ruta, creado_en=datetime.fromtimestamp(ruta.stat().st_mtime).isoformat(timespec="seconds"),
         version_app="(archivo de datos)", perfil=resumen["perfil"], cuentas=resumen["cuentas"],
         movimientos=resumen["movimientos"], primera_fecha=resumen["primera_fecha"],
-        ultima_fecha=resumen["ultima_fecha"],
+        ultima_fecha=resumen["ultima_fecha"], cifrado=config is not None,
     )
-    return info, libro, bitacora
+    return _Leido(info, libro, bitacora, config, llave_datos, con_kit)
+
+
+# ----------------------------------------------- cifrar los respaldos guardados
+
+
+def cifrar_respaldo(ruta: Path | str, config: cifrado.Config, llave: bytes) -> bool:
+    """Cifra un respaldo sin contraseña (en su lugar, sin cambiar su nombre ni su fecha). False si ya lo estaba."""
+    ruta = Path(ruta)
+    manifiesto, datos = _abrir_zip(ruta)
+    if _config_de(manifiesto) is not None:
+        return False
+    contenido = json.loads(datos)
+    entidades, bitacora = _cifrar_contenido(contenido["entidades"], contenido.get("bitacora", []),
+                                            cifrado.Cifrador(llave))
+    _reescribir(ruta, {**contenido, "entidades": entidades, "bitacora": bitacora}, manifiesto, config)
+    return True
+
+
+def descifrar_respaldo(ruta: Path | str, llave: bytes) -> bool:
+    """Quita la contraseña de un respaldo cifrado con esta llave. False si no tenía o es de otra llave."""
+    ruta = Path(ruta)
+    manifiesto, datos = _abrir_zip(ruta)
+    config = _config_de(manifiesto)
+    if config is None or config.llave_id != cifrado.huella(llave):
+        return False
+    contenido = json.loads(datos)
+    entidades, bitacora = _descifrar_contenido(contenido["entidades"], contenido.get("bitacora", []),
+                                               cifrado.Cifrador(llave))
+    plano = {**contenido, "entidades": entidades, "bitacora": bitacora}
+    libro = libro_desde_instantanea(entidades, contenido.get("secuencia", 0))
+    _reescribir(ruta, plano, {**manifiesto, "resumen": _resumen(libro)}, None)
+    return True
+
+
+def _reescribir(ruta: Path, contenido: dict, manifiesto: dict, config: cifrado.Config | None) -> None:
+    fechas = ruta.stat()
+    _escribir_zip(ruta, contenido, str(manifiesto.get("creado_en", "")), manifiesto.get("resumen"), config,
+                  version_formato=max(int(manifiesto.get("version_formato", 1)), VERSION_FORMATO if config else 1),
+                  version_app=str(manifiesto.get("version_app", "")))
+    os.utime(ruta, ns=(fechas.st_atime_ns, fechas.st_mtime_ns))       # conserva su orden en la carpeta
+
+
+def convertir_carpeta(carpeta: Path | str, llave: bytes, config: cifrado.Config | None) -> tuple[int, list[str]]:
+    """Cifra (``config``) o descifra (``None``) todos los respaldos de la carpeta. Devuelve cuántos cambió y los
+    nombres de los que no se pudieron (por ejemplo, dañados): esos se dejan como estaban."""
+    cambiados, fallidos = 0, []
+    for ruta in sorted(Path(carpeta).glob("TALLY_*.zip")):
+        try:
+            hecho = cifrar_respaldo(ruta, config, llave) if config else descifrar_respaldo(ruta, llave)
+            cambiados += int(hecho)
+        except Exception:                               # noqa: BLE001 - uno dañado no detiene a los demás
+            fallidos.append(ruta.name)
+    return cambiados, fallidos
 
 
 # ------------------------------------------------------------------ restaurar
 
 
-def restaurar(sesion: Sesion, ruta: Path | str, *, carpeta_seguridad: Path | str | None = None) -> ResultadoRestauracion:
+def restaurar(sesion: Sesion, ruta: Path | str, *, carpeta_seguridad: Path | str | None = None,
+              secreto: str | None = None) -> ResultadoRestauracion:
     """Reemplaza los datos actuales por los del respaldo.
 
-    1. Valida el respaldo por completo (si falla, nada cambia).
+    1. Valida el respaldo por completo (si falla, nada cambia). Si tiene contraseña, se abre con la de tu sesión
+       (si es la misma llave) o con ``secreto``: la contraseña de ese día o la llave del Kit.
     2. Crea un respaldo de seguridad de los datos actuales.
     3. Reemplaza todo en una sola transacción y lo anota en la bitácora.
+
+    Tus datos conservan tu contraseña actual. Si no tenías y el respaldo sí, quedan con la de ese respaldo (la
+    misma contraseña y el mismo Kit).
     """
-    info, libro, bitacora = _leer(Path(ruta), reloj=sesion.libro.reloj)
+    leido = _leer(Path(ruta), reloj=sesion.libro.reloj, llave=sesion.almacen.llave, secreto=secreto)
+    info = leido.info
     seguridad = de_seguridad(sesion, "antes_de_restaurar", carpeta_seguridad)
     nota = auditoria.Cambio(
         entidad="respaldo",
@@ -355,10 +534,13 @@ def restaurar(sesion: Sesion, ruta: Path | str, *, carpeta_seguridad: Path | str
             "respaldo_de_seguridad": seguridad.name,
         },
     )
-    sesion.almacen.reemplazar(libro, bitacora, nota)
-    sesion.libro = libro
+    adoptar = None
+    if leido.config is not None and sesion.almacen.config_cifrado() is None:
+        adoptar = (leido.config, leido.llave)
+    sesion.almacen.reemplazar(leido.libro, leido.bitacora, nota, adoptar=adoptar)
+    sesion.libro = leido.libro
     sesion.poner_al_dia()                 # un respaldo de TALLY 0.3 no tiene categorías con subcategorías
-    return ResultadoRestauracion(info, seguridad)
+    return ResultadoRestauracion(info, seguridad, adoptar is not None, leido.con_kit and adoptar is not None)
 
 
 # ------------------------------------------------------------ empezar de cero

@@ -13,9 +13,9 @@ import streamlit as st  # noqa: E402
 
 from motor import perfil, respaldos  # noqa: E402
 from motor.config import LEMA, VERSION  # noqa: E402
-from motor.errores import ErrorDatos  # noqa: E402
+from motor.errores import ErrorBloqueado, ErrorDatos, ErrorTally  # noqa: E402
 from portal import accesos, navegacion  # noqa: E402
-from portal.componentes import por_recuperar, tema  # noqa: E402
+from portal.componentes import candado, por_recuperar, tema  # noqa: E402
 from portal.apagado import cerrar_portal, vigilar_inactividad  # noqa: E402
 from portal.componentes.cierre import pagina_cerrado  # noqa: E402
 from portal.componentes.sesion import mostrar_avisos, sesion  # noqa: E402
@@ -46,10 +46,27 @@ def _respaldo_del_dia(actual) -> None:
         st.toast(f"No se pudo hacer el respaldo automático de hoy: {error}", icon="⚠️")
 
 
+def _recordar_kit() -> None:
+    """Cada 90 días, una vez por visita: «¿Todavía tienes tu Kit de emergencia?»."""
+    config = candado.config()
+    if config is None or st.session_state.get("_recordar_kit"):
+        return
+    st.session_state["_recordar_kit"] = True
+    from datetime import date
+
+    if config.recordatorio_kit(date.today()):
+        st.toast("¿Todavía tienes tu Kit de emergencia? Compruébalo en Configuración → Seguridad.", icon="🔑")
+
+
 def _barra_lateral() -> None:
     with st.sidebar:
         nombre = sesion().libro.perfil.nombre
         st.caption(f"Sesión de **{nombre}** · TALLY {VERSION}  \n*{LEMA}*")
+        if candado.config() is not None and st.button(
+                "Bloquear ahora", icon=":material/lock:", width="stretch", key="bloquear_ahora",
+                help="Cierra tus datos: para volver a verlos hay que escribir tu contraseña."):
+            candado.bloquear()
+            st.rerun()
         if st.button("Cerrar TALLY", icon=":material/power_settings_new:", width="stretch",
                      help="Cierra TALLY por completo. Todo queda guardado. Para volver a abrirlo: acceso "
                           "directo TALLY de tu Escritorio."):
@@ -59,10 +76,12 @@ def _barra_lateral() -> None:
 
 
 def _preferencias():
-    """El perfil (tema e ícono), o None si aún no hay o los datos no abren."""
+    """El perfil (tema e ícono), o None si aún no hay, los datos no abren o están con contraseña."""
     try:
+        if not candado.abierto():
+            return None
         return sesion().libro.perfil
-    except ErrorDatos:
+    except ErrorTally:
         return None
 
 
@@ -75,10 +94,24 @@ def main() -> None:
         st.logo(str(LOGO), size="large", icon_image=str(MARCA) if MARCA.exists() else None)
     _vigilante()
     try:
-        actual = sesion()
+        abierto = candado.abierto()
     except ErrorDatos as error:
         recuperacion.mostrar(error)
         return
+    if not abierto:                                         # con contraseña: primero hay que escribirla
+        st.navigation([st.Page("vistas/acceso.py", title="Entrar", icon="🔒", url_path="acceso")],
+                      position="hidden").run()
+        return
+    candado.tocar()
+    try:
+        actual = sesion()
+    except ErrorBloqueado:
+        candado.bloquear()
+        st.rerun()
+    except ErrorDatos as error:
+        recuperacion.mostrar(error)
+        return
+    _recordar_kit()
     mostrar_avisos()
 
     if perfil.necesita_bienvenida(actual.libro):
