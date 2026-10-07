@@ -1,4 +1,5 @@
-"""Cargar datos: muchos movimientos a la vez desde la plantilla de texto (motor/importacion.py)."""
+"""Cargar datos: muchos movimientos a la vez, desde el archivo de tu banco (portal/paginas/importar_banco.py) o
+desde la plantilla de texto de TALLY (motor/importacion.py)."""
 
 from __future__ import annotations
 
@@ -12,6 +13,7 @@ from motor.importacion import Desconocido, Destino
 from motor.modelo import ClaseCategoria, TipoCuenta
 from portal.componentes import formato
 from portal.componentes.sesion import aplicar, avisar, libro, sesion
+from portal.paginas import importar_banco
 
 PLANTILLAS = {
     TipoCuenta.DEBITO: "Tarjeta de débito",
@@ -151,7 +153,15 @@ def _vista_previa(resultado: importacion.Resultado) -> None:
 
 def mostrar() -> None:
     st.title("Cargar datos")
-    st.caption("Pasa a TALLY los movimientos que ya tenías (por ejemplo, en Excel), muchos a la vez.")
+    st.caption("Pasa a TALLY muchos movimientos a la vez: los de tu banco o los que ya tenías en Excel.")
+    banco, plantilla = st.tabs(["🏦 Desde tu banco", "📄 Con la plantilla de TALLY"])
+    with banco:
+        importar_banco.mostrar()
+    with plantilla:
+        _con_plantilla()
+
+
+def _con_plantilla() -> None:
     _plantillas()
     texto = _archivo()
     if texto is None:

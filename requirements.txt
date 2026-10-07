@@ -1,6 +1,7 @@
 # Dependencias generales de TALLY.
 #
-# El motor financiero (motor/) solo usa la biblioteca estándar de Python 3.13.
+# El motor financiero (motor/) usa la biblioteca estándar de Python 3.13. Solo al usarlas importa cryptography
+# (contraseña), openpyxl (leer Excel) y pypdf (leer el PDF del banco).
 # El portal usa requirements-portal.txt. Lo siguiente es para las pruebas (tests/).
 -r requirements-portal.txt
 pytest==9.1.1

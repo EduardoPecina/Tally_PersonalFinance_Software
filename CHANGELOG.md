@@ -2,6 +2,33 @@
 
 Todos los cambios relevantes de TALLY se documentan aquí.
 
+## [0.13.0] — Sin publicar
+
+- **Importar los movimientos de tu banco** (Cargar datos → *Desde tu banco*):
+  - **Qué sube:** el **Excel o CSV** de tu banca en línea, el **PDF** de tu estado de cuenta o la tabla
+    copiada de la página del banco.
+  - **Columnas:** TALLY las encuentra solo, aunque el banco ponga antes su nombre, la cuenta o el periodo.
+    Entiende fechas (15/07/2026, 15-jul-26, 2026-07-15, mes/día…) e importes de varios países (1,234.56,
+    1.234,56, −850.00, (850.00), 850.00 CR). Si se equivoca, se corrigen a mano.
+  - **Signo:** con un solo importe con signo, lo deduce del saldo (o te deja cambiarlo). En un PDF, del
+    saldo, de las marcas (−, CR) o de palabras como ABONO o SU PAGO; lo que no sabe seguro lo marca con 🔍.
+  - **Totales para comparar:** muestra cuánto salió y cuánto entró, para cotejarlo con tu estado de cuenta.
+  - **Subcategoría sugerida:** primero lo que elegiste antes para una descripción igual o casi igual (TALLY
+    aprende de tu historial, también las transferencias a tus cuentas). Luego comercios conocidos de México y
+    Latinoamérica (OXXO, Walmart, Netflix, CFE, Uber, Pemex…). Al final, lo que se parece.
+  - **Duplicados:** lo que ya está en TALLY (misma cuenta, mismo importe, hasta 4 días de diferencia) se
+    aparta y no se carga, salvo que lo marques. Subir el mismo archivo dos veces no duplica nada.
+  - **Revisión:** una tabla editable para marcar o desmarcar, corregir la descripción, cambiar si el dinero
+    entra o sale y elegir la subcategoría o la cuenta. Lo que elijas para un movimiento se usa también para
+    los que se llaman igual, y lo que falte puede ir a OTROS GASTOS u OTROS INGRESOS.
+  - **Carga:** se hace un respaldo antes. Se aplican las reglas de siempre: todo o nada, transferencias y
+    pagos de tarjeta sin contar como gasto, devoluciones como reembolso.
+  - **PDF con contraseña:** TALLY la pide y no la guarda. Un PDF escaneado o un Excel antiguo (.xls) se
+    explican con un mensaje claro.
+  - **Privacidad:** todo pasa en tu PC; el archivo no se manda a ningún lado.
+- Nueva dependencia: `pypdf` (solo lee el PDF, en tu PC). `INSTALAR.bat` la instala.
+- Los textos de Seguridad usan un español neutro («Si un día no te apetece»).
+
 ## [0.12.0] — Sin publicar
 
 - **Contraseña opcional para TALLY** (Configuración → Seguridad → *Establecer una contraseña para TALLY*). Viene
