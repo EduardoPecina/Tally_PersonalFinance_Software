@@ -1279,3 +1279,39 @@ def test_metas_fondo_de_emergencia_y_una_meta(raiz, con_datos):
     assert metas.ahorrado(lib.meta(viaje.id)) == 500_000
     assert lib.saldo_centavos(con_datos["ahorro"]) == ahorro_antes + 500_000
     assert any("Lograste tu meta" in str(t.value) for t in at.toast)
+
+
+# ------------------------------------------------------------ impuestos
+
+
+def test_impuestos_plantillas_deducibles_y_recibo(raiz, con_datos):
+    from datetime import date
+
+    from motor import movimientos as mov
+
+    s = sesion_en(raiz)
+    hoy = s.libro.hoy()
+    with s.cambio() as lib:
+        dentista = next(c.id for c in lib.categorias() if c.nombre == "DENTISTA")
+        mov.registrar_gasto(lib, date(hoy.year, 2, 3), con_datos["debito"], dentista, 1_500, "Dentista")
+    at = abrir(_pagina("impuestos"))
+    sin_errores(at)
+    assert [t.label for t in at.tabs][:3] == ["🧾 Gastos deducibles", "🧮 Calcular y revisar un recibo", "⚙️ Configurar"]
+    at.selectbox(key="imp_plantilla_ded").set_value("México (persona física, declaración anual)").run()
+    next(b for b in at.button if b.key == "imp_agregar_ded").click().run()
+    sin_errores(at)
+    assert any(m.label == "Gastos deducibles" and m.value == "$1,500.00" for m in at.metric)
+    at.selectbox(key="imp_plantilla_imp").set_value("México · Honorarios (régimen general)").run()
+    next(b for b in at.button if b.key == "imp_agregar_imp").click().run()
+    sin_errores(at)
+    at.number_input(key="imp_monto").set_value(10_000.0).run()
+    tabla = next(d.value for d in at.dataframe if "Concepto" in d.value.columns and "Importe" in d.value.columns
+                 and "Subtotal" in list(d.value["Concepto"]))
+    assert list(tabla["Importe"]) == ["$10,000.00", "$1,600.00", "-$1,000.00", "-$1,066.67", "$9,533.33"]
+    # Revisar un recibo con la retención de ISR equivocada.
+    [n for n in at.number_input if n.label == "Subtotal del recibo"][0].set_value(10_000.0)
+    [n for n in at.number_input if n.label == "IVA"][0].set_value(1_600.0)
+    [n for n in at.number_input if n.label == "Retención ISR"][0].set_value(125.0)
+    [n for n in at.number_input if n.label == "Retención IVA"][0].set_value(1_066.67)
+    boton(at, "Revisar").click().run()
+    assert any("Retención ISR: dice" in e.value for e in at.error)

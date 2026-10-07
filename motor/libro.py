@@ -28,6 +28,7 @@ from motor.modelo import (
     InversionPlazo,
     Operacion,
     OperacionValor,
+    Fiscal,
     Meta,
     Perfil,
     Recurrente,
@@ -40,6 +41,7 @@ class Libro:
     def __init__(self, *, reloj: Callable[[], datetime] | None = None) -> None:
         self._reloj = reloj or datetime.now
         self.perfil: Perfil | None = None
+        self.fiscal: Fiscal = Fiscal()
         self._cuentas: dict[str, Cuenta] = {}
         self._categorias: dict[str, Categoria] = {}
         self._grupos: dict[str, Grupo] = {}
@@ -77,6 +79,7 @@ class Libro:
         prestamos: list[Prestamo] = (),
         recurrentes: list[Recurrente] = (),
         metas: list[Meta] = (),
+        fiscal: Fiscal | None = None,
     ) -> Libro:
         """Reconstruye un libro ya guardado, tal cual (lo usa la persistencia)."""
         libro = cls(reloj=reloj)
@@ -92,6 +95,7 @@ class Libro:
         libro._prestamos = {p.cuenta_id: p for p in prestamos}
         libro._recurrentes = {r.id: r for r in recurrentes}
         libro._metas = {m.id: m for m in metas}
+        libro.fiscal = fiscal or Fiscal()
         libro._secuencia = max([secuencia, *(op.secuencia for op in operaciones)])
         return libro
 

@@ -2,6 +2,30 @@
 
 Todos los cambios relevantes de TALLY se documentan aquí.
 
+## [0.16.0] — Sin publicar
+
+- **Nueva página 🧾 Impuestos** (en Análisis), **para cualquier país**. TALLY no supone las leyes de ningún lugar:
+  tú pones las reglas, y hay **plantillas** para empezar que puedes cambiar. Todo es una referencia; lo oficial lo
+  dice tu autoridad fiscal o tu contador.
+  - **Gastos deducibles del año.** Defines *conceptos* (gastos médicos, colegiaturas, alquiler…) con:
+    - las subcategorías que cuentan;
+    - qué parte se deduce (100 %, 40 %…);
+    - un tope al año;
+    - si deja fuera lo pagado en efectivo;
+    - si entra o no en el **tope total** (un monto, un % de tus ingresos, o el menor de los dos).
+
+    El reporte muestra lo pagado, lo que no cuenta por efectivo, lo deducible y lo topado, cada pago, y se
+    descarga en Excel.
+  - **Calcular un recibo o factura** con un *perfil de impuestos*. Cada impuesto tiene su tasa, se calcula sobre
+    el subtotal u otro impuesto (por ejemplo «2/3 del IVA»; la tasa acepta fracciones) y se suma o se retiene. Se
+    calcula desde el subtotal o **desde lo que recibes**, al centavo.
+  - **Revisar un recibo que te dieron:** compara cada impuesto con lo que corresponde (tolerancia de $1 por
+    redondeos), dice qué no cuadra y por qué, y detecta un impuesto capturado en el lugar de otro.
+  - **Plantillas de deducibles:** México (persona física: médicos, lentes, seguro de gastos médicos, colegiaturas
+    y donativos, tope del 15 %) y Argentina (Ganancias).
+  - **Plantillas de perfiles:** México (honorarios en régimen general y en RESICO, venta con IVA), España
+    (autónomo, IVA e IRPF), Argentina (IVA 21 %) y Colombia (IVA 19 %).
+
 ## [0.15.0] — Sin publicar
 
 - **Nueva página 🏆 Metas de ahorro** (en Tu dinero):

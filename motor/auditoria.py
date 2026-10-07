@@ -78,6 +78,7 @@ ETIQUETA_ENTIDAD = {
     "prestamo": "Préstamo",
     "recurrente": "Pago recurrente",
     "meta": "Meta de ahorro",
+    "fiscal": "Ajustes de impuestos",
     "respaldo": "Respaldo",
 }
 ETIQUETA_ACCION = {CREAR: "Creó", EDITAR: "Editó", BORRAR: "Borró", RESTAURAR: "Restauró"}
