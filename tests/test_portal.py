@@ -1176,3 +1176,66 @@ def test_importar_agregar_a_mano_el_movimiento_que_falta(raiz, con_datos):
     lib = sesion_en(raiz).libro
     agregado = next(op for op in lib.operaciones() if op.descripcion == "TIENDA DESCONOCIDA FICTICIA")
     assert agregado.fecha == date(2026, 9, 21) and agregado.tipo.value == "gasto"
+
+
+# ------------------------------------------------------------ calendario
+
+
+def test_calendario_agregar_un_pago_fijo_y_registrarlo(raiz, con_datos):
+    from motor import recurrentes
+
+    at = abrir(_pagina("calendario"))
+    sin_errores(at)
+    assert [t.label for t in at.tabs][:2] == ["📅 Próximos 30 días", "🔁 Mis pagos fijos y suscripciones"]
+    campo_ = [t for t in at.text_input if t.label == "Nombre"][-1]
+    campo_.input("Internet Ficticio")
+    [n for n in at.number_input if n.label == "Importe (aproximado)"][-1].set_value(599.0)
+    sub = [s for s in at.selectbox if s.label == "Subcategoría"][-1]
+    sub.set_value(next(o for o in sub.options if o.endswith("INTERNET")))
+    [c for c in at.checkbox if c.label.startswith("Es una suscripción")][-1].check()
+    boton(at, "Agregar").click().run()
+    sin_errores(at)
+    lib = sesion_en(raiz).libro
+    (r,) = lib.recurrentes()
+    assert (r.nombre, r.monto, r.suscripcion, r.inicio) == ("Internet Ficticio", 59_900, True, lib.hoy())
+    assert any(m.label == "Suscripciones al mes" and m.value == "$599.00" for m in at.metric)
+    # En el calendario, hoy toca: se registra con un clic.
+    assert any("Internet Ficticio" in str(v) for v in at.dataframe[0].value["Qué"])
+    boton(at, "Registrar").click().run()
+    sin_errores(at)
+    lib = sesion_en(raiz).libro
+    assert any(op.descripcion == "Internet Ficticio" for op in lib.operaciones())
+    eventos = [e for e in recurrentes.calendario(lib) if e.recurrente_id == r.id]
+    assert eventos[0].estado == recurrentes.PAGADO
+
+
+def test_calendario_sugerencias_y_aviso_en_el_resumen(raiz, con_datos):
+    from datetime import timedelta
+
+    s = sesion_en(raiz)
+    hoy = s.libro.hoy()
+    with s.cambio() as lib:
+        for meses in (3, 2, 1):
+            movimientos.registrar_gasto(lib, hoy - timedelta(days=30 * meses - 2), con_datos["tdc"],
+                                        con_datos["cat"]["STREAMING DE VIDEO"], 219, "STREAMING FICTICIO")
+    at = abrir(_pagina("calendario"))
+    assert "✨ Sugerencias (1)" in [t.label for t in at.tabs]
+    next(b for b in at.button if b.key == "cal_sugerencia_0").click().run()
+    sin_errores(at)
+    (r,) = sesion_en(raiz).libro.recurrentes()
+    assert r.suscripcion and r.monto == 21_900 and r.cuenta_id == con_datos["tdc"]
+    assert (r.inicio - hoy).days <= 3
+    at.switch_page(_pagina("inicio")).run()
+    sin_errores(at)
+    assert any("Próximos pagos" in m.value and "STREAMING FICTICIO" in m.value for m in [*at.info, *at.warning])
+
+
+def test_calendario_avisa_si_te_quedarias_en_negativo(raiz, con_datos):
+    from motor import recurrentes
+
+    s = sesion_en(raiz)
+    with s.cambio() as lib:
+        recurrentes.crear(lib, "Renta Ficticia", "gasto", 50_000, con_datos["debito"], "mensual", lib.hoy(),
+                          categoria_id=con_datos["cat"]["RENTA"])
+    at = abrir(_pagina("calendario"))                                # (abrir revisa que no haya excepciones)
+    assert [e.value for e in at.error if e.value.startswith("**Ojo:**")]
