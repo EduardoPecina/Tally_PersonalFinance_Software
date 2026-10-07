@@ -84,15 +84,15 @@ PAGINA 1 / 2
 Periodo DEL 01/03/2026 AL 31/03/2026
 No. de Cuenta 0000000000
 Saldo Promedio 1,000.00   Saldo Anterior 500.00
-Depositos / Abonos (+) 3 9,100.00
+Depositos / Abonos (+) 3 9,120.00
 Retiros / Cargos (-) 5 9,250.00
-Saldo Promedio Gravable 0.00   Saldo Final 350.00
+Saldo Promedio Gravable 0.00   Saldo Final 370.00
 Detalle de Movimientos Realizados
 FECHA                                                              SALDO
 OPER LIQ DESCRIPCION   REFERENCIA   CARGOS   ABONOS   OPERACION   LIQUIDACION
 02/MAR 02/MAR RETIRO CAJERO AUTOMATICO          500.00
 MAR02 10:00 BCO 0000 FOLIO:1111   Referencia ******0000
-05/MAR 06/MAR SPEI RECIBIDOBANCO FICTICIO              100.00     100.00
+05/MAR 06/MAR SPEI RECIBIDOBANCO FICTICIO              120.00     120.00
 0000000Regalo cumple   Referencia 0000000000 000
 00000000000000000000
 PERSONA FICTICIA UNO""".splitlines()
@@ -106,13 +106,13 @@ EMPRESA FICTICIA SA DE CV   Referencia 0000
 YO BILLETERA FICTICIA
 15/MAR 15/MAR SPEI ENVIADO CASA DE BOLSA FICTICIA   1,500.00
 0000000Inversion Marzo   Referencia 0000
-15/MAR 15/MAR SPEI ENVIADO TARJETA FICTICIA   2,600.00     100.00     100.00
+15/MAR 15/MAR SPEI ENVIADO TARJETA FICTICIA   2,600.00     120.00     120.00
 0000000Pago TDC   Referencia 0000
 20/MAR 20/MAR SPEI RECIBIDOBANCO FICTICIO              3,000.00
 25/MAR 25/MAR RETIRO CAJERO AUTOMATICO          2,750.00
 Total de Movimientos
 TOTAL IMPORTE CARGOS 9,250.00   TOTAL MOVIMIENTOS CARGOS 5
-TOTAL IMPORTE ABONOS 9,100.00   TOTAL MOVIMIENTOS ABONOS 3""".splitlines()
+TOTAL IMPORTE ABONOS 9,120.00   TOTAL MOVIMIENTOS ABONOS 3""".splitlines()
 
 
 def centavos(lectura):
@@ -216,7 +216,11 @@ def test_texto_de_estado_de_cuenta_de_tarjeta():
         (date(2026, 6, 10), "SU PAGO GRACIAS", 100_000),
         (date(2026, 6, 15), "INTERESES", -4_510),
     ]                                                         # sin «SALDO ANTERIOR», «PAGO MINIMO» ni «TOTAL»
-    assert lectura.supuestos == 3 and lectura.avisos
+    assert lectura.total_cargos == lectura.sale == 101_560    # cuadra con «TOTAL CARGOS»: los signos están bien
+    assert lectura.supuestos == 0 and lectura.avisos == ()
+    sin_total = "\n".join(ln for ln in ESTADO_TARJETA.splitlines() if not ln.startswith("TOTAL"))
+    lectura = bancos.interpretar(bancos.de_texto(sin_total), credito=True, hoy=date(2026, 10, 1))
+    assert lectura.supuestos == 3 and lectura.avisos           # sin con qué comparar: a revisar
 
 
 def test_texto_de_estado_de_cuenta_de_debito_usa_el_saldo():
@@ -504,13 +508,13 @@ def test_estado_de_debito_en_varias_hojas_con_saldo_en_algunos_renglones():
     fuente = bancos.leer("estado.pdf", pdf(DEBITO_PAGINA_1, DEBITO_PAGINA_2))
     lectura = bancos.interpretar(fuente, hoy=date(2026, 10, 1))
     assert [(m.fecha, m.centavos) for m in lectura.movimientos] == [
-        (date(2026, 3, 2), -50_000), (date(2026, 3, 5), 10_000), (date(2026, 3, 15), 600_000),
+        (date(2026, 3, 2), -50_000), (date(2026, 3, 5), 12_000), (date(2026, 3, 15), 600_000),
         (date(2026, 3, 15), -190_000), (date(2026, 3, 15), -150_000), (date(2026, 3, 15), -260_000),
         (date(2026, 3, 20), 300_000), (date(2026, 3, 25), -275_000)]
     # Con los saldos, sin dudas: hasta la nómina que se reparte completa en tres envíos (las dos formas cuadran
     # con el saldo; las palabras NÓMINA y ENVIADO deciden).
     assert lectura.supuestos == 0
-    assert (lectura.total_cargos, lectura.total_abonos) == (lectura.sale, lectura.entra) == (925_000, 910_000)
+    assert (lectura.total_cargos, lectura.total_abonos) == (lectura.sale, lectura.entra) == (925_000, 912_000)
     assert lectura.avisos == ()                                  # coincide con los totales del banco
     descripciones = [m.descripcion for m in lectura.movimientos]
     assert descripciones[0] == "RETIRO CAJERO AUTOMATICO"                         # sin folios ni referencias
@@ -522,7 +526,7 @@ def test_estado_de_debito_en_varias_hojas_con_saldo_en_algunos_renglones():
 def test_el_mismo_estado_pegado_como_texto():
     lectura = bancos.interpretar(bancos.de_texto("\n".join(DEBITO_PAGINA_1 + DEBITO_PAGINA_2)), hoy=date(2026, 10, 1))
     assert len(lectura.movimientos) == 8 and lectura.supuestos == 0
-    assert (lectura.sale, lectura.entra) == (925_000, 910_000)
+    assert (lectura.sale, lectura.entra) == (925_000, 912_000)
 
 
 def test_si_no_cuadra_con_los_totales_del_banco_avisa():
@@ -544,3 +548,75 @@ def test_propagar_a_los_casi_iguales():
     entra = mov("SPEI RECIBIDO BILLETERA FICTICIA · Ahorro Julio", 400)
     resultado = bancos.propagar([(julio, "cuenta:x"), (agosto, ""), (otro, ""), (entra, "")])
     assert [d for _, d in resultado] == ["cuenta:x", "cuenta:x", "", ""]
+
+
+# Imita el formato de un estado de cuenta de tarjeta de crédito: el resumen arriba (saldo anterior, compras,
+# intereses, IVA, pagos, saldo al corte), las compras con fecha completa y «$», saltos de página y los pagos
+# aparte. Todo inventado.
+def estado_tdc(*, intereses="0.00", iva="0.00", al_corte="611.50", sin=()):
+    lineas = f"""Estado de cuenta del 04/09/2026 al 03/10/2026
+PERSONA FICTICIA Fecha límite de pago 16/10/2026
+Pago mínimo $ 57.00
+Calle Ficticia Pago para no generar intereses $ {al_corte}
+Saldo revolvente anterior $ 500.00 CAT 90.00%
+Compras/Retiros/Mensualidades/Recargas$ 821.50 Tasa interés Diaria Anual
+Comisiones cobradas $ 0.00 Ordinaria 0.25% 90.00%
+Intereses $ {intereses} Moratoria 0.40% 140.00%
+IVA $ {iva}
+Pagos/Reembolsos/Devoluciones $ 710.00
+Saldo revolvente al corte $ {al_corte} Tarjeta física
+Tarjeta física 000000000000000
+Saldo total $ {al_corte} Número de 0000000
+05/09/2026 TAQUERIA FICTICIA $ 120.00
+05/09/2026 NETFLIX.COM $ 219.00
+07/09/2026 REST LA FONDA FICTICIA $ 85.50
+Página 1
+11/09/2026 ALITASYBONELESSFICTICIO $ 97.00
+21/09/2026 TIENDA DESCONOCIDA FICTICIA $ 300.00
+Página 2
+MOVIMIENTOS DE LA CUENTA
+04/09/2026 Su pago... Gracias. $ 500.00
+25/09/2026 Su pago... Gracias. $ 210.00
+Página 3
+Si sólo realizas el pago mínimo, tardas 16 meses aproximadamente para cubrir el saldo de
+tu crédito*. Deberás realizar pagos mensuales por $ 55.00 aproximadamente*.""".splitlines()
+    return "\n".join(ln for ln in lineas if not any(ln.startswith(f) for f in sin))
+
+
+def test_tarjeta_cuadra_con_el_saldo_anterior_y_el_del_corte():
+    lectura = bancos.interpretar(bancos.leer("tdc.pdf", pdf(estado_tdc().splitlines())), credito=True,
+                                 hoy=date(2026, 10, 7))
+    assert centavos(lectura) == [-12_000, -21_900, -8_550, -9_700, -30_000, 50_000, 21_000]
+    assert (lectura.saldo_inicial, lectura.saldo_final) == (50_000, 61_150)
+    assert lectura.falta == 0 and lectura.supuestos == 0 and lectura.avisos == ()
+    assert (lectura.total_cargos, lectura.total_abonos) == (82_150, 71_000)
+    assert not any(m.del_resumen for m in lectura.movimientos)
+    # «Pago para no generar intereses $ 611.50» no se confunde con los intereses.
+    assert not any("INTERESES" in m.descripcion for m in lectura.movimientos)
+
+
+def test_tarjeta_con_intereses_e_iva_solo_en_el_resumen():
+    texto = estado_tdc(intereses="45.00", iva="7.20", al_corte="663.70")
+    lectura = bancos.interpretar(bancos.de_texto(texto), credito=True, hoy=date(2026, 10, 7))
+    del_resumen = [m for m in lectura.movimientos if m.del_resumen]
+    assert [(m.fecha, m.descripcion, m.centavos) for m in del_resumen] == [
+        (date(2026, 10, 3), "INTERESES DEL PERIODO", -4_500), (date(2026, 10, 3), "IVA DEL PERIODO", -720)]
+    assert lectura.falta == 0 and lectura.supuestos == 0
+
+
+def test_tarjeta_que_no_cuadra_avisa():
+    lectura = bancos.interpretar(bancos.de_texto(estado_tdc(sin=("21/09/2026",))), credito=True,
+                                 hoy=date(2026, 10, 7))
+    assert lectura.falta == -30_000                      # falta una compra de $300
+    assert lectura.supuestos == 6 and lectura.avisos     # sin cuadrar, todo a revisar
+    assert not any(m.del_resumen for m in lectura.movimientos)
+
+
+def test_tarjeta_sugerencias_y_lo_que_no_reconoce(libro, ctas):
+    lectura = bancos.interpretar(bancos.de_texto(estado_tdc()), credito=True, hoy=date(2026, 10, 7))
+    propuestas = bancos.revisar(libro, ctas.credito, lectura.movimientos)
+    etiquetas = [bancos.etiqueta_destino(libro, p.destino).split(" › ")[-1] if p.destino else "" for p in propuestas]
+    assert etiquetas == ["RESTAURANTES", "STREAMING DE VIDEO", "RESTAURANTES", "RESTAURANTES", "", "", ""]
+    grupos = bancos.sin_reconocer(propuestas)
+    assert grupos == [[5, 6], [4]]                       # los dos pagos juntos: se elige una vez
+    assert "Pagaste la tarjeta" in propuestas[5].motivo

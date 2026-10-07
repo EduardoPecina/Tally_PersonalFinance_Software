@@ -142,7 +142,28 @@ def _lectura(fuente: bancos.Fuente, cuenta, clave: str) -> bancos.Lectura | None
 
 
 def _comparar_con_el_banco(lectura: bancos.Lectura) -> None:
-    """Si el estado de cuenta trae sus propios totales, la mejor prueba de que TALLY lo leyó bien."""
+    """Si el estado de cuenta trae su saldo anterior y el del corte (o sus totales), la mejor prueba de que TALLY lo
+    leyó bien."""
+    if lectura.falta is not None:
+        deuda = lectura.credito
+        anterior, final = a_pesos(lectura.saldo_inicial), a_pesos(lectura.saldo_final)
+        if lectura.falta == 0:
+            st.success(f"Cuadra con tu estado de cuenta: {'debías' if deuda else 'tenías'} "
+                       f"{formato.dinero_md(anterior)}, {'pagaste' if deuda else 'entró'} "
+                       f"{formato.dinero_md(a_pesos(lectura.entra))}, {'gastaste' if deuda else 'salió'} "
+                       f"{formato.dinero_md(a_pesos(lectura.sale))} y al corte "
+                       f"{'debes' if deuda else 'tienes'} {formato.dinero_md(final)}.", icon="✅")
+            if any(m.del_resumen for m in lectura.movimientos):
+                st.info("Agregué los intereses, comisiones o IVA que solo venían en el resumen de tu estado de cuenta "
+                        "(marcados con 📋): sin ellos no cuadraba.", icon="📋")
+        else:
+            st.warning(f"No cuadra con tu estado de cuenta: con {'tu deuda' if deuda else 'tu saldo'} anterior de "
+                       f"{formato.dinero_md(anterior)} y los movimientos que leí, al corte "
+                       f"{'deberías' if deuda else 'tendrías'} {formato.dinero_md(final + a_pesos(lectura.falta) * (1 if deuda else -1))}, "
+                       f"pero tu estado de cuenta dice {formato.dinero_md(final)} (diferencia de "
+                       f"{formato.dinero_md(a_pesos(abs(lectura.falta)))}). Puede faltar un movimiento o alguno estar "
+                       "al revés (entra/sale): revisa la tabla contra tu PDF.", icon="⚠️")
+        return
     comparaciones = [(que, dice, leido) for que, dice, leido in (("cargos", lectura.total_cargos, lectura.sale),
                                                                 ("abonos", lectura.total_abonos, lectura.entra))
                      if dice is not None]
@@ -222,13 +243,18 @@ def _opciones(lib, cuenta_id: str) -> dict[str, str]:
 def _tabla(lib, cuenta_id: str, propuestas: list[bancos.Propuesta], clave: str):
     opciones = _opciones(lib, cuenta_id)
     etiquetas = {destino: etiqueta for etiqueta, destino in opciones.items()}
+    por_grupo = _desconocidos(propuestas, opciones, clave)
     notas = []
-    for p in propuestas:
+    for i, p in enumerate(propuestas):
         if p.duplicado is not None:
             op = p.duplicado
             nota = f"⏭️ Ya está en TALLY: «{op.descripcion or 'sin descripción'}» del {op.fecha:%d/%m/%Y}"
+        elif i in por_grupo:
+            nota = "👆 Lo elegiste arriba"
         else:
             nota = ("✨ " if p.destino else "❓ ") + p.motivo
+        if p.movimiento.del_resumen:
+            nota = "📋 No venía en la lista de movimientos: lo tomé del resumen de tu estado de cuenta · " + nota
         if p.movimiento.supuesto:
             nota = "🔍 " + nota
         notas.append(nota)
@@ -238,7 +264,8 @@ def _tabla(lib, cuenta_id: str, propuestas: list[bancos.Propuesta], clave: str):
         "Descripción": [p.movimiento.descripcion for p in propuestas],
         "Movimiento": [ENTRA if p.movimiento.centavos > 0 else SALE for p in propuestas],
         "Importe": [float(a_pesos(abs(p.movimiento.centavos))) for p in propuestas],
-        "Subcategoría o cuenta": [etiquetas.get(p.destino, ELIGE) for p in propuestas],
+        "Subcategoría o cuenta": [etiquetas.get(p.destino or por_grupo.get(i, ""), ELIGE)
+                                  for i, p in enumerate(propuestas)],
         "Nota de TALLY": notas,
     })
     duplicados = sum(not p.cargar for p in propuestas)
@@ -282,6 +309,32 @@ def _tabla(lib, cuenta_id: str, propuestas: list[bancos.Propuesta], clave: str):
         if st.checkbox("Mandar los que falten a OTROS GASTOS (lo que sale) y OTROS INGRESOS (lo que entra)",
                        key=f"banco_otros_{clave}"):
             elegidos = [(m, destino or bancos.de_respaldo(lib, m)) for m, destino in elegidos]
+    return elegidos
+
+
+def _desconocidos(propuestas: list[bancos.Propuesta], opciones: dict[str, str], clave: str) -> dict[int, str]:
+    """Lo que TALLY no reconoce, agrupado (los iguales o casi iguales juntos): se elige una vez por grupo.
+    Devuelve índice del movimiento → destino elegido."""
+    grupos = bancos.sin_reconocer(propuestas)
+    if not grupos:
+        return {}
+    elegidos: dict[int, str] = {}
+    st.markdown(f"**❓ TALLY no reconoce {sum(len(g) for g in grupos)} movimiento(s).** Elige una vez por grupo y "
+                "se aplica a todos los parecidos (o hazlo renglón por renglón en la tabla de abajo).")
+    with st.container(border=True):
+        for n, indices in enumerate(grupos[:40]):
+            primero = propuestas[indices[0]].movimiento
+            total = sum(abs(propuestas[i].movimiento.centavos) for i in indices)
+            texto = (f"«{formato.md(primero.descripcion)}»" + (f" y {len(indices) - 1} más" if len(indices) > 1 else "")
+                     + f" · {'entró' if primero.centavos > 0 else 'salió'} {formato.dinero_md(a_pesos(total))}")
+            a, b = st.columns([3, 2], vertical_alignment="center")
+            a.markdown(texto)
+            elegido = b.selectbox(texto, [ELIGE, *opciones], key=f"banco_grupo_{clave}_{n}",
+                                  label_visibility="collapsed")
+            if elegido != ELIGE:
+                elegidos.update(dict.fromkeys(indices, opciones[elegido]))
+        if len(grupos) > 40:
+            st.caption(f"…y {len(grupos) - 40} grupo(s) más: elígelos en la tabla.")
     return elegidos
 
 
