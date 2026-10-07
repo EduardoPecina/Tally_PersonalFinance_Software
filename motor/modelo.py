@@ -342,3 +342,47 @@ class Meta:
     creada: date | None = None
     activa: bool = True            # False: lograda o archivada
     notas: str = ""
+
+
+@dataclass(frozen=True, slots=True)
+class ConceptoDeducible:
+    """Un tipo de gasto que puedes deducir de tus impuestos (gastos médicos, colegiaturas…), ver motor/impuestos.py.
+    Sirve para cualquier país: tú eliges qué subcategorías cuentan, qué parte y hasta cuánto."""
+
+    id: str
+    nombre: str
+    subcategorias: tuple[str, ...]
+    porcentaje: Decimal = Decimal(100)   # qué parte del gasto se deduce
+    tope: int | None = None              # centavos al año
+    sin_efectivo: bool = False           # solo cuenta si no se pagó en efectivo
+    notas: str = ""
+    fuera_del_tope: bool = False         # no entra en el tope total (p. ej. colegiaturas en México)
+
+
+@dataclass(frozen=True, slots=True)
+class Impuesto:
+    nombre: str                          # IVA, ISR, IRPF, Ganancias…
+    tasa: Decimal                        # en %
+    sobre: str = ""                      # "" = sobre el subtotal; o el nombre de otro impuesto (p. ej. 2/3 del IVA)
+    retenido: bool = False               # True: se resta (retención); False: se suma (traslado)
+
+
+@dataclass(frozen=True, slots=True)
+class PerfilImpuestos:
+    """Los impuestos de un tipo de recibo o factura (honorarios, arrendamiento, venta…)."""
+
+    id: str
+    nombre: str
+    impuestos: tuple[Impuesto, ...]
+    notas: str = ""
+
+
+@dataclass(frozen=True, slots=True)
+class Fiscal:
+    """Tus ajustes de impuestos (uno por libro)."""
+
+    conceptos: tuple[ConceptoDeducible, ...] = ()
+    perfiles: tuple[PerfilImpuestos, ...] = ()
+    tope_total: int | None = None          # centavos al año, para todos los deducibles juntos
+    tope_porcentaje: Decimal | None = None  # % de tu ingreso del año
+    notas: str = ""

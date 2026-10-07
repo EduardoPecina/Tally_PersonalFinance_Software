@@ -24,6 +24,10 @@ from motor.modelo import (
     Operacion,
     Meta,
     Aporte,
+    ConceptoDeducible,
+    Fiscal,
+    Impuesto,
+    PerfilImpuestos,
     Prestamo,
     Recurrente,
     OperacionValor,
@@ -37,8 +41,9 @@ from motor.modelo import (
 
 # Tipos de entidad, en el orden en que se cargan.
 ENTIDADES = ("perfil", "grupo", "rubro", "categoria", "cuenta", "operacion", "valor", "plazo", "bien",
-             "prestamo", "recurrente", "meta")
+             "prestamo", "recurrente", "meta", "fiscal")
 ID_PERFIL = "perfil"
+ID_FISCAL = "fiscal"
 
 
 def _fecha(valor: str | None) -> date | None:
@@ -237,6 +242,38 @@ def meta_desde_dict(d: dict) -> Meta:
     )
 
 
+def _decimal(valor) -> Decimal | None:
+    return Decimal(valor) if valor is not None else None
+
+
+def fiscal_a_dict(f: Fiscal) -> dict:
+    return {
+        "id": ID_FISCAL, "tope_total": f.tope_total,
+        "tope_porcentaje": str(f.tope_porcentaje) if f.tope_porcentaje is not None else None, "notas": f.notas,
+        "conceptos": [{"id": c.id, "nombre": c.nombre, "subcategorias": list(c.subcategorias),
+                       "porcentaje": str(c.porcentaje), "tope": c.tope, "sin_efectivo": c.sin_efectivo,
+                       "notas": c.notas, "fuera_del_tope": c.fuera_del_tope} for c in f.conceptos],
+        "perfiles": [{"id": p.id, "nombre": p.nombre, "notas": p.notas,
+                      "impuestos": [{"nombre": i.nombre, "tasa": str(i.tasa), "sobre": i.sobre,
+                                     "retenido": i.retenido} for i in p.impuestos]} for p in f.perfiles],
+    }
+
+
+def fiscal_desde_dict(d: dict) -> Fiscal:
+    return Fiscal(
+        conceptos=tuple(ConceptoDeducible(c["id"], c["nombre"], tuple(c.get("subcategorias", [])),
+                                          Decimal(c.get("porcentaje", "100")), c.get("tope"),
+                                          c.get("sin_efectivo", False), c.get("notas", ""),
+                                          c.get("fuera_del_tope", False))
+                        for c in d.get("conceptos", [])),
+        perfiles=tuple(PerfilImpuestos(p["id"], p["nombre"],
+                                       tuple(Impuesto(i["nombre"], Decimal(i["tasa"]), i.get("sobre", ""),
+                                                      i.get("retenido", False)) for i in p.get("impuestos", [])),
+                                       p.get("notas", "")) for p in d.get("perfiles", [])),
+        tope_total=d.get("tope_total"), tope_porcentaje=_decimal(d.get("tope_porcentaje")), notas=d.get("notas", ""),
+    )
+
+
 def prestamo_desde_dict(d: dict) -> Prestamo:
     return Prestamo(
         cuenta_id=d["cuenta_id"], clase=d.get("clase", "otro"), monto=d["monto"],
@@ -287,6 +324,7 @@ def instantanea(libro: Libro) -> Instantanea:
         "prestamo": {p.id: prestamo_a_dict(p) for p in libro.prestamos()},
         "recurrente": {r.id: recurrente_a_dict(r) for r in libro.recurrentes()},
         "meta": {m.id: meta_a_dict(m) for m in libro.metas()},
+        "fiscal": {ID_FISCAL: fiscal_a_dict(libro.fiscal)} if libro.fiscal != Fiscal() else {},
     }
 
 
@@ -309,6 +347,7 @@ def libro_desde_instantanea(
             prestamos=[prestamo_desde_dict(d) for d in datos.get("prestamo", {}).values()],
             recurrentes=[recurrente_desde_dict(d) for d in datos.get("recurrente", {}).values()],
             metas=[meta_desde_dict(d) for d in datos.get("meta", {}).values()],
+            fiscal=fiscal_desde_dict(datos["fiscal"][ID_FISCAL]) if datos.get("fiscal") else None,
             secuencia=secuencia,
             reloj=reloj,
         )
