@@ -60,7 +60,7 @@ def _explicacion() -> None:
                     "olvidas tu contraseña, con esa llave entras y pones otra. **No pierdes nada.**")
     with c.container(border=True):
         st.markdown("#### 💾 Tus respaldos\nTambién salen cifrados, y se abren en **cualquier PC** con tu "
-                    "contraseña o con tu llave. Si un día no te late, quitas la contraseña y todo vuelve a ser "
+                    "contraseña o con tu llave. Si un día no te apetece, quitas la contraseña y todo vuelve a ser "
                     "como hoy.")
     st.info("**La única regla:** guarda bien tu Kit de emergencia. Si pierdes tu contraseña **y** tu Kit, nadie "
             "puede abrir tus datos (ni TALLY, ni un técnico). Por eso TALLY no te deja terminar hasta comprobar "

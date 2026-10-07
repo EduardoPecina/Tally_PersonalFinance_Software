@@ -99,7 +99,7 @@ def _sin_kit() -> None:
         "1. Busca en tu correo «Kit de emergencia TALLY» y en tu carpeta de **Descargas**.\n"
         "2. Revisa las fotos y notas de tu celular.\n"
         "3. Prueba tus contraseñas de siempre (la pista te puede ayudar).\n\n"
-        "Si de plano no aparece, puedes **empezar de nuevo** y, si tienes una copia **sin contraseña** (la que "
+        "Si aun así no aparece, puedes **empezar de nuevo** y, si tienes una copia **sin contraseña** (la que "
         "TALLY te ofreció guardar en una USB), restaurarla. Tus datos cifrados **no se borran**: se guardan aparte "
         "con otro nombre, por si algún día encuentras tu contraseña o tu Kit.")
     escrito = st.text_input("Para confirmar, escribe EMPEZAR", key="acceso_empezar")
