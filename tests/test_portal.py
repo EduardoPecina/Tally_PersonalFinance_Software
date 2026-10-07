@@ -1148,3 +1148,31 @@ def test_importar_estado_de_tarjeta_que_cuadra_y_grupos_por_elegir(raiz, con_dat
     lib = sesion_en(raiz).libro
     importadas = [op for op in lib.operaciones() if op.fecha.month == 9 and op.fecha.year == 2026]
     assert sorted(op.tipo.value for op in importadas) == ["gasto"] * 5 + ["pago_tarjeta"] * 2
+
+
+def test_importar_agregar_a_mano_el_movimiento_que_falta(raiz, con_datos):
+    from test_bancos import estado_tdc
+
+    at = abrir(_pagina("cargar"))
+    at.selectbox(key="banco_cuenta").set_value(con_datos["tdc"]).run()
+    at.text_area(key="banco_texto_0").input(estado_tdc(sin=("21/09/2026",))).run()
+    sin_errores(at)
+    assert any(w.value.startswith("No cuadra con tu estado de cuenta") for w in at.warning)
+    clave = at.session_state["_banco_clave"]
+    at.selectbox(key=f"banco_grupo_{clave}_0").set_value("↔ Débito Ficticio").run()
+    next(t for t in at.text_input if t.label == "Descripción").input("TIENDA DESCONOCIDA FICTICIA")
+    next(n for n in at.number_input if n.label == "Importe").set_value(300.0)
+    next(d for d in at.date_input if d.label == "Fecha").set_value(date(2026, 9, 21))
+    otros = next(o for o in next(s for s in at.selectbox if s.label == "Subcategoría o cuenta").options
+                 if o.endswith("OTROS GASTOS"))
+    next(s for s in at.selectbox if s.label == "Subcategoría o cuenta").set_value(otros)
+    boton(at, "Agregar").click().run()
+    sin_errores(at)
+    assert any("ya cuadra" in s.value for s in at.success)
+    boton_ = next(b for b in at.button if b.key == "banco_importar")
+    assert boton_.label == "Importar 7 movimiento(s)"
+    boton_.click().run()
+    sin_errores(at)
+    lib = sesion_en(raiz).libro
+    agregado = next(op for op in lib.operaciones() if op.descripcion == "TIENDA DESCONOCIDA FICTICIA")
+    assert agregado.fecha == date(2026, 9, 21) and agregado.tipo.value == "gasto"

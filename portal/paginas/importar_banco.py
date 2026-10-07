@@ -54,8 +54,9 @@ def mostrar() -> None:
 
     st.subheader("3. Revisa y elige en qué se gastó")
     propuestas = bancos.revisar(lib, cuenta_id, lectura.movimientos)
-    elegidos = _tabla(lib, cuenta_id, propuestas, clave)
-    if elegidos is None:
+    elegidos = _tabla(lib, cuenta_id, propuestas, clave) or []
+    elegidos += _agregados(lib, cuenta_id, lectura, clave)
+    if not elegidos:
         return
     _cargar(lib, cuenta_id, elegidos)
 
@@ -136,8 +137,8 @@ def _lectura(fuente: bancos.Fuente, cuenta, clave: str) -> bancos.Lectura | None
     for aviso in lectura.avisos:
         st.warning(aviso, icon="🔍")
     if lectura.omitidos:
-        st.warning(f"{lectura.omitidos} renglón(es) tenían un importe que no entendí y no se tomaron en cuenta.",
-                   icon="⚠️")
+        st.warning(f"{lectura.omitidos} renglón(es) no los pude leer completos y no están en la tabla. Si falta "
+                   "alguno, agrégalo abajo en «➕ ¿Falta algún movimiento?».", icon="⚠️")
     return lectura
 
 
@@ -336,6 +337,53 @@ def _desconocidos(propuestas: list[bancos.Propuesta], opciones: dict[str, str], 
         if len(grupos) > 40:
             st.caption(f"…y {len(grupos) - 40} grupo(s) más: elígelos en la tabla.")
     return elegidos
+
+
+def _agregados(lib, cuenta_id: str, lectura: bancos.Lectura, clave: str) -> list[tuple[bancos.Movimiento, str]]:
+    """Movimientos que TALLY no encontró en el archivo y el usuario agrega a mano (se cargan junto con los demás)."""
+    llave = f"_banco_agregados_{clave}"
+    agregados: list[dict] = st.session_state.setdefault(llave, [])
+    opciones = _opciones(lib, cuenta_id)
+    no_cuadra = lectura.falta not in (None, 0)
+    with st.expander("➕ ¿Falta algún movimiento? Agrégalo aquí", expanded=no_cuadra or bool(agregados)):
+        if no_cuadra and lectura.sueltos:
+            st.markdown("Estos renglones de tu archivo tienen un importe pero **no los entendí como movimiento**. Si "
+                        "alguno es el que falta, agrégalo abajo:")
+            st.code("\n".join(f"Renglón {n}: {texto}" for n, texto in lectura.sueltos), language=None)
+        elif no_cuadra:
+            st.caption("Busca en tu estado de cuenta el movimiento que no aparece en la tabla y agrégalo abajo.")
+        with st.form(f"banco_agregar_{clave}", clear_on_submit=True, border=False):
+            a, b, c = st.columns([1, 2, 1])
+            fecha = a.date_input("Fecha", value=lectura.hasta, format="DD/MM/YYYY")
+            descripcion = b.text_input("Descripción", placeholder="Como viene en tu estado de cuenta")
+            importe = c.number_input("Importe", min_value=0.0, step=1.0, format="%.2f")
+            a, b = st.columns([1, 3])
+            sentido = a.radio("Movimiento", [SALE, ENTRA], horizontal=True)
+            destino = b.selectbox("Subcategoría o cuenta", list(opciones), index=None, placeholder="Escribe para buscar")
+            if st.form_submit_button("Agregar", icon=":material/add:"):
+                if not importe or not destino or not descripcion.strip():
+                    st.error("Escribe la descripción, el importe y elige la subcategoría o cuenta.")
+                else:
+                    agregados.append({"fecha": fecha, "descripcion": " ".join(descripcion.split()),
+                                      "centavos": round(importe * 100) * (1 if sentido == ENTRA else -1),
+                                      "destino": opciones[destino], "etiqueta": destino})
+                    st.rerun()
+        for n, a in enumerate(list(agregados)):
+            izquierda, derecha = st.columns([5, 1], vertical_alignment="center")
+            izquierda.markdown(f"➕ {a['fecha']:%d/%m/%Y} · **{formato.md(a['descripcion'])}** · "
+                               f"{'entró' if a['centavos'] > 0 else 'salió'} "
+                               f"{formato.dinero_md(a_pesos(abs(a['centavos'])))} · {a['etiqueta']}")
+            if derecha.button("Quitar", key=f"banco_quitar_{clave}_{n}"):
+                agregados.pop(n)
+                st.rerun()
+    if lectura.falta not in (None, 0) and agregados:
+        resta = lectura.falta - sum(a["centavos"] for a in agregados)
+        if resta == 0:
+            st.success("Con lo que agregaste, ya cuadra con tu estado de cuenta.", icon="✅")
+        else:
+            st.warning(f"Aún no cuadra: la diferencia ahora es de {formato.dinero_md(a_pesos(abs(resta)))}.", icon="⚠️")
+    return [(bancos.Movimiento(900_000 + n, a["fecha"], a["descripcion"], a["centavos"]), a["destino"])
+            for n, a in enumerate(agregados)]
 
 
 def _cargar(lib, cuenta_id: str, elegidos) -> None:
