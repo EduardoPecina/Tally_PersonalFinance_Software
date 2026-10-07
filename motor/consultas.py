@@ -38,6 +38,7 @@ ETIQUETA_TIPO_CUENTA = {
     TipoCuenta.POR_COBRAR: "Por cobrar",
     TipoCuenta.OTRA: "Otra",
     TipoCuenta.BIEN: "Bien (casa, auto, equipo)",
+    TipoCuenta.PRESTAMO: "Préstamo (personal, auto, hipoteca)",
 }
 
 ETIQUETA_CLASE = {

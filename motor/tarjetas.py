@@ -335,3 +335,65 @@ def _tarjeta(libro: Libro, tarjeta_id: str) -> Cuenta:
     if cuenta.tipo is not TipoCuenta.CREDITO:
         raise ErrorValidacion(f"«{cuenta.nombre}» no es una tarjeta de crédito.")
     return cuenta
+
+
+# ------------------------------------------------------------- pago mínimo
+
+PORCENTAJE_SALDO = Decimal("0.015")   # 1.5 % del saldo (regla del Banco de México para el pago mínimo)
+PORCENTAJE_LINEA = Decimal("0.0125")  # 1.25 % de la línea de crédito
+
+
+@dataclass(frozen=True, slots=True)
+class PagoMinimo:
+    """Una **estimación** del pago mínimo del último corte. Cada banco lo calcula a su manera; el oficial es el de tu
+    estado de cuenta. Se usa la regla del Banco de México: el mayor entre 1.5 % del saldo más los intereses y su
+    IVA, y 1.25 % de tu línea de crédito (sin pasar de lo que debes)."""
+
+    minimo: Decimal
+    para_no_generar_intereses: Decimal
+    intereses_estimados: Decimal          # intereses + IVA del periodo (0 si no hay tasa registrada)
+    con_tasa: bool                        # si se registró la tasa anual de la tarjeta
+    meses_solo_minimo: int | None         # cuánto tardarías pagando solo el mínimo (sin compras nuevas)
+    intereses_solo_minimo: Decimal | None
+
+
+def iva_de_tarjeta(libro: Libro, tarjeta: Cuenta) -> Decimal:
+    """El IVA que se suma a los intereses: 0 si la tasa ya lo incluye; si no, el de tu perfil."""
+    if tarjeta.tasa_incluye_iva:
+        return Decimal(0)
+    return libro.perfil.iva if libro.perfil else Decimal(16)
+
+
+def pago_minimo_estimado(libro: Libro, tarjeta_id: str, hoy: date | None = None) -> PagoMinimo | None:
+    """El pago mínimo estimado del último corte (``None`` si no hay corte o no debes nada de él)."""
+    tarjeta = _tarjeta(libro, tarjeta_id)
+    corte = ciclo_por_pagar(libro, tarjeta_id, hoy)
+    if corte is None or not corte.deuda_al_corte:
+        return None
+    exigible = corte.pago_para_no_generar_intereses
+    mensual = (tarjeta.tasa_anual or Decimal(0)) / 100 / 12
+    iva = iva_de_tarjeta(libro, tarjeta) / 100
+    no_pagado = max(Decimal(0), -corte.saldo_inicial - corte.abonos)     # lo que arrastras del corte anterior
+    intereses = (no_pagado * mensual * (1 + iva)).quantize(Decimal("0.01"))
+    linea = a_pesos(tarjeta.limite_credito) if tarjeta.limite_credito else Decimal(0)
+    minimo = max(exigible * PORCENTAJE_SALDO + intereses, linea * PORCENTAJE_LINEA)
+    minimo = min(minimo, exigible + intereses).quantize(Decimal("0.01"))
+    meses = total = None
+    if tarjeta.tasa_anual:
+        meses, total = _solo_minimo(exigible, mensual * (1 + iva), linea)
+    return PagoMinimo(minimo, exigible, intereses, bool(tarjeta.tasa_anual), meses, total)
+
+
+def _solo_minimo(saldo: Decimal, tasa_mes: Decimal, linea: Decimal) -> tuple[int | None, Decimal]:
+    """Meses e intereses pagando cada mes solo el mínimo, sin compras nuevas (``None`` si no se termina)."""
+    total = Decimal(0)
+    for mes in range(1, 601):
+        interes = (saldo * tasa_mes).quantize(Decimal("0.01"))
+        pago = min(max(saldo * PORCENTAJE_SALDO + interes, linea * PORCENTAJE_LINEA), saldo + interes)
+        if pago <= interes:
+            return None, total
+        total += interes
+        saldo = saldo + interes - pago
+        if saldo <= Decimal("0.01"):
+            return mes, total
+    return None, total

@@ -5,6 +5,8 @@ from __future__ import annotations
 import os
 import sys
 
+from decimal import Decimal
+
 import streamlit as st
 
 from motor import perfil, reportes, rutas
@@ -24,6 +26,20 @@ def _perfil() -> None:
         nombre = st.text_input("Nombre", value=actual.nombre, max_chars=60)
         if st.form_submit_button("Guardar", type="primary"):
             if ejecutar(lambda lib: perfil.ajustar(lib, nombre=nombre), exito=f"¡Listo, {nombre.strip()}!"):
+                st.rerun()
+
+
+def _impuestos() -> None:
+    actual = libro().perfil
+    st.subheader("IVA de tu país")
+    st.caption("Los bancos cobran IVA sobre los intereses de tarjetas y préstamos. En México es 16 %; en España, "
+               "21 %; en Colombia, 19 %; en Chile, 19 %; en Perú, 18 %; en Argentina, 21 %. TALLY lo usa para "
+               "estimar intereses, pagos mínimos y tablas de préstamos.")
+    with st.form("configuracion_iva", border=False):
+        iva = st.number_input("IVA / VAT (%)", min_value=0.0, max_value=50.0, value=float(actual.iva), step=1.0,
+                              format="%.2f")
+        if st.form_submit_button("Guardar", type="primary"):
+            if ejecutar(lambda lib: perfil.ajustar(lib, iva=Decimal(str(iva))), exito="IVA guardado"):
                 st.rerun()
 
 
@@ -118,6 +134,8 @@ def mostrar() -> None:
         ["Tu perfil", "Apariencia", "Respaldos", "Resumen", "Acerca de TALLY"])
     with tu:
         _perfil()
+        st.divider()
+        _impuestos()
     with apariencia:
         _apariencia()
     with respaldos:

@@ -89,7 +89,8 @@ el acceso directo **Mis datos de TALLY**, dentro de `Escritorio\TALLY`.
 | Registrar | Anotar un gasto (también a meses sin intereses, repartido o como cargo temporal que te van a devolver), ingreso, transferencia, pago de tarjeta o reembolso |
 | Historial | Buscar, filtrar, editar, repetir o eliminar movimientos |
 | Cuentas | Saldo de cada cuenta, estado de cuenta con saldo corrido, estado de cada tarjeta (línea, disponible, pago) y, en las de inversión, tus títulos (acciones, ETFs, cripto) y CETES o pagarés con su valor aproximado, y «Cuadrar con tu estado de cuenta» para registrar la ganancia con el valor oficial |
-| Presupuestos | Tope mensual por categoría y cuánto llevas |
+| Deudas | Tarjetas y préstamos: cuánto de tu ingreso se va en deudas, pago mínimo estimado y lo que cuesta pagar solo el mínimo; préstamos con pagos separados en capital, intereses, IVA y cargos, tabla de amortización y simulador para salir antes |
+| Presupuestos | Tus ingresos (principal y secundarios), cuánto puedes gastar, presupuestos sugeridos, proyección del mes y el tope mensual por categoría |
 | Tablas dinámicas | Pivots por categoría, mes, cuenta… exportables a Excel |
 | Gráficas | Dona, barras, tendencias, ingresos vs. gastos y patrimonio; clic en una rebanada o barra para ver de qué movimientos se compone |
 | Contabilidad Técnica | Estado de Situación Financiera, Estado de Resultados, Flujo de Efectivo y Balanza de Comprobación, comparativos por periodo, armados solos con tus movimientos y explicados sin tecnicismos; clic en un renglón para ver sus movimientos. **Bienes** (casa, auto, laptop) con depreciación, mejoras, avalúos y venta |

@@ -75,6 +75,7 @@ ETIQUETA_ENTIDAD = {
     "valor": "Compra o venta de títulos",
     "plazo": "Inversión a plazo",
     "bien": "Bien",
+    "prestamo": "Préstamo",
     "respaldo": "Respaldo",
 }
 ETIQUETA_ACCION = {CREAR: "Creó", EDITAR: "Editó", BORRAR: "Borró", RESTAURAR: "Restauró"}

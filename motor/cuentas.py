@@ -108,6 +108,9 @@ def editar(
     dias_para_pagar: int | None | object = _SIN_CAMBIO,
     dias_habiles: bool | None = None,
     recorrer_inhabil: bool | None = None,
+    tasa_anual: object = _SIN_CAMBIO,
+    cat: object = _SIN_CAMBIO,
+    tasa_incluye_iva: bool | None = None,
 ) -> Cuenta:
     """Edita datos descriptivos. El tipo de cuenta no se cambia aquí."""
     cuenta = libro.cuenta(cuenta_id)
@@ -136,6 +139,14 @@ def editar(
         if cuenta.tipo is not TipoCuenta.CREDITO and valor is not None:
             raise ErrorValidacion("Límite, día de corte y día de pago solo aplican a tarjetas de crédito.")
         cambios[campo] = convertir(valor)
+    for campo, valor in (("tasa_anual", tasa_anual), ("cat", cat)):
+        if valor is _SIN_CAMBIO:
+            continue
+        if cuenta.tipo is not TipoCuenta.CREDITO and valor is not None:
+            raise ErrorValidacion("La tasa y el CAT de una tarjeta solo aplican a tarjetas de crédito.")
+        cambios[campo] = _porcentaje(valor, "La tasa anual" if campo == "tasa_anual" else "El CAT")
+    if tasa_incluye_iva is not None:
+        cambios["tasa_incluye_iva"] = bool(tasa_incluye_iva)
     for campo, valor in (("dias_habiles", dias_habiles), ("recorrer_inhabil", recorrer_inhabil)):
         if valor is not None:
             if cuenta.tipo is not TipoCuenta.CREDITO:
@@ -346,3 +357,16 @@ def _operacion_saldo_inicial(libro: Libro, cuenta_id: str) -> Operacion | None:
         ),
         None,
     )
+
+
+def _porcentaje(valor, que: str) -> Decimal | None:
+    """Un % anual opcional (vacío o 0 = no registrado)."""
+    if valor in (None, ""):
+        return None
+    try:
+        numero = Decimal(str(valor))
+    except (ArithmeticError, ValueError):
+        raise ErrorValidacion(f"{que} debe ser un número (45.5 para 45.5 %).") from None
+    if not numero.is_finite() or not 0 <= numero <= 1000:
+        raise ErrorValidacion(f"{que} va de 0 a 1,000 %.")
+    return numero or None
