@@ -5,7 +5,7 @@ from __future__ import annotations
 import pandas as pd
 import streamlit as st
 
-from motor import categorias, consultas, cuentas, movimientos, tarjetas
+from motor import bienes, categorias, consultas, cuentas, movimientos, tarjetas
 from motor.consultas import ETIQUETA_TIPO_CUENTA
 from motor.modelo import TIPOS_DISPONIBLES_POR_DEFECTO, Cuenta, TipoCuenta
 from portal.componentes import exportar, formato
@@ -13,7 +13,7 @@ from portal.componentes import tarjeta as estado_tarjeta
 from portal.componentes.sesion import aplicar, avisar, ejecutar, libro
 from portal.paginas import estado_cuenta
 
-TIPOS = list(TipoCuenta)
+TIPOS = [t for t in TipoCuenta if t is not TipoCuenta.BIEN]   # los bienes se agregan en Contabilidad Técnica
 SIN_CAMBIOS = "sin cambios"
 
 
@@ -128,6 +128,12 @@ def _tarjeta_de_cuenta(cuenta: Cuenta) -> None:
         elif quitar.button("Restaurar", icon=":material/restore:", key=f"restaurar_{cuenta.id}", width="stretch"):
             if ejecutar(lambda lib: cuentas.reactivar(lib, cuenta.id), exito=f"«{cuenta.nombre}» restaurada"):
                 st.rerun()
+        if cuenta.tipo is TipoCuenta.BIEN and lib.bien(cuenta.id) is not None:
+            valor = bienes.valuar(lib, cuenta.id, lib.hoy())
+            derecha.metric("Valor hoy", formato.dinero(valor.valor),
+                           help=f"Costo {formato.dinero(valor.costo)} − depreciación "
+                                f"{formato.dinero(valor.depreciacion)} ± avalúos. Ajústalo en Contabilidad Técnica.")
+            return
         if cuenta.tipo is not TipoCuenta.CREDITO:
             derecha.metric("Saldo", formato.dinero(saldo))
             return

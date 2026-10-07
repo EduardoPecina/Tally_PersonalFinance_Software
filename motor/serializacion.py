@@ -13,11 +13,14 @@ from decimal import Decimal
 from motor.errores import ErrorDatos
 from motor.libro import Libro
 from motor.modelo import (
+    Avaluo,
+    Bien,
     Categoria,
     ClaseCategoria,
     Cuenta,
     Grupo,
     InversionPlazo,
+    MetodoDepreciacion,
     Operacion,
     OperacionValor,
     Partida,
@@ -29,7 +32,7 @@ from motor.modelo import (
 )
 
 # Tipos de entidad, en el orden en que se cargan.
-ENTIDADES = ("perfil", "grupo", "rubro", "categoria", "cuenta", "operacion", "valor", "plazo")
+ENTIDADES = ("perfil", "grupo", "rubro", "categoria", "cuenta", "operacion", "valor", "plazo", "bien")
 ID_PERFIL = "perfil"
 
 
@@ -160,6 +163,24 @@ def valor_desde_dict(d: dict) -> OperacionValor:
     )
 
 
+def bien_a_dict(b: Bien) -> dict:
+    return {"id": b.cuenta_id, "cuenta_id": b.cuenta_id, "clase": b.clase, "metodo": b.metodo.value,
+            "vida_anios": str(b.vida_anios), "tasa_anual": str(b.tasa_anual), "rescate": str(b.rescate),
+            "avaluos": [{"fecha": _iso(a.fecha), "valor": a.valor} for a in b.avaluos],
+            "fecha_baja": _iso(b.fecha_baja) if b.fecha_baja else None, "operaciones_baja": list(b.operaciones_baja)}
+
+
+def bien_desde_dict(d: dict) -> Bien:
+    return Bien(
+        cuenta_id=d["cuenta_id"], clase=d.get("clase", "otro"), metodo=MetodoDepreciacion(d["metodo"]),
+        vida_anios=Decimal(d.get("vida_anios", "0")), tasa_anual=Decimal(d.get("tasa_anual", "0")),
+        rescate=Decimal(d.get("rescate", "0")),
+        avaluos=tuple(Avaluo(_fecha(a["fecha"]), a["valor"]) for a in d.get("avaluos", [])),
+        fecha_baja=_fecha(d["fecha_baja"]) if d.get("fecha_baja") else None,
+        operaciones_baja=tuple(d.get("operaciones_baja", [])),
+    )
+
+
 def plazo_desde_dict(d: dict) -> InversionPlazo:
     return InversionPlazo(
         id=d["id"], cuenta_id=d["cuenta_id"], nombre=d["nombre"], fecha_inicio=_fecha(d["fecha_inicio"]),
@@ -197,6 +218,7 @@ def instantanea(libro: Libro) -> Instantanea:
         "operacion": {op.id: operacion_a_dict(op) for op in libro.operaciones()},
         "valor": {v.id: valor_a_dict(v) for v in libro.valores()},
         "plazo": {p.id: plazo_a_dict(p) for p in libro.plazos()},
+        "bien": {b.id: bien_a_dict(b) for b in libro.bienes()},
     }
 
 
@@ -215,6 +237,7 @@ def libro_desde_instantanea(
             operaciones=[operacion_desde_dict(d) for d in datos.get("operacion", {}).values()],
             valores=[valor_desde_dict(d) for d in datos.get("valor", {}).values()],
             plazos=[plazo_desde_dict(d) for d in datos.get("plazo", {}).values()],
+            bienes=[bien_desde_dict(d) for d in datos.get("bien", {}).values()],
             secuencia=secuencia,
             reloj=reloj,
         )
@@ -248,6 +271,9 @@ def verificar_integridad(libro: Libro) -> list[str]:
     for registro in [*libro.valores(), *libro.plazos()]:
         if registro.cuenta_id not in cuentas:
             problemas.append("una compra de títulos o inversión a plazo usa una cuenta inexistente")
+    for bien in libro.bienes():
+        if libro.cuenta(bien.cuenta_id).tipo is not TipoCuenta.BIEN:
+            problemas.append(f"«{libro.cuenta(bien.cuenta_id).nombre}» tiene datos de bien pero no es un bien")
     for op in libro.operaciones():
         if sum(p.importe for p in op.partidas) != 0:
             problemas.append(f"el movimiento del {op.fecha} no suma cero")

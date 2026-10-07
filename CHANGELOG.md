@@ -2,7 +2,40 @@
 
 Todos los cambios relevantes de TALLY se documentan aquí.
 
-## [0.9.0] — Sin publicar
+## [0.10.0] — Sin publicar
+
+- **Contabilidad Técnica: clic en un renglón para ver su detalle.**
+  - En los 4 reportes, al dar clic en una cuenta, categoría, sección o total, debajo aparecen los movimientos que
+    forman esa cifra: fecha, descripción, tipo, contrapartida e importe. En la Balanza, separados en Debe y Haber.
+  - Los estados se ven como tablas con títulos y totales resaltados. El Estado de Resultados se puede ver por
+    subcategoría.
+- **Bienes** (Fase 2), en la nueva pestaña **Bienes** de Contabilidad Técnica: tu casa, auto, laptop o muebles.
+  - **Agregar un bien**: «Ya lo tenía» (su valor de hoy entra a tu patrimonio) o «Lo compré» (con qué cuenta lo
+    pagaste). Comprarlo es una transferencia, **no un gasto**: cambias dinero por una cosa.
+  - **Depreciación** con métodos para personas, no tasas fiscales:
+    - **Línea recta**, con vida útil y valor de rescate (laptop 4 años, celular 3, muebles 10…).
+    - **Decreciente**: un % al año sobre lo que vale, más al principio (auto: 15 %).
+    - **No se deprecia**: casa y terreno.
+    - Los valores sugeridos se pueden cambiar y todo se recalcula.
+  - **Mejoras** (remodelación, ampliación) que suben el valor del bien, también sin ser gasto.
+  - **Avalúos**: el bien vale lo que diga el avalúo y la diferencia es **plusvalía** (o minusvalía). Desde ahí
+    se deprecia lo que le queda de vida.
+  - **Venta**: con el precio y la cuenta a la que llegó el dinero. La diferencia contra su valor es ganancia o
+    pérdida, y la cuenta del bien queda en ceros. Se puede deshacer.
+  - Gráfica del valor del bien en el tiempo.
+  - La depreciación y los avalúos **se calculan**: no llenan tu Historial ni cuentan como gasto en tu Resumen.
+  - En Contabilidad Técnica:
+    - Situación Financiera: el costo, la depreciación acumulada y la plusvalía de cada bien.
+    - Resultados: un bloque **Cambios de valor** con depreciación, plusvalía, ganancia o pérdida al vender y
+      rendimientos de inversiones.
+    - Balanza: asientos calculados.
+    - Todo sigue cuadrando.
+  - El patrimonio del Resumen también considera la depreciación y la plusvalía.
+- **Convertir un gasto en un bien** (Historial → elige el gasto → «Convertir en un bien»): un gasto que en realidad
+  fue la compra de algo con valor, o una mejora a un bien que ya tienes, se vuelve transferencia al bien.
+- Datos versión 4 y respaldos formato 4: una versión anterior de TALLY ya no los abre, para no perder los bienes.
+
+## [0.9.0]
 
 - **Nueva página 📒 Contabilidad Técnica** (en Análisis): tus estados financieros, armados solos con lo que ya
   registras. No se captura ni se guarda nada nuevo: son vistas de los mismos movimientos (que ya estaban en

@@ -737,20 +737,34 @@ def test_inversiones_sin_cuentas_de_inversion(con_datos):
     assert any("Aún no tienes cuentas de inversión" in i.value for i in at.info)
 
 
+def seleccionar(at: AppTest, clave: str, fila: int) -> AppTest:
+    """Simula el clic en un renglón de una tabla."""
+    at.session_state[clave] = {"selection": {"rows": [fila], "columns": [], "cells": []}}
+    return at.run()
+
+
 def test_contabilidad_tecnica(raiz, con_datos):
     at = abrir(_pagina("contabilidad"))
     sin_errores(at)
     assert [t.label for t in at.tabs] == ["Situación financiera", "Resultados", "Flujo de efectivo",
-                                          "Balanza de comprobación"]
+                                          "Balanza de comprobación", "Bienes"]
     assert any("Activo = Pasivo + Patrimonio" in s.value for s in at.success)
     assert any("Sumas iguales" in s.value for s in at.success)
     assert any(m.label == "Lo que vales (Patrimonio)" for m in at.metric)
-    balanza = at.dataframe[0].value
+    situacion = at.dataframe[0].value
+    fila = list(situacion["Concepto"]).index("\u2003\u2003Débito Ficticio")
+    seleccionar(at, "conta_sel_situacion", fila)
+    sin_errores(at)
+    assert any(m.value == "#### Detalle de Débito Ficticio" for m in at.markdown)
+    balanza = next(d.value for d in at.dataframe if "Cuenta" in d.value.columns and "Debe" in d.value.columns)
     assert balanza["Cuenta"].iloc[-1] == "SUMAS IGUALES"
     assert balanza["Debe"].iloc[-1] == balanza["Haber"].iloc[-1]
-    at.toggle(key="conta_subcuentas").set_value(True).run()
+    seleccionar(at, "conta_sel_balanza", list(balanza["Cuenta"]).index("Débito Ficticio"))
     sin_errores(at)
-    assert any("›" in c for c in at.dataframe[0].value["Cuenta"])
+    assert any(set(d.value.columns) >= {"Debe", "Haber", "Contrapartida"} for d in at.dataframe)
+    at.toggle(key="conta_subcuentas").set_value(True).run()
+    at.toggle(key="conta_resultados_sub").set_value(True).run()
+    sin_errores(at)
     for periodo in ("anio_pasado", "mes", "mes_pasado", "12m"):
         at.selectbox(key="conta_periodo").set_value(periodo).run()
         sin_errores(at)
@@ -758,3 +772,43 @@ def test_contabilidad_tecnica(raiz, con_datos):
     sin_errores(at)
     at.selectbox(key="conta_periodo").set_value("rango").run()
     sin_errores(at)
+
+
+def test_bienes_desde_contabilidad_tecnica(raiz, con_datos):
+    at = abrir(_pagina("contabilidad"))
+    at.selectbox(key="bien_nuevo_clase").set_value("auto").run()
+    formulario = [t for t in at.text_input if t.label == "Nombre"][0]
+    formulario.set_value("Auto Ficticio")
+    [n for n in at.number_input if n.label == "Lo que vale hoy"][0].set_value(200_000)
+    boton(at, "Agregar bien").click().run()
+    sin_errores(at)
+    lib = sesion_en(raiz).libro
+    (bien,) = lib.bienes()
+    assert lib.cuenta(bien.cuenta_id).nombre == "Auto Ficticio" and bien.tasa_anual == 15
+    assert any(m.label == "Tus bienes valen hoy" for m in at.metric)
+    [n for n in at.number_input if n.label == "Valor según el avalúo"][0].set_value(210_000)
+    boton(at, "Guardar avalúo").click().run()
+    sin_errores(at)
+    assert sesion_en(raiz).libro.bien(bien.cuenta_id).avaluos[0].valor == 21_000_000
+    assert any(s.value.startswith("Cuadra") for s in at.success)
+
+
+def test_convertir_un_gasto_en_un_bien_desde_el_historial(raiz, con_datos):
+    from motor import movimientos as mov
+
+    s = sesion_en(raiz)
+    with s.cambio() as lib:
+        gasto = mov.registrar_gasto(lib, lib.hoy(), con_datos["debito"], con_datos["cat"]["ALIMENTOS"], 999,
+                                    "Laptop ficticia")
+    at = abrir(_pagina("historial"))
+    tabla = at.dataframe[0].value
+    seleccionar(at, "historial_tabla", list(tabla["Descripción"]).index("Laptop ficticia"))
+    sin_errores(at)
+    assert "Convertir en un bien" in [t.label for t in at.tabs]
+    fila = list(tabla["Descripción"]).index("Laptop ficticia")
+    at.selectbox(key=f"bien_clase_{gasto.id}").set_value("computadora")
+    next(b for b in at.button if b.key == f"convertir_bien_{gasto.id}").click()
+    seleccionar(at, "historial_tabla", fila)                  # la tabla conserva el renglón elegido
+    sin_errores(at)
+    lib = sesion_en(raiz).libro
+    assert lib.operacion(gasto.id).tipo.value == "transferencia" and len(lib.bienes()) == 1

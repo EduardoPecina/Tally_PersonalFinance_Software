@@ -37,6 +37,7 @@ ETIQUETA_TIPO_CUENTA = {
     TipoCuenta.INVERSION: "Inversión",
     TipoCuenta.POR_COBRAR: "Por cobrar",
     TipoCuenta.OTRA: "Otra",
+    TipoCuenta.BIEN: "Bien (casa, auto, equipo)",
 }
 
 ETIQUETA_CLASE = {
