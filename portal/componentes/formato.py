@@ -41,6 +41,14 @@ def fecha(valor: date) -> str:
     return f"{valor.day:02d}/{valor.month:02d}/{valor.year}"
 
 
+DIAS_SEMANA = ("lun", "mar", "mié", "jue", "vie", "sáb", "dom")
+
+
+def fecha_con_dia(valor: date) -> str:
+    """``vie 13/03/2026``."""
+    return f"{DIAS_SEMANA[valor.weekday()]} {fecha(valor)}"
+
+
 def fecha_larga(valor: date) -> str:
     return f"{valor.day} de {MESES[valor.month - 1]} de {valor.year}"
 

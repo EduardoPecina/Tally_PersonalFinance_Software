@@ -212,7 +212,7 @@ def recurrente_a_dict(r: Recurrente) -> dict:
     return {"id": r.id, "nombre": r.nombre, "tipo": r.tipo.value, "monto": r.monto, "cuenta_id": r.cuenta_id,
             "frecuencia": r.frecuencia, "inicio": _iso(r.inicio), "categoria_id": r.categoria_id,
             "destino_id": r.destino_id, "fin": _iso(r.fin), "suscripcion": r.suscripcion, "activa": r.activa,
-            "notas": r.notas}
+            "notas": r.notas, "monto_2": r.monto_2, "fin_de_semana": r.fin_de_semana}
 
 
 def recurrente_desde_dict(d: dict) -> Recurrente:
@@ -220,7 +220,8 @@ def recurrente_desde_dict(d: dict) -> Recurrente:
         id=d["id"], nombre=d["nombre"], tipo=TipoOperacion(d["tipo"]), monto=d["monto"], cuenta_id=d["cuenta_id"],
         frecuencia=d["frecuencia"], inicio=_fecha(d["inicio"]), categoria_id=d.get("categoria_id"),
         destino_id=d.get("destino_id"), fin=_fecha(d.get("fin")), suscripcion=d.get("suscripcion", False),
-        activa=d.get("activa", True), notas=d.get("notas", ""),
+        activa=d.get("activa", True), notas=d.get("notas", ""), monto_2=d.get("monto_2"),
+        fin_de_semana=d.get("fin_de_semana", ""),
     )
 
 

@@ -844,15 +844,43 @@ def test_deudas_tarjetas_y_prestamos(raiz, con_datos):
     assert prestamos.estado(sesion_en(raiz).libro, p.cuenta_id, hoy).pagado > 0
 
 
-def test_presupuestos_ingresos_sugeridos_y_proyeccion(raiz, con_datos):
+def test_presupuestos_sugeridos_y_proyeccion(raiz, con_datos):
     at = abrir(_pagina("presupuestos"))
     sin_errores(at)
-    assert [t.label for t in at.tabs][:3] == ["Tus ingresos", "¿Cuánto puedes gastar?", "Proyección del mes"]
-    at.selectbox[0].set_value(con_datos["cat"]["NOMINA"])
+    assert [t.label for t in at.tabs][:2] == ["¿Cuánto puedes gastar?", "Proyección del mes"]
+    assert any(m.label == "Gasto proyectado al cierre" for m in at.metric)
+
+
+def test_ingresos_quincenas_distintas_y_registrar_la_nomina(raiz, con_datos):
+    at = abrir(_pagina("ingresos"))
+    sin_errores(at)
+    assert [t.label for t in at.tabs][:2] == ["📆 ¿Cuánto te tiene que durar?", "💼 Tu ingreso principal"]
+    next(s for s in at.selectbox if s.label == "Subcategoría").set_value(con_datos["cat"]["NOMINA"])
+    next(n for n in at.number_input if n.label == "1.ª quincena (la del 15)").set_value(5000.73)
+    next(n for n in at.number_input if n.label == "2.ª quincena (la de fin de mes)").set_value(5000.56)
     boton(at, "Guardar").click().run()
     sin_errores(at)
-    assert sesion_en(raiz).libro.categoria(con_datos["cat"]["NOMINA"]).principal
-    assert any(m.label == "Gasto proyectado al cierre" for m in at.metric)
+    lib = sesion_en(raiz).libro
+    (r,) = lib.recurrentes()
+    assert (r.monto, r.monto_2, r.frecuencia, r.fin_de_semana) == (500073, 500056, "quincenal", "antes")
+    assert lib.categoria(con_datos["cat"]["NOMINA"]).principal
+    assert any(m.label == "Te pagan" for m in at.metric)
+    assert any(m.label == "Ingreso esperado al mes" for m in at.metric)
+
+    at.switch_page(_pagina("registrar")).run()
+    at.segmented_control(key="registrar_tipo").set_value("ingreso").run()
+    sin_errores(at)
+    assert next(s for s in at.selectbox if s.label == "¿Es uno de tus ingresos fijos?").value == r.id
+    at.date_input(key="registrar_fecha_fijo").set_value(date(2026, 3, 31)).run()
+    assert next(n for n in at.number_input if n.label == "Importe").value == 5000.56
+    assert any("2.ª quincena" in c.value for c in at.caption)
+    at.date_input(key="registrar_fecha_fijo").set_value(date(2026, 3, 13)).run()
+    assert next(n for n in at.number_input if n.label == "Importe").value == 5000.73
+    next(n for n in at.number_input if n.label == "Importe").set_value(5000.74)     # este pago fue distinto
+    boton(at, "Guardar").click().run()
+    sin_errores(at)
+    (op,) = sesion_en(raiz).libro.operaciones(date(2026, 3, 13), date(2026, 3, 13))
+    assert op.descripcion == "NOMINA" and sum(p.importe for p in op.partidas if p.cuenta_id) == 500074
 
 
 def test_iva_en_configuracion(raiz, con_datos):

@@ -25,7 +25,7 @@ from decimal import Decimal
 from motor import prestamos, tarjetas
 from motor.dinero import a_pesos
 from motor.libro import Libro
-from motor.modelo import ClaseCategoria, TipoCuenta
+from motor.modelo import ClaseCategoria, TipoCuenta, TipoOperacion
 
 MESES_PROMEDIO = 3
 REDONDEO = 50                  # los presupuestos sugeridos se redondean a múltiplos de $50
@@ -43,11 +43,13 @@ def meses_completos(hoy: date, n: int = MESES_PROMEDIO) -> list[tuple[date, date
 
 
 def _meses_con_datos(libro: Libro, meses: list[tuple[date, date]]) -> list[tuple[date, date]]:
-    """Solo los meses desde que empezaste a registrar (para no promediar con meses vacíos)."""
-    primera = min((op.fecha for op in libro.operaciones()), default=None)
+    """Solo los meses que registraste completos (para no promediar con meses vacíos o a medias): desde el 1.º de
+    mes en adelante de tu primer movimiento. Los saldos iniciales no cuentan: suelen llevar una fecha anterior."""
+    primera = min((op.fecha for op in libro.operaciones() if op.tipo is not TipoOperacion.SALDO_INICIAL),
+                  default=None)
     if primera is None:
         return []
-    return [m for m in meses if m[1] >= primera.replace(day=1)] or []
+    return [m for m in meses if m[0] >= primera]
 
 
 # ------------------------------------------------------------------ ingresos
@@ -79,7 +81,7 @@ def ingresos(libro: Libro, hoy: date | None = None) -> list[Ingreso]:
 @dataclass(frozen=True, slots=True)
 class IngresoEsperado:
     monto: Decimal
-    fuente: str                # "manual", "promedio" o "sin_datos"
+    fuente: str                # "manual", "promedio", "configurado" (tus ingresos que se repiten) o "sin_datos"
     meses: int                 # cuántos meses se promediaron
 
 
@@ -89,7 +91,15 @@ def ingreso_esperado(libro: Libro, hoy: date | None = None) -> IngresoEsperado:
         return IngresoEsperado(a_pesos(libro.perfil.ingreso_esperado), "manual", 0)
     meses = len(_meses_con_datos(libro, meses_completos(hoy)))
     total = sum((i.promedio for i in ingresos(libro, hoy)), CERO)
-    return IngresoEsperado(total, "promedio" if total else "sin_datos", meses)
+    if total:
+        return IngresoEsperado(total, "promedio", meses)
+    # Sin meses completos todavía: lo que configuraste en tus ingresos que se repiten.
+    from motor import recurrentes
+
+    elegidas = {c.id for c in libro.categorias() if c.principal or c.secundario}
+    configurado = sum((recurrentes.al_mes(r) for r in libro.recurrentes()
+                       if r.activa and r.tipo is TipoOperacion.INGRESO and r.categoria_id in elegidas), CERO)
+    return IngresoEsperado(configurado, "configurado" if configurado else "sin_datos", meses)
 
 
 # ---------------------------------------------------------- capacidad de pago

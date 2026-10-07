@@ -5,9 +5,10 @@ from __future__ import annotations
 import pandas as pd
 import streamlit as st
 
-from motor import categorias, consultas, cuentas, movimientos, tarjetas, temporales
+from motor import categorias, consultas, cuentas, ingresos, movimientos, recurrentes, tarjetas, temporales
 from motor.consultas import ETIQUETA_TIPO_OPERACION
-from motor.modelo import TipoCuenta, TipoOperacion
+from motor.dinero import a_pesos
+from motor.modelo import Recurrente, TipoCuenta, TipoOperacion
 from motor.transferencias import registrar_pago_tarjeta, registrar_transferencia
 from portal.componentes import formato
 from portal.componentes.sesion import ejecutar, libro
@@ -84,8 +85,12 @@ def formulario(clave: str = "registrar", cuenta_fija: str | None = None) -> bool
         etiquetas = {c.id: categorias.etiqueta(lib, c.id) for c in categorias.para_tipo(lib, tipo)}
         repartir = st.toggle("Repartir entre varias subcategorías", key=f"{clave}_repartir",
                              help="Por ejemplo, una compra del súper que fue despensa y artículos de limpieza.")
+    fijo, fecha_fija = None, None
+    if tipo is TipoOperacion.INGRESO and not repartir:
+        fijo, fecha_fija = _ingreso_fijo(clave, cuenta_fija)
+    sufijo = f"_{fijo.id}_{fecha_fija.isoformat()}" if fijo else ""
 
-    with st.form(f"{clave}_{tipo.value}", clear_on_submit=True):
+    with st.form(f"{clave}_{tipo.value}{sufijo}", clear_on_submit=True):
         izquierda, derecha = st.columns(2)
         destino = categoria_id = None
         reparto: list[tuple[str, float]] = []
@@ -113,20 +118,24 @@ def formulario(clave: str = "registrar", cuenta_fija: str | None = None) -> bool
                     reparto = _reparto(f"{clave}_{tipo.value}", etiquetas)
             else:
                 cat_ids = list(etiquetas)
-                categoria_id = izquierda.selectbox("Subcategoría", cat_ids, format_func=etiquetas.get, index=None,
-                                                   placeholder="Escribe para buscar: gym, súper, uber…")
+                categoria_id = izquierda.selectbox(
+                    "Subcategoría", cat_ids, format_func=etiquetas.get,
+                    index=cat_ids.index(fijo.categoria_id) if fijo and fijo.categoria_id in cat_ids else None,
+                    placeholder="Escribe para buscar: gym, súper, uber…")
+            cuenta_sugerida = fijo.cuenta_id if fijo and not cuenta_fija else recordadas.get("cuenta")
             origen = derecha.selectbox("Cuenta" if tipo is not TipoOperacion.GASTO else "Pagado con", ids,
-                                       format_func=nombre.get, index=_indice(ids, recordadas.get("cuenta")))
+                                       format_func=nombre.get, index=_indice(ids, cuenta_sugerida))
         monto = None
         if not repartir:
-            monto = izquierda.number_input("Importe", min_value=0.0, value=None, step=1.0, format="%.2f",
+            sugerido = float(a_pesos(recurrentes.monto_en(fijo, fecha_fija))) if fijo else None
+            monto = izquierda.number_input("Importe", min_value=0.0, value=sugerido, step=1.0, format="%.2f",
                                            placeholder="0.00")
-        fecha = derecha.date_input("Fecha", value=lib.hoy(), format="DD/MM/YYYY")
+        fecha = fecha_fija or derecha.date_input("Fecha", value=lib.hoy(), format="DD/MM/YYYY")
         if tipo is TipoOperacion.GASTO and tdc_ids and not temporal:
             msi = derecha.number_input("Meses sin intereses", min_value=0, max_value=60, value=0, step=1,
                                        help="Solo para compras con tarjeta de crédito. 0 = de contado. El gasto "
                                             "cuenta completo hoy; tu tarjeta solo te pedirá una mensualidad por corte.")
-        descripcion = st.text_input("Descripción", max_chars=120, placeholder="Ej. Verificación de Amazon"
+        descripcion = st.text_input("Descripción", value=fijo.nombre if fijo else "", max_chars=120, placeholder="Ej. Verificación de Amazon"
                                     if temporal else "Ej. Pizza, Uber, Nómina…")
         notas = st.text_input("Notas (opcional)", max_chars=300)
         guardar = st.form_submit_button("Guardar", type="primary")
@@ -175,6 +184,34 @@ def formulario(clave: str = "registrar", cuenta_fija: str | None = None) -> bool
     if msi:
         texto += f" a {int(msi)} meses sin intereses"
     return ejecutar(accion, exito=texto)
+
+
+def _ingreso_fijo(clave: str, cuenta_fija: str | None) -> tuple[Recurrente | None, object]:
+    """¿Es uno de tus ingresos fijos (Ingresos)? Si sí, la fecha va fuera del formulario para llenar el importe de
+    esa quincena (la 1.ª y la 2.ª pueden ser distintas)."""
+    lib = libro()
+    lista = [r for r in ingresos.fijos(lib) if r.activa and lib.cuenta(r.cuenta_id).activa
+             and (cuenta_fija is None or r.cuenta_id == cuenta_fija)]
+    if not lista:
+        return None, None
+    por_id = {r.id: r for r in lista}
+    principal = ingresos.principal(lib)
+    opciones = [None, *por_id]
+    a, b = st.columns(2)
+    elegido = a.selectbox(
+        "¿Es uno de tus ingresos fijos?", opciones, key=f"{clave}_fijo",
+        index=opciones.index(principal.id) if principal and principal.id in por_id else 0,
+        format_func=lambda i: "No, es otro ingreso" if i is None else
+        f"{por_id[i].nombre} ({recurrentes.FRECUENCIAS[por_id[i].frecuencia].split(' (')[0].lower()})",
+        help="TALLY llena el importe que configuraste en Ingresos según la fecha. Puedes corregirlo antes de guardar.")
+    if elegido is None:
+        return None, None
+    r = por_id[elegido]
+    fecha = b.date_input("Fecha", value=lib.hoy(), format="DD/MM/YYYY", key=f"{clave}_fecha_fijo")
+    cual = f"Es tu **{recurrentes.quincena(r, fecha)}.ª quincena**: te" if r.frecuencia == "quincenal" else "Te"
+    st.caption(f"💡 {cual} llegan {formato.dinero_md(a_pesos(recurrentes.monto_en(r, fecha)))} según lo que "
+               "configuraste en Ingresos. Si esta vez fue distinto (unos centavos, un bono…), corrígelo abajo.")
+    return r, fecha
 
 
 def mostrar() -> None:

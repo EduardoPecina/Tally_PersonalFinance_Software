@@ -135,7 +135,8 @@ def _fijos() -> None:
             "Qué es": [TIPOS[r.tipo] for r in lista],
             "Cuenta": [lib.cuenta(r.cuenta_id).nombre for r in lista],
             "Subcategoría o destino": [_destino(lib, r) for r in lista],
-            "Importe": [formato.dinero(a_pesos(r.monto)) for r in lista],
+            "Importe": [formato.dinero(a_pesos(r.monto)) + (f" / {formato.dinero(a_pesos(r.monto_2))}" if r.monto_2 else "")
+                        for r in lista],
             "Cada cuánto": [recurrentes.FRECUENCIAS[r.frecuencia].split(" (")[0] for r in lista],
             "Al mes": [formato.dinero(recurrentes.al_mes(r)) for r in lista],
             "Próxima vez": [recurrentes.siguiente(r, hoy) if r.activa else None for r in lista],
@@ -216,13 +217,17 @@ def _formulario(r: Recurrente | None) -> None:
                               format="DD/MM/YYYY", help="Marca el día: si es el 5, se repite cada día 5.")
         fin = c.date_input("Termina (opcional)", value=r.fin if r else None, format="DD/MM/YYYY",
                            help="Por ejemplo, la última mensualidad. Vacío si no termina.")
-        suscripcion = st.checkbox("Es una suscripción (Netflix, Spotify, gimnasio, apps…)",
-                                  value=r.suscripcion if r else False,
-                                  disabled=tipo is not TipoOperacion.GASTO)
+        a, b = st.columns([2, 1], vertical_alignment="bottom")
+        suscripcion = a.checkbox("Es una suscripción (Netflix, Spotify, gimnasio, apps…)",
+                                 value=r.suscripcion if r else False,
+                                 disabled=tipo is not TipoOperacion.GASTO)
+        opciones_fs = list(recurrentes.FIN_DE_SEMANA)
+        fin_de_semana = b.selectbox("Si cae en sábado o domingo", opciones_fs, format_func=recurrentes.FIN_DE_SEMANA.get,
+                                    index=opciones_fs.index(r.fin_de_semana) if r else 0)
         if st.form_submit_button("Guardar cambios" if r else "Agregar", type="primary"):
             datos = dict(nombre=nombre, tipo=tipo, monto=monto, cuenta_id=cuenta, frecuencia=frecuencia,
                          inicio=inicio, categoria_id=categoria, destino_id=destino, fin=fin,
-                         suscripcion=suscripcion and tipo is TipoOperacion.GASTO)
+                         suscripcion=suscripcion and tipo is TipoOperacion.GASTO, fin_de_semana=fin_de_semana)
             if r:
                 hecho = ejecutar(lambda li: recurrentes.editar(li, r.id, **datos), "Cambios guardados")
             else:
