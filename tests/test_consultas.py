@@ -90,10 +90,38 @@ def test_rango_periodo(libro, cat, ctas):
     assert reportes.rango_periodo(libro, "mes_anterior", date(2026, 1, 10)) == (date(2025, 12, 1), date(2025, 12, 31))
 
 
-def test_periodo_anterior():
-    assert reportes.periodo_anterior(*JULIO) == (date(2026, 6, 1), date(2026, 6, 30))
-    assert reportes.periodo_anterior(date(2026, 3, 1), date(2026, 3, 31)) == (date(2026, 2, 1), date(2026, 2, 28))
-    assert reportes.periodo_anterior(date(2026, 7, 16), date(2026, 7, 31)) == (date(2026, 6, 30), date(2026, 7, 15))
+@pytest.mark.parametrize("desde, hasta, anterior", [
+    (date(2026, 7, 1), date(2026, 7, 31), (date(2026, 6, 1), date(2026, 6, 30))),          # un mes
+    (date(2026, 3, 1), date(2026, 3, 31), (date(2026, 2, 1), date(2026, 2, 28))),
+    (date(2025, 1, 1), date(2025, 12, 31), (date(2024, 1, 1), date(2024, 12, 31))),        # el anterior es bisiesto
+    (date(2028, 1, 1), date(2028, 12, 31), (date(2027, 1, 1), date(2027, 12, 31))),        # este es bisiesto
+    (date(2025, 11, 1), date(2026, 10, 31), (date(2024, 11, 1), date(2025, 10, 31))),      # últimos 12 meses
+    (date(2026, 4, 1), date(2026, 6, 30), (date(2026, 1, 1), date(2026, 3, 31))),          # un trimestre
+    (date(2026, 7, 16), date(2026, 7, 31), (date(2026, 7, 1), date(2026, 7, 15))),         # 2.ª quincena: la 1.ª
+    (date(2026, 3, 1), date(2026, 3, 15), (date(2026, 2, 16), date(2026, 2, 28))),         # 1.ª: la 2.ª de febrero
+    (date(2027, 10, 8), date(2028, 10, 7), (date(2026, 10, 8), date(2027, 10, 7))),        # un año exacto
+    (date(2027, 3, 1), date(2028, 2, 29), (date(2026, 3, 1), date(2027, 2, 28))),
+    (date(2026, 7, 10), date(2026, 7, 19), (date(2026, 6, 30), date(2026, 7, 9))),         # otro rango: los 10 días antes
+])
+def test_periodo_anterior(desde, hasta, anterior):
+    assert reportes.periodo_anterior(desde, hasta) == anterior
+
+
+def test_comparar_a_la_mitad_del_periodo_usa_los_mismos_dias(libro, ctas, cat):
+    for dia, monto in ((date(2026, 6, 5), 500), (date(2026, 6, 25), 1_000), (date(2026, 7, 5), 300)):
+        movimientos.registrar_gasto(libro, dia, ctas.debito, cat("ALIMENTOS"), monto)
+    c = reportes.comparar(libro, *JULIO, hoy=date(2026, 7, 20))          # del 1 al 20 de julio vs. del 1 al 20 de junio
+    assert (c.al, c.desde_anterior, c.hasta_anterior) == (date(2026, 7, 20), date(2026, 6, 1), date(2026, 6, 20))
+    assert (c.actual.gastos, c.anterior.gastos, c.diferencia.gastos) == (D(300), D(500), D(-200))
+    completo = reportes.comparar(libro, *JULIO, hoy=date(2026, 7, 31))   # ya terminó: el mes completo
+    assert (completo.al, completo.anterior.gastos, completo.diferencia.gastos) == (None, D(1_500), D(-1_200))
+    assert reportes.comparar(libro, *JULIO, hoy=date(2026, 8, 3)).al is None
+    marzo = reportes.comparar(libro, date(2026, 3, 1), date(2026, 3, 31), hoy=date(2026, 3, 30))
+    assert marzo.hasta_anterior == date(2026, 2, 28)                      # el 30 de marzo → fin de febrero
+    quincena = reportes.comparar(libro, date(2026, 7, 16), date(2026, 7, 31), hoy=date(2026, 7, 20))
+    assert (quincena.desde_anterior, quincena.hasta_anterior) == (date(2026, 7, 1), date(2026, 7, 5))
+    anio = reportes.comparar(libro, date(2026, 1, 1), date(2026, 12, 31), hoy=date(2026, 7, 20))
+    assert (anio.desde_anterior, anio.hasta_anterior) == (date(2025, 1, 1), date(2025, 7, 20))
 
 
 def test_comparar(libro, ctas, cat):

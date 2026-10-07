@@ -3,7 +3,7 @@ from datetime import date
 import pytest
 
 from conftest import D, JULIO
-from motor import catalogo, categorias, movimientos, reportes
+from motor import catalogo, categorias, impuestos, movimientos, recurrentes, reportes
 from motor.errores import ErrorValidacion
 from motor.libro import Libro
 from motor.modelo import CATEGORIA_AJUSTE, ClaseCategoria
@@ -167,6 +167,30 @@ def test_fusion_une_partidas_de_un_gasto_repartido(libro, ctas, cat):
     actualizada = libro.operacion(op.id)
     assert len(actualizada.partidas) == 2
     assert movimientos.describir(actualizada).monto == D(250)
+
+
+def test_borrar_o_juntar_una_subcategoria_actualiza_los_gastos_deducibles(libro, cat):
+    lentes = categorias.crear(libro, "Lentes ficticios", rubro(libro, "Salud")).id
+    otra = categorias.crear(libro, "Otra ficticia", rubro(libro, "Salud")).id
+    impuestos.guardar_concepto(libro, "Médicos", [cat("Dentista"), lentes])
+    impuestos.guardar_concepto(libro, "Solo lentes", [lentes, otra])
+    categorias.eliminar(libro, lentes, reasignar_a=cat("Dentista"))           # juntarla: pasa a la otra, sin repetir
+    medicos, solo = libro.fiscal.conceptos
+    assert medicos.subcategorias == (cat("Dentista"),)
+    assert solo.subcategorias == (cat("Dentista"), otra)
+    categorias.eliminar(libro, otra)                                          # borrarla sin más: se quita
+    assert libro.fiscal.conceptos[1].subcategorias == (cat("Dentista"),)
+    with pytest.raises(ErrorValidacion, match="mismo tipo"):
+        categorias.eliminar(libro, cat("Dentista"), reasignar_a=cat("Nómina"))
+
+
+def test_borrar_la_subcategoria_de_un_pago_fijo_lo_deja_sin_elegir(libro, ctas):
+    sueldo = categorias.crear(libro, "Sueldo ficticio", rubro(libro, "Sueldo y prestaciones")).id
+    r = recurrentes.crear(libro, "Sueldo", "ingreso", 9_000, ctas.debito, "quincenal", date(2026, 1, 1),
+                          categoria_id=sueldo)
+    categorias.eliminar(libro, sueldo)
+    r = libro.recurrente(r.id)
+    assert (r.categoria_id, r.activa) == (None, False)
 
 
 def test_archivar_categoria(libro, ctas, cat):

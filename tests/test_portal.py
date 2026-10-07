@@ -99,6 +99,16 @@ def test_resumen_muestra_indicadores(con_datos):
         sin_errores(at)
 
 
+def test_resumen_compara_con_los_mismos_dias_del_mes_pasado(raiz, con_datos):
+    from motor import reportes
+
+    at = abrir()
+    sin_errores(at)
+    hoy = sesion_en(raiz).libro.hoy()
+    a_la_mitad = hoy < reportes.rango_mes(hoy.year, hoy.month)[1]       # el último día se compara el mes completo
+    assert any("los mismos días del periodo anterior" in c.value for c in at.caption) is a_la_mitad
+
+
 def test_registrar_gasto_y_pago_de_tarjeta(raiz, con_datos):
     at = abrir()
     at.switch_page(_pagina("registrar")).run()
@@ -460,6 +470,28 @@ def test_historial_ofrece_repetir_el_movimiento(raiz, con_datos):
     sin_errores(at)
     assert boton(at, "Repetir este movimiento")
     assert any(d.label == "Fecha del nuevo" for d in at.date_input)
+
+
+def test_historial_borrar_un_aporte_lo_quita_de_la_meta(raiz, con_datos):
+    from motor import metas
+
+    s = sesion_en(raiz)
+    with s.cambio() as lib:
+        meta = metas.crear(lib, "Viaje", 5_000, cuenta_id=con_datos["ahorro"])
+        aporte = metas.aportar(lib, meta.id, 1_000, desde=con_datos["debito"]).aportes[-1].operacion_id
+    at = abrir(_pagina("historial"))
+    at.text_input(key="_w_historial_texto").input("Aporte a la meta").run()
+
+    def con_el_aporte_elegido(accion=None):
+        at.session_state["historial_tabla"] = {"selection": {"rows": [0], "columns": []}}
+        (accion() if accion else at).run()
+        sin_errores(at)
+
+    con_el_aporte_elegido()
+    assert any("Es parte de tu meta **Viaje**" in c.value for c in at.caption)
+    con_el_aporte_elegido(at.checkbox(key=f"confirmar_{aporte}").check)
+    con_el_aporte_elegido(boton(at, "Eliminar movimiento").click)
+    assert metas.ahorrado(sesion_en(raiz).libro.meta(meta.id)) == 0
 
 
 def test_apariencia_tema_oscuro_e_icono(raiz, con_datos):
@@ -881,6 +913,20 @@ def test_ingresos_quincenas_distintas_y_registrar_la_nomina(raiz, con_datos):
     sin_errores(at)
     (op,) = sesion_en(raiz).libro.operaciones(date(2026, 3, 13), date(2026, 3, 13))
     assert op.descripcion == "NOMINA" and sum(p.importe for p in op.partidas if p.cuenta_id) == 500074
+
+
+def test_ingresos_con_un_ingreso_fijo_cuya_subcategoria_se_borro(raiz, con_datos):
+    from motor import categorias, ingresos
+
+    s = sesion_en(raiz)
+    with s.cambio() as lib:
+        renta = categorias.crear(lib, "Renta ficticia", categorias.buscar_rubro(lib, "Inversiones y rentas").id).id
+        ingresos.guardar(lib, "Renta del depa", renta, 4_000, con_datos["debito"], "mensual")
+        categorias.eliminar(lib, renta)
+    at = abrir(_pagina("ingresos"))
+    sin_errores(at)
+    tabla = next(d.value for d in at.dataframe if "Subcategoría" in d.value.columns)
+    assert list(tabla["Subcategoría"]) == ["❓ Elige la subcategoría"]
 
 
 def test_iva_en_configuracion(raiz, con_datos):
@@ -1343,3 +1389,18 @@ def test_impuestos_plantillas_deducibles_y_recibo(raiz, con_datos):
     [n for n in at.number_input if n.label == "Retención IVA"][0].set_value(1_066.67)
     boton(at, "Revisar").click().run()
     assert any("Retención ISR: dice" in e.value for e in at.error)
+
+
+def test_impuestos_con_un_deducible_que_apunta_a_una_subcategoria_borrada(raiz, con_datos):
+    """Datos que quedaron así antes del arreglo (TALLY 0.17.0): la página abre y ya no ofrece la que no existe."""
+    from dataclasses import replace
+
+    from motor.modelo import ConceptoDeducible
+
+    s = sesion_en(raiz)
+    with s.cambio() as lib:
+        dentista = next(c.id for c in lib.categorias() if c.nombre == "DENTISTA")
+        lib.fiscal = replace(lib.fiscal, conceptos=(ConceptoDeducible("medicos", "Médicos", ("borrada", dentista)),))
+    at = abrir(_pagina("impuestos"))
+    sin_errores(at)
+    assert any(m.value == [dentista] for m in at.multiselect if m.label == "Subcategorías que cuentan")

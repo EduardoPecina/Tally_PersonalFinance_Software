@@ -215,8 +215,9 @@ def _formulario_concepto(c: ConceptoDeducible | None) -> None:
                                       and (x.activa or (c and x.id in c.subcategorias))])
     with st.form(f"imp_concepto_{clave}", clear_on_submit=c is None, border=False):
         nombre = st.text_input("Nombre", value=c.nombre if c else "", placeholder="Gastos médicos, colegiaturas…")
-        elegidas = st.multiselect("Subcategorías que cuentan", [x.id for x in subs],
-                                  default=list(c.subcategorias) if c else [],
+        opciones = [x.id for x in subs]
+        elegidas = st.multiselect("Subcategorías que cuentan", opciones,   # una ya borrada no se ofrece
+                                  default=[i for i in c.subcategorias if i in opciones] if c else [],
                                   format_func=lambda i: categorias.etiqueta(lib, i))
         a, b = st.columns(2)
         porcentaje = a.number_input("Parte deducible (%)", min_value=0.0, max_value=100.0, step=5.0,

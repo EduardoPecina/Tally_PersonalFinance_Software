@@ -53,7 +53,7 @@ def _delta(valor) -> str | None:
 
 
 def _periodo_resumen(desde: date, hasta: date) -> None:
-    comparacion = reportes.comparar(libro(), desde, hasta)
+    comparacion = reportes.comparar(libro(), desde, hasta, hoy=libro().hoy())
     actual, diferencia = comparacion.actual, comparacion.diferencia
     columnas = st.columns(4)
     columnas[0].metric("Ingresos", formato.dinero(actual.ingresos), delta=_delta(diferencia.ingresos))
@@ -62,6 +62,9 @@ def _periodo_resumen(desde: date, hasta: date) -> None:
                        help="Ingresos menos gastos del periodo.")
     columnas[3].metric("Apartado a ahorro", formato.dinero(actual.apartado_a_ahorro),
                        help="Lo que pasaste a tus cuentas de ahorro e inversión (neto).")
+    if comparacion.al is not None:                          # el periodo va a la mitad
+        st.caption(f"Comparado con los mismos días del periodo anterior: {formato.rango(desde, comparacion.al)} "
+                   f"contra {formato.rango(comparacion.desde_anterior, comparacion.hasta_anterior)}.")
     if actual.ajustes:
         st.caption(f"Ajustes de saldo en el periodo: {formato.dinero_md(actual.ajustes)} "
                    "(no cuentan como ingreso ni gasto).")

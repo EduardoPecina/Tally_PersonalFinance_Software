@@ -2,6 +2,29 @@
 
 Todos los cambios relevantes de TALLY se documentan aquí.
 
+## [0.17.1] — Sin publicar
+
+Correcciones antes de la 1.0:
+
+- **Impuestos e Ingresos ya no se caen al borrar una subcategoría.** Antes, borrar (o juntar con otra) una
+  subcategoría que estaba en un gasto deducible dejaba la página Impuestos sin abrir, y borrar la de un ingreso fijo
+  hacía lo mismo con Ingresos.
+  - Al juntar, tus gastos deducibles pasan a la otra subcategoría; al borrarla sin más, se quita del concepto.
+  - Un ingreso fijo que se queda sin subcategoría dice «❓ Elige la subcategoría», como ya hacía el Calendario.
+  - Si tus datos ya habían quedado así, las páginas abren y solo dejan de ofrecer la subcategoría que ya no existe.
+- **«vs. periodo anterior» compara contra el periodo correcto:**
+  - un año contra el año anterior completo, aunque uno sea bisiesto (antes, 2025 contra 2024 se saltaba el
+    1 de enero);
+  - una quincena contra la quincena anterior (antes, la del 16 al 31 se comparaba con «30 de junio al 15 de julio»);
+  - los últimos 12 meses, un trimestre o un año exacto, contra los mismos meses de antes.
+  - También en los comparativos de Contabilidad Técnica.
+- **Resumen a mitad de mes:** lo que llevas del mes se compara con **los mismos días del mes pasado** (el 7 de
+  octubre, del 1 al 7 de septiembre), y lo dice abajo de las cifras. Antes se comparaba con el mes pasado completo, así
+  que a principio de mes siempre parecía que gastabas mucho menos.
+- **Metas: el aporte sigue a su transferencia.** Si en el Historial borras la transferencia de un aporte (o de un
+  retiro), también se quita de la meta; si la corriges, la meta toma su nueva fecha e importe. Antes la meta seguía
+  contando un dinero que ya no estaba en la cuenta. Al borrar, el Historial avisa de qué meta es.
+
 ## [0.17.0] — Sin publicar
 
 - **Nueva página 💰 Ingresos** (en Tu dinero). Sale de Presupuestos y tiene su lugar propio:
