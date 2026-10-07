@@ -1049,3 +1049,79 @@ def test_restaurar_respaldo_con_contrasena_en_tally_nuevo(raiz, tmp_path_factory
     llave = seguridad.entrar(ruta, "mi perro come tacos")
     lib = Sesion(ruta, llave=llave).libro
     assert cuentas.saldo(lib, cuentas.buscar(lib, "Débito de la otra PC").id) == 777
+
+
+# ------------------------------------------------------------ importar del banco
+
+MOVS_BANCO = ("Fecha\tDescripción\tCargos\tAbonos\n"
+              "15/07/2026\tCOMPRA OXXO 1234\t85.50\t\n"
+              "16/07/2026\tPAGO NOMINA FICTICIA\t\t15,000.00\n"
+              "17/07/2026\tSPEI ENVIADO FICTICIO\t500.00\t\n")
+
+
+def _banco(raiz, texto=MOVS_BANCO) -> AppTest:
+    at = abrir(_pagina("cargar"))
+    assert [t.label for t in at.tabs][:2] == ["🏦 Desde tu banco", "📄 Con la plantilla de TALLY"]
+    at.selectbox(key="banco_cuenta").set_value(cuentas.buscar(sesion_en(raiz).libro, "Débito Ficticio").id).run()
+    at.text_area(key="banco_texto_0").input(texto).run()
+    sin_errores(at)
+    return at
+
+
+def _editar(at: AppTest, cambios: dict) -> None:
+    """Simula cambios en la tabla editable (AppTest no la maneja directamente)."""
+    clave = at.session_state["_banco_clave"]
+    at.session_state[f"banco_editor_{clave}"] = {"edited_rows": cambios, "added_rows": [], "deleted_rows": []}
+
+
+def test_importar_del_banco_pegando_la_tabla(raiz, con_datos):
+    at = _banco(raiz)
+    assert {m.label: m.value for m in at.metric if m.label in ("Movimientos", "Salió", "Entró")} == {
+        "Movimientos": "3", "Salió": "$585.50", "Entró": "$15,000.00"}
+    assert any("Te falta elegir" in w.value for w in at.warning)                 # el SPEI no se adivina
+    assert next(b for b in at.button if b.key == "banco_importar").disabled
+    cambios = {2: {"Subcategoría o cuenta": "↔ Ahorro Ficticio"}}
+    _editar(at, cambios)
+    at.run()
+    assert any("1 transferencia" in m.value and "1 gasto" in m.value for m in at.markdown)
+    _editar(at, cambios)
+    next(b for b in at.button if b.key == "banco_importar").click().run()
+    sin_errores(at)
+    assert any("Se importaron 3" in str(t.value) for t in at.toast)
+    lib = sesion_en(raiz).libro
+    nuevos = {op.descripcion: op.tipo.value for op in lib.operaciones() if op.descripcion.isupper()}
+    assert nuevos == {"COMPRA OXXO 1234": "gasto", "PAGO NOMINA FICTICIA": "ingreso",
+                      "SPEI ENVIADO FICTICIO": "transferencia"}
+    assert at.text_area(key="banco_texto_1").value == ""                        # el formulario quedó vacío
+    # Pegar lo mismo otra vez: todo aparece como «ya está» y no se marca para cargar.
+    at.text_area(key="banco_texto_1").input(MOVS_BANCO).run()
+    assert any("No hay movimientos marcados" in i.value for i in at.info)
+
+
+def test_importar_del_banco_lo_que_falte_a_otros(raiz, con_datos):
+    at = _banco(raiz)
+    next(c for c in at.checkbox if c.key and c.key.startswith("banco_otros_")).check().run()
+    boton_ = next(b for b in at.button if b.key == "banco_importar")
+    assert boton_.label == "Importar 3 movimiento(s)" and not boton_.disabled
+    boton_.click().run()
+    sin_errores(at)
+    lib = sesion_en(raiz).libro
+    spei = next(op for op in lib.operaciones() if op.descripcion == "SPEI ENVIADO FICTICIO")
+    assert spei.tipo.value == "gasto"
+
+
+def test_importar_del_banco_signo_y_columnas(raiz, con_datos):
+    texto = "Fecha\tConcepto\tImporte\n15/07/2026\tCOMPRA FICTICIA\t-100.00\n16/07/2026\tDEPOSITO FICTICIO\t50.00\n"
+    at = _banco(raiz, texto)
+    radio = next(r for r in at.radio if r.key and r.key.startswith("banco_signo_"))
+    assert radio.value == 0
+    assert next(m for m in at.metric if m.label == "Salió").value == "$100.00"
+    radio.set_value(1).run()                                                    # «al revés»
+    assert next(m for m in at.metric if m.label == "Salió").value == "$50.00"
+    assert any(e.label.startswith("¿Leí mal alguna columna?") for e in at.expander)
+
+
+def test_importar_del_banco_texto_que_no_es_estado_de_cuenta(raiz, con_datos):
+    at = abrir(_pagina("cargar"))
+    at.text_area(key="banco_texto_0").input("hola\nesto no tiene movimientos").run()
+    assert any("No encontré movimientos" in e.value for e in at.error)

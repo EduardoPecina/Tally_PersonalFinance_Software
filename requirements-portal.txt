@@ -8,3 +8,5 @@ pywin32==312 ; sys_platform == "win32"
 openpyxl==3.1.5
 # Para la contraseña opcional de TALLY (cifrado de tus datos con AES-256-GCM, motor/cifrado.py).
 cryptography==49.0.0
+# Para leer el PDF de tu estado de cuenta al importar movimientos del banco (motor/bancos.py). Todo en tu PC.
+pypdf==6.19.0

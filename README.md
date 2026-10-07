@@ -42,6 +42,8 @@ Excel.
   - La ganancia de tus inversiones entra a tu contabilidad **solo con el valor
     oficial** que tú escribes («Cuadrar con tu estado de cuenta»). El precio de
     internet es una referencia.
+- Importar movimientos del banco (Excel, CSV o PDF) pasa en tu PC: TALLY no se
+  conecta a tu banco ni manda el archivo a ningún lado.
 - Los datos financieros nunca forman parte de este repositorio (ver `.gitignore`).
 
 ## Qué resuelve
@@ -97,7 +99,7 @@ el acceso directo **Mis datos de TALLY**, dentro de `Escritorio\TALLY`.
 | Contabilidad Técnica | Estado de Situación Financiera, Estado de Resultados, Flujo de Efectivo y Balanza de Comprobación, comparativos por periodo, armados solos con tus movimientos y explicados sin tecnicismos; clic en un renglón para ver sus movimientos. **Bienes** (casa, auto, laptop) con depreciación, mejoras, avalúos y venta |
 | Inversiones | ¿Cuánto ganaron mis inversiones este mes, este año o en 5 años? Valor en el tiempo, lo que metiste y la ganancia por mes o año, filtrando por cuentas (CETES, GBM…) y por títulos (IVV, VT…); estimado con precios de mercado u oficial con tus valores registrados |
 | Categorías | Categorías (SALUD, TECNOLOGIA…) con sus subcategorías y clasificaciones, a tu manera |
-| Cargar datos | Subir tu historial de Excel de una vez con una plantilla `.txt` |
+| Cargar datos | Importar los movimientos de tu banco (Excel, CSV o PDF) con la subcategoría sugerida, o subir tu historial de Excel con una plantilla `.txt` |
 | Respaldos y bitácora | Descargar o restaurar respaldos, ver qué cambió o empezar de cero |
 | Configuración ⚙️ | Tu nombre, tema claro u oscuro, color del ícono, respaldo automático diario, periodo del Resumen y datos de la instalación |
 
@@ -141,6 +143,29 @@ Desde entonces:
 **La única regla:** si pierdes tu contraseña **y** tu Kit, nadie puede abrir
 tus datos, ni TALLY ni un técnico. Por eso no hay recuperación por correo:
 sería una puerta trasera.
+
+### Importar los movimientos de tu banco
+
+En **Cargar datos → Desde tu banco**:
+
+1. Elige la cuenta o tarjeta.
+2. Sube el archivo que descargas de tu banca en línea (**Excel o CSV**, en
+   *Movimientos → Exportar*), el **PDF** de tu estado de cuenta, o pega la
+   tabla de movimientos copiada de la página del banco.
+3. TALLY encuentra las columnas solo y te muestra cuánto salió y cuánto entró,
+   para compararlo con tu estado de cuenta.
+4. Revisa la tabla:
+   - **Subcategoría sugerida (✨):** lo que elegiste antes para esa
+     descripción (TALLY aprende de tu historial) o, si es nuevo, por el
+     nombre de comercios conocidos (OXXO, Walmart, Netflix, CFE, Uber…).
+   - **Ya está en TALLY (⏭️):** misma cuenta, mismo importe y a pocos días.
+     No se carga, salvo que lo marques.
+   - Si el dinero fue a otra de tus cuentas, elígela: es una transferencia y
+     no cuenta como gasto.
+5. **Importar.** Antes se hace un respaldo, y si algo falla no se carga nada.
+
+El archivo se lee en tu PC y no se manda a ningún lado. Si el PDF tiene
+contraseña (muchos bancos usan tu RFC), TALLY te la pide y no la guarda.
 
 ### Pasar tu historial de Excel a TALLY
 
