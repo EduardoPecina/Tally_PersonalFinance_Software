@@ -22,6 +22,8 @@ from motor.modelo import (
     InversionPlazo,
     MetodoDepreciacion,
     Operacion,
+    Meta,
+    Aporte,
     Prestamo,
     Recurrente,
     OperacionValor,
@@ -35,7 +37,7 @@ from motor.modelo import (
 
 # Tipos de entidad, en el orden en que se cargan.
 ENTIDADES = ("perfil", "grupo", "rubro", "categoria", "cuenta", "operacion", "valor", "plazo", "bien",
-             "prestamo", "recurrente")
+             "prestamo", "recurrente", "meta")
 ID_PERFIL = "perfil"
 
 
@@ -217,6 +219,24 @@ def recurrente_desde_dict(d: dict) -> Recurrente:
     )
 
 
+def meta_a_dict(m: Meta) -> dict:
+    return {"id": m.id, "nombre": m.nombre, "objetivo": m.objetivo, "cuenta_id": m.cuenta_id,
+            "fecha_limite": _iso(m.fecha_limite), "emergencia": m.emergencia, "creada": _iso(m.creada),
+            "activa": m.activa, "notas": m.notas,
+            "aportes": [{"fecha": _iso(a.fecha), "centavos": a.centavos, "operacion_id": a.operacion_id}
+                        for a in m.aportes]}
+
+
+def meta_desde_dict(d: dict) -> Meta:
+    return Meta(
+        id=d["id"], nombre=d["nombre"], objetivo=d["objetivo"], cuenta_id=d.get("cuenta_id"),
+        fecha_limite=_fecha(d.get("fecha_limite")), emergencia=d.get("emergencia", False),
+        creada=_fecha(d.get("creada")), activa=d.get("activa", True), notas=d.get("notas", ""),
+        aportes=tuple(Aporte(_fecha(a["fecha"]), a["centavos"], a.get("operacion_id", ""))
+                      for a in d.get("aportes", [])),
+    )
+
+
 def prestamo_desde_dict(d: dict) -> Prestamo:
     return Prestamo(
         cuenta_id=d["cuenta_id"], clase=d.get("clase", "otro"), monto=d["monto"],
@@ -266,6 +286,7 @@ def instantanea(libro: Libro) -> Instantanea:
         "bien": {b.id: bien_a_dict(b) for b in libro.bienes()},
         "prestamo": {p.id: prestamo_a_dict(p) for p in libro.prestamos()},
         "recurrente": {r.id: recurrente_a_dict(r) for r in libro.recurrentes()},
+        "meta": {m.id: meta_a_dict(m) for m in libro.metas()},
     }
 
 
@@ -287,6 +308,7 @@ def libro_desde_instantanea(
             bienes=[bien_desde_dict(d) for d in datos.get("bien", {}).values()],
             prestamos=[prestamo_desde_dict(d) for d in datos.get("prestamo", {}).values()],
             recurrentes=[recurrente_desde_dict(d) for d in datos.get("recurrente", {}).values()],
+            metas=[meta_desde_dict(d) for d in datos.get("meta", {}).values()],
             secuencia=secuencia,
             reloj=reloj,
         )

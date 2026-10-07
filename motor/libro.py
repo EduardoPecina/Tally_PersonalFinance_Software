@@ -28,6 +28,7 @@ from motor.modelo import (
     InversionPlazo,
     Operacion,
     OperacionValor,
+    Meta,
     Perfil,
     Recurrente,
     Rubro,
@@ -49,6 +50,7 @@ class Libro:
         self._bienes: dict[str, Bien] = {}
         self._prestamos: dict[str, Prestamo] = {}
         self._recurrentes: dict[str, Recurrente] = {}
+        self._metas: dict[str, Meta] = {}
         self._secuencia = 0
         for categoria in (
             Categoria(CATEGORIA_AJUSTE, "AJUSTE DE SALDO", ClaseCategoria.SISTEMA, orden=-2),
@@ -74,6 +76,7 @@ class Libro:
         bienes: list[Bien] = (),
         prestamos: list[Prestamo] = (),
         recurrentes: list[Recurrente] = (),
+        metas: list[Meta] = (),
     ) -> Libro:
         """Reconstruye un libro ya guardado, tal cual (lo usa la persistencia)."""
         libro = cls(reloj=reloj)
@@ -88,6 +91,7 @@ class Libro:
         libro._bienes = {b.cuenta_id: b for b in bienes}
         libro._prestamos = {p.cuenta_id: p for p in prestamos}
         libro._recurrentes = {r.id: r for r in recurrentes}
+        libro._metas = {m.id: m for m in metas}
         libro._secuencia = max([secuencia, *(op.secuencia for op in operaciones)])
         return libro
 
@@ -137,6 +141,8 @@ class Libro:
         self._prestamos.pop(cuenta_id, None)
         for r in [r for r in self._recurrentes.values() if cuenta_id in (r.cuenta_id, r.destino_id)]:
             del self._recurrentes[r.id]
+        for m in [m for m in self._metas.values() if m.cuenta_id == cuenta_id]:
+            self._metas[m.id] = replace(m, cuenta_id=None)
 
     # ------------------------------------------------- títulos e inversiones a plazo
 
@@ -224,6 +230,28 @@ class Libro:
     def quitar_recurrente(self, recurrente_id: str) -> None:
         self.recurrente(recurrente_id)
         del self._recurrentes[recurrente_id]
+
+    # ------------------------------------------------------------------ metas
+
+    def metas(self) -> list[Meta]:
+        return sorted(self._metas.values(), key=lambda m: (not m.activa, not m.emergencia, m.creada or date.min,
+                                                            m.nombre.casefold()))
+
+    def meta(self, meta_id: str) -> Meta:
+        try:
+            return self._metas[meta_id]
+        except KeyError:
+            raise ErrorNoEncontrado("Esa meta no existe.") from None
+
+    def guardar_meta(self, meta: Meta) -> Meta:
+        if meta.cuenta_id is not None:
+            self.cuenta(meta.cuenta_id)
+        self._metas[meta.id] = meta
+        return meta
+
+    def quitar_meta(self, meta_id: str) -> None:
+        self.meta(meta_id)
+        del self._metas[meta_id]
 
     def tiene_titulos(self, cuenta_id: str) -> bool:
         return any(v.cuenta_id == cuenta_id for v in self._valores.values()) or any(

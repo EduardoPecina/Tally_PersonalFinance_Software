@@ -2,6 +2,23 @@
 
 Todos los cambios relevantes de TALLY se documentan aquí.
 
+## [0.15.0] — Sin publicar
+
+- **Nueva página 🏆 Metas de ahorro** (en Tu dinero):
+  - **🛟 Fondo de emergencia:** qué es y cuánto te conviene juntar: de 3 a 6 meses de tus **gastos
+    esenciales**. TALLY los calcula con lo que clasificaste como Necesidad y Compromisos (promedio de los
+    últimos 3 meses) más los pagos de tus préstamos. Te dice **cuántos meses te cubre** lo que llevas.
+  - **Tus metas:** un viaje, una computadora, el enganche… con objetivo, fecha opcional y la cuenta donde
+    guardas el dinero. Cada una tiene su barra de avance, lo que falta, **cuánto apartar al mes** para llegar a
+    tiempo y, a tu ritmo de los últimos 3 meses, **cuándo la logras**. Si a ese ritmo no llegas, te avisa.
+  - **Aportar y retirar:** si eliges otra cuenta, TALLY registra la transferencia a (o desde) la cuenta de la
+    meta. Así lo que dice la meta y lo que hay en la cuenta no se separan. Lo que ya tenías al crearla no mueve
+    dinero ni cuenta como tu ritmo.
+  - **Aviso si no alcanza:** si tus metas dicen que hay más dinero en una cuenta del que realmente tiene, te
+    avisa.
+  - **Al lograr una meta,** te felicita 🎉. Puedes archivarla, reactivarla o borrarla; borrarla no borra las
+    transferencias.
+
 ## [0.14.0] — Sin publicar
 
 - **Nueva página 📅 Calendario** (en Tu dinero):
