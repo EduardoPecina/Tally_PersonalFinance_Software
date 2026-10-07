@@ -7,11 +7,16 @@ archivo de datos que las finanzas.
 from __future__ import annotations
 
 from dataclasses import replace
+from decimal import Decimal, InvalidOperation
+
+from motor.dinero import a_centavos
 
 from motor.errores import ErrorValidacion
 from motor.libro import Libro
 from motor.modelo import Perfil
 from motor.textos import normalizar_nombre
+
+_SIN_CAMBIO = object()
 
 
 def necesita_bienvenida(libro: Libro) -> bool:
@@ -46,6 +51,9 @@ def ajustar(
     icono: str | None = None,
     dias_para_reclamar: int | None = None,
     actualizar_precios: bool | None = None,
+    iva=None,
+    ingreso_esperado: object = _SIN_CAMBIO,
+    meta_ahorro: int | None = None,
 ) -> Perfil:
     """Cambia las preferencias (página Configuración). Solo cambia lo que se indique."""
     from motor.reportes import PERIODOS
@@ -79,5 +87,25 @@ def ajustar(
         cambios["dias_para_reclamar"] = int(dias_para_reclamar)
     if actualizar_precios is not None:
         cambios["actualizar_precios"] = bool(actualizar_precios)
+    if iva is not None:
+        try:
+            tasa = Decimal(str(iva))
+        except (InvalidOperation, ValueError):
+            raise ErrorValidacion("El IVA debe ser un número (16 para 16 %).") from None
+        if not tasa.is_finite() or not 0 <= tasa <= 50:
+            raise ErrorValidacion("El IVA va de 0 a 50 %.")
+        cambios["iva"] = tasa
+    if ingreso_esperado is not _SIN_CAMBIO:
+        if ingreso_esperado is None:
+            cambios["ingreso_esperado"] = None
+        else:
+            centavos = a_centavos(ingreso_esperado)
+            if centavos <= 0:
+                raise ErrorValidacion("El ingreso esperado debe ser mayor que cero (o déjalo vacío).")
+            cambios["ingreso_esperado"] = centavos
+    if meta_ahorro is not None:
+        if isinstance(meta_ahorro, bool) or not 0 <= int(meta_ahorro) <= 90:
+            raise ErrorValidacion("La meta de ahorro va de 0 a 90 % de tu ingreso.")
+        cambios["meta_ahorro"] = int(meta_ahorro)
     libro.perfil = replace(libro.perfil, **cambios)
     return libro.perfil

@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+from decimal import Decimal
+
 import pandas as pd
 import streamlit as st
 
-from motor import categorias, reportes
+from motor import categorias, perfil, planeacion, reportes
 from motor.modelo import ClaseCategoria
 from portal.componentes import formato
 from portal.componentes.sesion import ejecutar, libro
@@ -37,6 +39,14 @@ def mostrar() -> None:
     st.title("Presupuestos")
     st.caption("Ponle un tope mensual a las categorías que quieras cuidar (por ejemplo, ALIMENTACION o "
                "ENTRETENIMIENTO). TALLY te muestra cuánto llevas este mes, aquí y en el Resumen.")
+    ingresos, plan, proyeccion = st.tabs(["Tus ingresos", "¿Cuánto puedes gastar?", "Proyección del mes"])
+    with ingresos:
+        _ingresos()
+    with plan:
+        _plan()
+    with proyeccion:
+        _proyeccion()
+    st.divider()
     desde, hasta = reportes.rango_periodo(lib, "mes_actual")
     if reportes.presupuestos(lib, desde, hasta):
         st.subheader(f"Cómo vas · {formato.mes(desde.year, desde.month)}")
@@ -69,3 +79,119 @@ def mostrar() -> None:
             st.info("No cambiaste nada.")
         elif ejecutar(accion, exito=f"{len(cambios)} presupuesto(s) guardado(s)"):
             st.rerun()
+
+
+# ------------------------------------------------------------------ ingresos
+
+
+def _ingresos() -> None:
+    lib = libro()
+    st.caption("Tu ingreso **principal** (la nómina: marca tus quincenas) y tus ingresos **secundarios fijos** (una "
+               "renta, honorarios de cada mes…). Su promedio de los últimos 3 meses completos es tu ingreso esperado; "
+               "con él se calculan tu capacidad de pago (Deudas) y tus presupuestos sugeridos.")
+    de_ingreso = {c.id: categorias.etiqueta(lib, c.id) for c in lib.categorias()
+                  if c.clase is ClaseCategoria.INGRESO and c.activa and c.rubro_id}
+    ids = list(de_ingreso)
+    principal = next((c.id for c in lib.categorias() if c.principal and c.id in de_ingreso), None)
+    secundarios = [c.id for c in lib.categorias() if c.secundario and c.id in de_ingreso]
+    with st.form("ingresos_fijos", border=False):
+        elegido = st.selectbox("Ingreso principal", ids, format_func=de_ingreso.get, placeholder="Elige uno",
+                               index=ids.index(principal) if principal else None)
+        otros = st.multiselect("Ingresos secundarios fijos", ids, default=secundarios, format_func=de_ingreso.get,
+                               placeholder="Ninguno")
+        if st.form_submit_button("Guardar", type="primary"):
+            def guardar(lib):
+                for c in lib.categorias():
+                    if c.id in de_ingreso:
+                        categorias.editar(lib, c.id, principal=c.id == elegido,
+                                          secundario=c.id in otros and c.id != elegido)
+            if ejecutar(guardar, exito="Ingresos guardados"):
+                st.rerun()
+    lista = planeacion.ingresos(lib)
+    esperado = planeacion.ingreso_esperado(lib)
+    if lista:
+        st.dataframe(pd.DataFrame({"Ingreso": [i.nombre for i in lista],
+                                   "Tipo": ["Principal" if i.tipo == "principal" else "Secundario" for i in lista],
+                                   "Promedio al mes": [formato.dinero(i.promedio) for i in lista]}),
+                     hide_index=True, width="stretch")
+    st.metric("Ingreso esperado al mes", formato.dinero(esperado.monto),
+              help="Escrito por ti" if esperado.fuente == "manual" else
+              f"Promedio de {esperado.meses} mes(es) completo(s)")
+    with st.form("ingreso_manual", border=False):
+        actual = lib.perfil.ingreso_esperado
+        manual = st.number_input("¿Prefieres escribir cuánto ganas al mes? (vacío = el promedio)", min_value=0.0,
+                                 value=float(Decimal(actual) / 100) if actual else None, step=500.0, format="%.2f")
+        meta = st.slider("Meta de ahorro (% de tu ingreso)", 0, 50, value=lib.perfil.meta_ahorro, step=5)
+        if st.form_submit_button("Guardar"):
+            if ejecutar(lambda lib: perfil.ajustar(lib, ingreso_esperado=Decimal(str(manual)) if manual else None,
+                                                   meta_ahorro=meta), exito="Guardado"):
+                st.rerun()
+
+
+# -------------------------------------------------------------- sugeridos
+
+
+def _plan() -> None:
+    lib = libro()
+    plan = planeacion.sugerir(lib)
+    if not plan.ingreso:
+        st.info("Primero marca tu ingreso principal en «Tus ingresos» (o escribe cuánto ganas).")
+        return
+    a, b, c, d = st.columns(4)
+    a.metric("Ingreso esperado", formato.dinero(plan.ingreso))
+    b.metric("Pagos de préstamos", formato.dinero(plan.deudas))
+    c.metric(f"Ahorro ({lib.perfil.meta_ahorro} %)", formato.dinero(plan.ahorro))
+    d.metric("Para gastar al mes", formato.dinero(plan.para_gastar))
+    if not plan.sugerencias:
+        st.caption("Aún no hay meses completos con gastos para sugerir presupuestos.")
+        return
+    if plan.factor < 1:
+        st.warning(f"Lo que sueles gastar ({formato.dinero_md(plan.total_promedio)}) no cabe en lo que tienes para "
+                   f"gastar: los sugeridos se ajustaron al {plan.factor * 100:.0f} % para que te alcance para tus "
+                   "deudas y tu ahorro.", icon="⚠️")
+    else:
+        st.success(f"Lo que sueles gastar ({formato.dinero_md(plan.total_promedio)}) cabe en tu presupuesto: te "
+                   f"sobran {formato.dinero_md(plan.para_gastar - plan.total_sugerido)} al mes además de tu ahorro.",
+                   icon="✅")
+    st.dataframe(pd.DataFrame({
+        "Categoría": [s.nombre for s in plan.sugerencias],
+        "Sueles gastar": [formato.dinero(s.promedio) for s in plan.sugerencias],
+        "Sugerido": [formato.dinero(s.sugerido) for s in plan.sugerencias],
+        "Tu presupuesto": [formato.dinero(s.actual) if s.actual is not None else "—" for s in plan.sugerencias],
+    }), hide_index=True, width="stretch")
+    st.caption("Sugerido: tu promedio de los últimos 3 meses completos, redondeado a $50 (los intereses de "
+               "préstamos ya van en sus pagos).")
+    if st.button("Usar los sugeridos como mis presupuestos", key="usar_sugeridos"):
+        def aplicar(lib):
+            for s in plan.sugerencias:
+                categorias.fijar_presupuesto(lib, s.rubro_id, float(s.sugerido) if s.sugerido else None)
+        if ejecutar(aplicar, exito="Presupuestos actualizados"):
+            st.rerun()
+
+
+# ----------------------------------------------------------- proyección
+
+
+def _proyeccion() -> None:
+    lib = libro()
+    p = planeacion.proyeccion_mes(lib)
+    st.caption(f"Día {p.dias_transcurridos} de {p.dias_del_mes}. Cada categoría: al menos lo que sueles gastar (si ya "
+               "te pasaste, lo que llevas); las que no tienen historial, a este ritmo.")
+    a, b, c = st.columns(3)
+    a.metric("Llevas gastado", formato.dinero(p.gastado))
+    b.metric("Gasto proyectado al cierre", formato.dinero(p.gasto_proyectado))
+    c.metric("Te quedaría", formato.dinero(p.ahorro_proyectado),
+             help="Tu ingreso del mes (el esperado, o lo recibido si fue más) menos el gasto proyectado.")
+    if p.ahorro_proyectado < 0:
+        st.error("A este ritmo vas a gastar más de lo que ganas este mes.", icon="🔴")
+    pasados = [r for r in p.rubros if r.se_pasa]
+    if pasados:
+        st.warning("Te vas a pasar en: " + ", ".join(f"**{r.nombre}** ({formato.dinero_md(r.proyectado)} de "
+                                                      f"{formato.dinero_md(r.presupuesto)})" for r in pasados),
+                   icon="⚠️")
+    if p.rubros:
+        st.dataframe(pd.DataFrame({
+            "Categoría": [r.nombre for r in p.rubros], "Llevas": [formato.dinero(r.gastado) for r in p.rubros],
+            "Proyectado al cierre": [formato.dinero(r.proyectado) for r in p.rubros],
+            "Presupuesto": [formato.dinero(r.presupuesto) if r.presupuesto is not None else "—" for r in p.rubros],
+        }), hide_index=True, width="stretch")

@@ -13,7 +13,8 @@ from portal.componentes import tarjeta as estado_tarjeta
 from portal.componentes.sesion import aplicar, avisar, ejecutar, libro
 from portal.paginas import estado_cuenta
 
-TIPOS = [t for t in TipoCuenta if t is not TipoCuenta.BIEN]   # los bienes se agregan en Contabilidad Técnica
+# Los bienes se agregan en Contabilidad Técnica y los préstamos en Deudas (necesitan sus datos).
+TIPOS = [t for t in TipoCuenta if t not in (TipoCuenta.BIEN, TipoCuenta.PRESTAMO)]
 SIN_CAMBIOS = "sin cambios"
 
 
@@ -134,6 +135,9 @@ def _tarjeta_de_cuenta(cuenta: Cuenta) -> None:
                            help=f"Costo {formato.dinero(valor.costo)} − depreciación "
                                 f"{formato.dinero(valor.depreciacion)} ± avalúos. Ajústalo en Contabilidad Técnica.")
             return
+        if cuenta.tipo is TipoCuenta.PRESTAMO:
+            derecha.metric("Debes", formato.dinero(max(-saldo, 0)), help="Sus pagos y simulaciones, en Deudas.")
+            return
         if cuenta.tipo is not TipoCuenta.CREDITO:
             derecha.metric("Saldo", formato.dinero(saldo))
             return
@@ -157,6 +161,19 @@ def _editar(cuenta: Cuenta) -> None:
                 "dia_corte": derecha.number_input("Día de corte", min_value=1, max_value=31, step=1,
                                                   value=cuenta.dia_corte),
                 **_campos_regla_pago(modo_pago, izquierda, derecha, cuenta),
+                "tasa_anual": izquierda.number_input(
+                    "Tasa de interés anual (%) · opcional", min_value=0.0, max_value=1000.0, step=1.0,
+                    format="%.2f", value=float(cuenta.tasa_anual) if cuenta.tasa_anual is not None else None,
+                    help="La tasa ordinaria anual que dice tu contrato o estado de cuenta. Sirve para estimar "
+                         "intereses y el pago mínimo."),
+                "cat": derecha.number_input(
+                    "CAT (%) · opcional", min_value=0.0, max_value=1000.0, step=1.0, format="%.2f",
+                    value=float(cuenta.cat) if cuenta.cat is not None else None,
+                    help="Costo Anual Total (México). En otros países: TAE (España), CAE (Chile), CFT (Argentina), "
+                         "TEA (Perú, Colombia). Es informativo: los cálculos usan la tasa anual."),
+                "tasa_incluye_iva": st.checkbox("La tasa ya incluye IVA", value=cuenta.tasa_incluye_iva,
+                                                help="Si no lo incluye, TALLY le suma el IVA de tu país "
+                                                     "(Configuración → Tu perfil)."),
             }
         notas = st.text_area("Notas", value=cuenta.notas, height=80)
         en_disponible = st.checkbox("Cuenta como dinero disponible", value=cuenta.en_disponible)
@@ -299,7 +316,7 @@ def mostrar() -> None:
     if not lista:
         st.info("Aún no tienes cuentas. Agrega la primera arriba.")
         return
-    for tipo in TIPOS:
+    for tipo in TipoCuenta:
         del_tipo = [c for c in lista if c.tipo is tipo]
         if del_tipo:
             st.subheader("Tarjetas de crédito" if tipo is TipoCuenta.CREDITO else _etiqueta_tipo(tipo))
@@ -313,6 +330,15 @@ def mostrar() -> None:
     if elegida is None:
         return
     cuenta = libro().cuenta(elegida)
+    if cuenta.tipo in (TipoCuenta.BIEN, TipoCuenta.PRESTAMO):
+        donde = "Contabilidad Técnica → Bienes" if cuenta.tipo is TipoCuenta.BIEN else "Deudas"
+        st.caption(f"Su valor, sus pagos y sus datos se manejan en **{donde}**.")
+        editar, mas = st.tabs(["Editar", "Eliminar"])
+        with editar:
+            _editar(cuenta)
+        with mas:
+            eliminar(cuenta, f"pestana_eliminar_{cuenta.id}")
+        return
     editar, actualizar, inicial, mas = st.tabs(["Editar", "Actualizar saldo", "Saldo inicial", "Eliminar"])
     with editar:
         _editar(cuenta)

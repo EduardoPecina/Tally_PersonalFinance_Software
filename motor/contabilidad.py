@@ -35,7 +35,7 @@ from dataclasses import dataclass, field, replace
 from datetime import date, timedelta
 from decimal import Decimal
 
-from motor import bienes, reportes
+from motor import bienes, prestamos, reportes
 from motor.consultas import ETIQUETA_TIPO_OPERACION
 from motor.dinero import a_centavos, a_pesos
 from motor.libro import Libro
@@ -59,6 +59,8 @@ POR_COBRAR = "Por cobrar"
 BIENES = "Bienes (casa, auto, equipo)"
 OTROS_ACTIVOS = "Otros activos"
 TARJETAS = "Tarjetas de crédito (corto plazo)"
+PRESTAMOS_CORTO = "Préstamos a corto plazo (los terminas en un año o menos)"
+PRESTAMOS_LARGO = "Préstamos a largo plazo (más de un año)"
 
 PATRIMONIO_INICIAL = "Patrimonio inicial (saldos con los que empezaste)"
 RESULTADOS_ANTERIORES = "Resultados de años anteriores"
@@ -218,10 +220,17 @@ def es_efectivo(cuenta: Cuenta) -> bool:
     return cuenta.tipo in _TIPOS_EFECTIVO or (cuenta.tipo is TipoCuenta.OTRA and cuenta.en_disponible)
 
 
-def clasificar_cuenta(cuenta: Cuenta) -> tuple[str, str]:
-    """(naturaleza, grupo dentro del Estado de Situación Financiera)."""
+def clasificar_cuenta(cuenta: Cuenta, libro: Libro | None = None, dia: date | None = None) -> tuple[str, str]:
+    """(naturaleza, grupo dentro del Estado de Situación Financiera). Con ``libro`` y ``dia``, un préstamo es de corto
+    o largo plazo según cuántos meses te faltan con su pago mensual."""
     if cuenta.tipo is TipoCuenta.CREDITO:
         return PASIVO, TARJETAS
+    if cuenta.tipo is TipoCuenta.PRESTAMO:
+        if libro is not None and libro.prestamo(cuenta.id) is not None:
+            meses = prestamos.meses_restantes(libro, cuenta.id, dia)
+            if meses is not None and meses <= 12:
+                return PASIVO, PRESTAMOS_CORTO
+        return PASIVO, PRESTAMOS_LARGO
     if es_efectivo(cuenta):
         return ACTIVO, EFECTIVO_Y_BANCOS
     if cuenta.tipo is TipoCuenta.INVERSION:
@@ -339,7 +348,8 @@ class Situacion:
         return all(a == p + c for a, p, c in zip(self.total(ACTIVO), pasivo, patrimonio))
 
 
-_ORDEN_GRUPOS = (EFECTIVO_Y_BANCOS, INVERSIONES, POR_COBRAR, BIENES, OTROS_ACTIVOS, TARJETAS)
+_ORDEN_GRUPOS = (EFECTIVO_Y_BANCOS, INVERSIONES, POR_COBRAR, BIENES, OTROS_ACTIVOS, TARJETAS, PRESTAMOS_CORTO,
+                 PRESTAMOS_LARGO)
 
 
 def situacion(libro: Libro, fechas: list[date], desde: date | None = None) -> Situacion:
@@ -349,10 +359,10 @@ def situacion(libro: Libro, fechas: list[date], desde: date | None = None) -> Si
     """
     renglones = []
     corte = fechas[0]
-    cuentas = sorted(libro.cuentas(), key=lambda c: (_ORDEN_GRUPOS.index(clasificar_cuenta(c)[1]), c.orden,
-                                                     c.nombre.casefold()))
+    cuentas = sorted(libro.cuentas(), key=lambda c: (_ORDEN_GRUPOS.index(clasificar_cuenta(c, libro, corte)[1]),
+                                                     c.orden, c.nombre.casefold()))
     for cuenta in cuentas:
-        naturaleza, grupo = clasificar_cuenta(cuenta)
+        naturaleza, grupo = clasificar_cuenta(cuenta, libro, corte)
         signo = -1 if naturaleza == PASIVO else 1
         saldos = tuple(libro.saldo_centavos(cuenta.id, f) for f in fechas)
         propios = [Renglon(naturaleza, grupo, cuenta.nombre, tuple(a_pesos(signo * s) for s in saldos),
@@ -501,11 +511,12 @@ DIA_A_DIA = "Tu día a día"
 FLUJO_TARJETAS = "Tarjetas de crédito"
 FLUJO_INVERSIONES = "Inversiones"
 FLUJO_BIENES = "Bienes (compras, mejoras y ventas)"
+FLUJO_PRESTAMOS = "Préstamos (lo que recibiste y lo que pagaste)"
 FLUJO_POR_COBRAR = "Préstamos y cobros"
 FLUJO_AJUSTES = "Cuentas nuevas y ajustes"
 FLUJO_OTROS = "Otros movimientos"
-SECCIONES_FLUJO = (DIA_A_DIA, FLUJO_TARJETAS, FLUJO_INVERSIONES, FLUJO_BIENES, FLUJO_POR_COBRAR, FLUJO_AJUSTES,
-                   FLUJO_OTROS)
+SECCIONES_FLUJO = (DIA_A_DIA, FLUJO_TARJETAS, FLUJO_PRESTAMOS, FLUJO_INVERSIONES, FLUJO_BIENES, FLUJO_POR_COBRAR,
+                   FLUJO_AJUSTES, FLUJO_OTROS)
 
 
 @dataclass(frozen=True, slots=True)
@@ -578,6 +589,8 @@ def _concepto_de_flujo(libro: Libro, p) -> tuple[str, str]:
         return FLUJO_INVERSIONES, cuenta.nombre
     if cuenta.tipo is TipoCuenta.BIEN:
         return FLUJO_BIENES, cuenta.nombre
+    if cuenta.tipo is TipoCuenta.PRESTAMO:
+        return FLUJO_PRESTAMOS, cuenta.nombre
     if cuenta.tipo is TipoCuenta.POR_COBRAR:
         return FLUJO_POR_COBRAR, cuenta.nombre
     return FLUJO_OTROS, cuenta.nombre

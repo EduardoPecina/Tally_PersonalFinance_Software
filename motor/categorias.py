@@ -159,6 +159,7 @@ def editar(
     grupo_id: str | None | object = _SIN_CAMBIO,
     principal: bool | None = None,
     orden: int | None = None,
+    secundario: bool | None = None,
 ) -> Categoria:
     categoria = _editable(libro, categoria_id)
     cambios: dict = {}
@@ -179,6 +180,10 @@ def editar(
         cambios["principal"] = principal
     if orden is not None:
         cambios["orden"] = orden
+    if secundario is not None:
+        if secundario and categoria.clase is not ClaseCategoria.INGRESO:
+            raise ErrorValidacion("Solo una subcategoría de ingreso puede ser un ingreso secundario.")
+        cambios["secundario"] = bool(secundario)
     return libro.guardar_categoria(replace(categoria, **cambios))
 
 

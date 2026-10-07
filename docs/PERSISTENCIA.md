@@ -54,6 +54,7 @@ que los dos siempre buscan los datos en el mismo lugar.
   consultados (símbolo, precio, moneda, hora). No es parte de tus datos ni de
   los respaldos: si se borra o se daña, TALLY lo ignora y lo rehace en la
   siguiente consulta.
+- Esquema 5 y respaldos de formato 5 desde TALLY 0.11: entidad `prestamo` (cómo se contrató cada préstamo).
 - Esquema 4 y respaldos de formato 4 desde TALLY 0.10: entidad `bien` (cómo se deprecia cada cuenta de tipo
   «bien», sus avalúos y su venta). Una versión anterior ya no los abre, para no perder los bienes.
 - `Datos\historial_precios.json` (TALLY 0.8) guarda los cierres diarios

@@ -812,3 +812,52 @@ def test_convertir_un_gasto_en_un_bien_desde_el_historial(raiz, con_datos):
     sin_errores(at)
     lib = sesion_en(raiz).libro
     assert lib.operacion(gasto.id).tipo.value == "transferencia" and len(lib.bienes()) == 1
+
+
+def test_deudas_tarjetas_y_prestamos(raiz, con_datos):
+    from motor import categorias, prestamos
+
+    s = sesion_en(raiz)
+    hoy = s.libro.hoy()
+    with s.cambio() as lib:
+        cuentas.editar(lib, con_datos["tdc"], tasa_anual=60, cat=80)
+        categorias.editar(lib, con_datos["cat"]["NOMINA"], principal=True)
+        perfil.ajustar(lib, ingreso_esperado=20_000)
+    at = abrir(_pagina("deudas"))
+    sin_errores(at)
+    assert any(m.label == "Parte de tu ingreso" for m in at.metric)
+    assert any(m.label == "Pago mínimo estimado" for m in at.metric)
+    # Agregar un préstamo desde el formulario.
+    [t for t in at.text_input if t.label == "Nombre"][0].set_value("Préstamo Ficticio")
+    [n for n in at.number_input if n.label == "Monto que solicitaste"][0].set_value(30_000)
+    [n for n in at.number_input if n.label == "Tasa de interés anual (%)"][-1].set_value(24)   # la de la tarjeta va antes
+    boton(at, "Agregar préstamo").click().run()
+    sin_errores(at)
+    lib = sesion_en(raiz).libro
+    (p,) = lib.prestamos()
+    assert cuentas.saldo(lib, p.cuenta_id) == -30_000 and p.plazo_meses == 12
+    assert any(m.label == "Debes hoy" and m.value == "$30,000.00" for m in at.metric)
+    boton(at, "Registrar pago").click().run()                 # con el pago mensual e intereses sugeridos
+    sin_errores(at)
+    assert -30_000 < cuentas.saldo(sesion_en(raiz).libro, p.cuenta_id) < -27_000
+    assert any(t.label == "Simulador" for t in at.tabs)
+    assert prestamos.estado(sesion_en(raiz).libro, p.cuenta_id, hoy).pagado > 0
+
+
+def test_presupuestos_ingresos_sugeridos_y_proyeccion(raiz, con_datos):
+    at = abrir(_pagina("presupuestos"))
+    sin_errores(at)
+    assert [t.label for t in at.tabs][:3] == ["Tus ingresos", "¿Cuánto puedes gastar?", "Proyección del mes"]
+    at.selectbox[0].set_value(con_datos["cat"]["NOMINA"])
+    boton(at, "Guardar").click().run()
+    sin_errores(at)
+    assert sesion_en(raiz).libro.categoria(con_datos["cat"]["NOMINA"]).principal
+    assert any(m.label == "Gasto proyectado al cierre" for m in at.metric)
+
+
+def test_iva_en_configuracion(raiz, con_datos):
+    at = abrir(_pagina("configuracion"))
+    [n for n in at.number_input if n.label == "IVA / VAT (%)"][0].set_value(21)
+    [b for b in at.button if b.label == "Guardar"][1].click().run()   # el segundo «Guardar» de Tu perfil: el IVA
+    sin_errores(at)
+    assert sesion_en(raiz).libro.perfil.iva == 21

@@ -2,7 +2,46 @@
 
 Todos los cambios relevantes de TALLY se documentan aquí.
 
-## [0.10.0] — Sin publicar
+## [0.11.0] — Sin publicar
+
+- **Nueva página 💳 Deudas** (en Tu dinero): tus tarjetas y préstamos, cuánto pagar y cómo salir sin ahogarte.
+  - **¿Cuánto de tu ingreso se va en deudas?**: pagos de préstamos más pagos mínimos de tarjetas contra tu ingreso
+    esperado. Lo sano es menos del 30 %; arriba del 40 %, te avisa. También muestra cuánto te queda para vivir.
+  - **Tarjetas**:
+    - **Pago mínimo estimado**, con la regla del Banco de México: el mayor entre 1.5 % del saldo más intereses
+      e IVA, y 1.25 % de tu línea. Cada banco lo calcula a su manera.
+    - Cuánto pagar para no generar intereses.
+    - **Cuánto tardarías y cuántos intereses pagarías si pagas solo el mínimo.**
+    - Nuevos datos de la tarjeta: tasa anual, **CAT** (o TAE, CAE, CFT, TEA en otros países, informativo) y si la
+      tasa ya incluye IVA.
+  - **Préstamos** (personal, de auto, hipoteca, de nómina, de un familiar u otro):
+    - **Contratarlo**: monto que solicitaste, tasa anual, plazo, día de pago, pago pactado, CAT y comisión por
+      apertura. El dinero llega a una de tus cuentas, o directo a un bien (tu auto). Si ya lo tenías, escribes
+      cuánto debes hoy.
+    - **Registrar pago**: separa intereses, IVA y cargos (mora, retraso, comisión, seguro), que son **gasto**,
+      del capital, que baja tu deuda. Trae una estimación de los intereses que puedes corregir con tu estado de
+      cuenta. Con intereses en 0 es un abono extra a capital.
+    - **Cargo o mora** sin pago: sube tu deuda y es gasto.
+    - **¿Cuánto pagar para salir antes?**: con tu pago actual, +10 %, +25 % o para terminar en el plazo del
+      contrato, cuándo terminas y cuánto te ahorras de intereses.
+    - **Simulador**: pago mensual, extra cada mes y abono único (aguinaldo, bono…), con gráfica de lo que debes
+      en el tiempo. Avisa si el pago no cubre ni los intereses o si te pasarías del 40 % de tu ingreso.
+    - **Tabla de amortización** del contrato (método francés) y **datos del contrato** editables.
+    - En Contabilidad Técnica aparecen como pasivo a corto o largo plazo (según si los terminas en un año), y en
+      el flujo de efectivo como «Préstamos».
+- **Presupuestos**:
+  - **Tus ingresos**: elige tu ingreso **principal** (la nómina) y tus ingresos **secundarios fijos**. Su promedio
+    de los últimos 3 meses completos es tu **ingreso esperado**, o lo puedes escribir a mano. Incluye una **meta de
+    ahorro**.
+  - **¿Cuánto puedes gastar?**: ingreso − pagos de préstamos − ahorro, y **presupuestos sugeridos** por categoría
+    (lo que sueles gastar, ajustado si no te alcanza), con un botón para usarlos.
+  - **Proyección del mes**: cuánto vas a gastar al cierre, en qué categorías te vas a pasar y cuánto te quedaría.
+- **Configuración → IVA de tu país** (México 16 %, España 21 %, Colombia y Chile 19 %…): se usa en los intereses de
+  tarjetas y préstamos.
+- Cuentas muestra también bienes y préstamos (con «Debes» en los préstamos).
+- Datos versión 5 y respaldos formato 5: una versión anterior de TALLY ya no los abre, para no perder los préstamos.
+
+## [0.10.0]
 
 - **Contabilidad Técnica: clic en un renglón para ver su detalle.**
   - En los 4 reportes, al dar clic en una cuenta, categoría, sección o total, debajo aparecen los movimientos que

@@ -23,6 +23,7 @@ class TipoCuenta(enum.StrEnum):
     POR_COBRAR = "por_cobrar"
     OTRA = "otra"
     BIEN = "bien"            # casa, auto, laptop… (motor/bienes.py): su valor baja con la depreciación
+    PRESTAMO = "prestamo"    # préstamo personal, de auto, hipoteca… (motor/prestamos.py): negativo = deuda
 
 
 # Cuentas que cuentan como "dinero disponible" salvo que el usuario diga otra cosa.
@@ -74,6 +75,9 @@ class Perfil:
     dias_para_reclamar: int = 45       # cargos temporales: avisar si no te los devuelven en estos días
     clasificaciones: int = 2           # versión del reacomodo de clasificaciones ya aplicado (catalogo.py)
     actualizar_precios: bool = False   # consultar precios de títulos al abrir una cuenta de inversión (solo símbolos)
+    iva: Decimal = Decimal(16)         # % de IVA/VAT de tu país: se cobra sobre los intereses (tarjetas, préstamos)
+    ingreso_esperado: int | None = None  # centavos al mes; None = el promedio de tus ingresos fijos (planeacion.py)
+    meta_ahorro: int = 10              # % del ingreso que quieres ahorrar (presupuestos sugeridos)
 
 
 @dataclass(frozen=True, slots=True)
@@ -100,6 +104,10 @@ class Cuenta:
     # Solo cuentas de inversión con títulos: la ganancia (realizada + no realizada) que ya se pasó al saldo como
     # rendimiento, en centavos. Así «Registrar como rendimiento» solo agrega lo nuevo (motor/portafolio.py).
     plusvalia_registrada: int = 0
+    # Solo tarjetas de crédito, opcionales: para estimar intereses y el pago mínimo (motor/tarjetas.py).
+    tasa_anual: Decimal | None = None  # tasa de interés anual ordinaria, en %
+    cat: Decimal | None = None         # CAT (o TAE, CAE, CFT…): informativo
+    tasa_incluye_iva: bool = False     # si la tasa ya trae el IVA incluido
 
 
 class TipoOperacionValor(enum.StrEnum):
@@ -179,6 +187,8 @@ class Categoria:
     principal: bool = False
     orden: int = 0
     rubro_id: str | None = None
+    # Ingreso secundario fijo (renta que cobras, honorarios de cada mes…): cuenta en el ingreso esperado.
+    secundario: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -259,6 +269,30 @@ class Bien:
     avaluos: tuple[Avaluo, ...] = ()
     fecha_baja: date | None = None               # lo vendiste o lo diste de baja
     operaciones_baja: tuple[str, ...] = ()       # los movimientos de la venta (para deshacerla)
+
+    @property
+    def id(self) -> str:
+        return self.cuenta_id
+
+
+@dataclass(frozen=True, slots=True)
+class Prestamo:
+    """Cómo se contrató un préstamo (cuenta de tipo ``PRESTAMO``; su id es el de la cuenta). Ver motor/prestamos.py.
+
+    Lo que debes hoy sale de los movimientos de la cuenta; esto solo sirve para calcular el pago, la tabla de
+    amortización y las simulaciones.
+    """
+
+    cuenta_id: str
+    clase: str                       # personal, auto, hipoteca, nomina, otro (prestamos.CLASES)
+    monto: int                       # lo que solicitaste, en centavos
+    tasa_anual: Decimal              # tasa de interés anual ordinaria, en %
+    plazo_meses: int
+    fecha_inicio: date
+    iva: Decimal | None = None       # % de IVA sobre los intereses; None = el de tu perfil; 0 = sin IVA (hipoteca)
+    pago_pactado: int | None = None  # centavos al mes, si tu contrato dice otro (seguros incluidos…)
+    dia_pago: int | None = None
+    cat: Decimal | None = None       # informativo
 
     @property
     def id(self) -> str:
