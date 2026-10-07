@@ -169,10 +169,12 @@ def _gasto(r: Reporte) -> None:
         "Diferencia": [_con_signo(x.diferencia) for x in r.rubros],
         "": ["⬆️ subió" if x.subio else "" for x in r.rubros],
     }), hide_index=True, width="stretch")
-    st.caption("Tu promedio: los meses anteriores con datos (hasta 3). «Subió»: 20 % más y al menos $200 más.")
+    minimo = r.rubros[0].minimo
+    st.caption(f"Tu promedio: los meses anteriores con datos (hasta 3). «Subió»: {cierre.SUBE_PORCENTAJE} % más y al "
+               f"menos {formato.dinero_md(minimo)} más.")
     h = r.hormiga
     if h.veces:
-        st.markdown(f"**🐜 Gastos hormiga:** {h.veces} gastos de menos de {formato.dinero_md(cierre.UMBRAL_HORMIGA)} "
+        st.markdown(f"**🐜 Gastos hormiga:** {h.veces} gastos de menos de {formato.dinero_md(h.umbral)} "
                     f"que sumaron **{formato.dinero_md(h.total)}**"
                     + (f" ({(h.total / r.numeros.gastos * 100).quantize(Decimal('0.1'))} % de tus gastos)."
                        if r.numeros.gastos else "."))

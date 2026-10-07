@@ -382,13 +382,33 @@ def test_configuracion(raiz, con_datos):
     lib = sesion_en(raiz).libro
     assert lib.perfil.nombre == "Apodo Ficticio"
 
-    at.selectbox[0].set_value("anio")
+    next(s for s in at.selectbox if s.label == "Periodo que se muestra al abrir").set_value("anio")
     [b for b in at.button if b.label == "Guardar"][-1].click().run()
     sin_errores(at)
     assert sesion_en(raiz).libro.perfil.periodo_inicial == "anio"
     at.switch_page(_pagina("inicio")).run()
     assert at.title[0].value == "¡Hola, Apodo Ficticio!"
     assert at.segmented_control(key="_w_inicio_periodo").value == "anio"
+
+
+def test_tu_moneda_cambia_como_se_ve_todo(raiz, con_datos):
+    from motor import monedas
+
+    at = abrir(_pagina("configuracion"))
+    next(s for s in at.selectbox if s.label == "Moneda").set_value("EUR")
+    next(b for b in at.button if b.label == "Guardar" and "moneda" in str(b.form_id)).click().run()
+    sin_errores(at)
+    try:
+        assert sesion_en(raiz).libro.perfil.moneda == "EUR"
+        at.switch_page(_pagina("inicio")).run()
+        sin_errores(at)
+        metricas = {m.label: m.value for m in at.metric}
+        assert metricas["Ingresos"] == "4.000,00 €" and metricas["Gastos"] == "380,00 €"
+        for pagina in ("presupuestos", "graficas", "cierre", "inversiones", "impuestos", "registrar"):
+            at.switch_page(_pagina(pagina)).run()
+            sin_errores(at)
+    finally:
+        monedas.usar(None)
 
 
 # ------------------------------------------------------------------ fase 4
@@ -932,7 +952,7 @@ def test_ingresos_con_un_ingreso_fijo_cuya_subcategoria_se_borro(raiz, con_datos
 def test_iva_en_configuracion(raiz, con_datos):
     at = abrir(_pagina("configuracion"))
     [n for n in at.number_input if n.label == "IVA / VAT (%)"][0].set_value(21)
-    [b for b in at.button if b.label == "Guardar"][1].click().run()   # el segundo «Guardar» de Tu perfil: el IVA
+    next(b for b in at.button if b.label == "Guardar" and "iva" in str(b.form_id)).click().run()
     sin_errores(at)
     assert sesion_en(raiz).libro.perfil.iva == 21
 

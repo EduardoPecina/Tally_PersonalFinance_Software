@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import date
 from decimal import Decimal
 
+from motor import monedas
 from motor.dinero import formatear
 
 MESES = ("enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre",
@@ -65,8 +66,16 @@ def mes(anio: int, numero: int) -> str:
     return f"{MESES[numero - 1].capitalize()} {anio}"
 
 
+def columna_dinero() -> str:
+    """El ``format`` de una columna de dinero editable (``st.column_config.NumberColumn``) en tu moneda."""
+    m = monedas.activa()
+    if m.simbolo == "$" and m.decimal == "." and not m.despues:
+        return "dollar"                                   # $1,234.56
+    return f"%.{m.decimales}f {m.simbolo}" if m.despues else f"{m.simbolo} %.{m.decimales}f"
+
+
 def tabla_en_pesos(tabla, columnas, *, fijar: str | None = None):
-    """(tabla para mostrar, column_config): esas columnas como texto en pesos, alineado a la derecha, y las
+    """(tabla para mostrar, column_config): esas columnas como texto en tu moneda, alineado a la derecha, y las
     celdas vacías en blanco (Streamlit pondría «None»). Para exportar se usa la tabla original, con números."""
     import pandas as pd
     import streamlit as st

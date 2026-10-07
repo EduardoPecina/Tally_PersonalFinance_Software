@@ -57,7 +57,7 @@ def _msi(cuenta_id: str) -> None:
         "Falta": [float(c.restante) for c in compras],
         "Última mensualidad": [formato.fecha(c.ultima) for c in compras],
     }), hide_index=True, width="stretch", column_config={
-        k: st.column_config.NumberColumn(format="dollar") for k in ("Total", "Mensualidad", "Falta")})
+        k: st.column_config.NumberColumn(format=formato.columna_dinero()) for k in ("Total", "Mensualidad", "Falta")})
 
 
 def mostrar(cuenta_id: str) -> None:

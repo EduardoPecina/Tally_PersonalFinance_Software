@@ -23,7 +23,7 @@ from datetime import date, timedelta
 from decimal import Decimal, InvalidOperation
 
 from motor import categorias, cuentas
-from motor.dinero import a_centavos, a_pesos
+from motor.dinero import a_centavos, a_pesos, formatear
 from motor.errores import ErrorValidacion
 from motor.libro import Libro
 from motor.modelo import ClaseCategoria, Operacion, Prestamo, TipoCuenta, TipoOperacion
@@ -430,5 +430,5 @@ def _numero(valor, que: str) -> Decimal:
 
 
 def _texto(centavos: int) -> str:
-    return f"${a_pesos(centavos):,.2f}"
+    return formatear(a_pesos(centavos))
 

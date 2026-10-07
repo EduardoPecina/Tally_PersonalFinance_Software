@@ -26,7 +26,7 @@ from dataclasses import dataclass, field
 from datetime import date, timedelta
 from decimal import Decimal
 
-from motor import portafolio
+from motor import monedas, portafolio
 from motor.dinero import a_pesos
 from motor.libro import Libro
 from motor.modelo import TipoCuenta, TipoOperacion, TipoOperacionValor
@@ -154,13 +154,14 @@ def por_titulo(libro: Libro, cuenta_ids: list[str], desde: date, hasta: date, me
     valores: dict[str, list[Decimal]] = {}
     flujos: dict[str, list[Decimal]] = {}
     estimados = set()
-    tipos = _tipos_de_cambio(libro, cuenta_ids, mercado)
+    base = monedas.de(libro)
+    tipos = _tipos_de_cambio(libro, cuenta_ids, mercado, base)
     for instrumento in instrumentos(libro, cuenta_ids):
         if elegidos is not None and instrumento not in elegidos:
             continue
         if instrumento.tipo == TITULO:
             operaciones = [v for c in cuenta_ids for v in libro.valores(c) if v.simbolo == instrumento.nombre]
-            precio, real = _precios_en_pesos(instrumento.nombre, operaciones, mercado, tipos)
+            precio, real = _precios_en_pesos(instrumento.nombre, operaciones, mercado, tipos, base)
             valor, flujo = _serie_titulo(operaciones, fechas, precio)
             if not real:
                 estimados.add(instrumento.etiqueta)
@@ -279,16 +280,18 @@ def _resultado(valores: list[Decimal], flujos: list[Decimal], inicio: int, fin: 
     return Resultado(v0, entradas, salidas, v1, ganancia, rendimiento)
 
 
-def _tipos_de_cambio(libro: Libro, cuenta_ids: list[str], mercado: Mercado) -> dict[str, list[tuple[date, Decimal]]]:
-    """Moneda → [(fecha, pesos por unidad)]: el historial guardado más el tipo de cambio de cada compra o venta."""
+def _tipos_de_cambio(libro: Libro, cuenta_ids: list[str], mercado: Mercado, base: str
+                     ) -> dict[str, list[tuple[date, Decimal]]]:
+    """Moneda → [(fecha, cuánto de tu moneda vale una unidad)]: el historial guardado más el tipo de cambio de cada
+    compra o venta."""
     puntos: dict[str, dict[date, Decimal]] = defaultdict(dict)
     for c in cuenta_ids:
         for v in libro.valores(c):
-            if v.moneda != "MXN":
+            if v.moneda != base:
                 puntos[v.moneda][v.fecha] = v.tipo_cambio
-    monedas = set(puntos) | {m for m, _ in mercado.values() if m != "MXN"}
-    for moneda in monedas:
-        _, cierres = mercado.get(f"{moneda}MXN=X", ("MXN", {}))
+    otras = set(puntos) | {m for m, _ in mercado.values() if m != base}
+    for moneda in otras:
+        _, cierres = mercado.get(f"{moneda}{base}=X", (base, {}))
         puntos[moneda].update(cierres)
     return {m: sorted(p.items()) for m, p in puntos.items() if p}
 
@@ -301,12 +304,13 @@ def _en(puntos: list[tuple[date, Decimal]], dia: date) -> Decimal | None:
     return puntos[max(i - 1, 0)][1]
 
 
-def _precios_en_pesos(simbolo, operaciones, mercado: Mercado, tipos) -> tuple[list[tuple[date, Decimal]], bool]:
-    """Precio de un título en pesos por fecha. Manda el historial de mercado; los precios de compra o venta
+def _precios_en_pesos(simbolo, operaciones, mercado: Mercado, tipos, base: str
+                      ) -> tuple[list[tuple[date, Decimal]], bool]:
+    """Precio de un título en tu moneda por fecha. Manda el historial de mercado; los precios de compra o venta
     rellenan los días sin él. ``real`` dice si hubo historial de mercado."""
     puntos = {v.fecha: v.precio * v.tipo_cambio for v in operaciones}
-    moneda, cierres = mercado.get(simbolo, ("MXN", {}))
-    tipo = tipos.get(moneda) if moneda != "MXN" else [(date.min, Decimal(1))]
+    moneda, cierres = mercado.get(simbolo, (base, {}))
+    tipo = tipos.get(moneda) if moneda != base else [(date.min, Decimal(1))]
     real = False
     if tipo:
         for dia, cierre in cierres.items():

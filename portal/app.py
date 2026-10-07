@@ -11,7 +11,7 @@ if str(RAIZ) not in sys.path:
 
 import streamlit as st  # noqa: E402
 
-from motor import perfil, respaldos  # noqa: E402
+from motor import monedas, perfil, respaldos  # noqa: E402
 from motor.config import LEMA, VERSION  # noqa: E402
 from motor.errores import ErrorBloqueado, ErrorDatos, ErrorTally  # noqa: E402
 from portal import accesos, navegacion  # noqa: E402
@@ -90,6 +90,7 @@ def main() -> None:
     icono = accesos.imagen_pestana(preferencias.icono if preferencias else "claro")
     st.set_page_config(page_title="TALLY", page_icon=str(icono) if icono.exists() else "💰", layout="wide")
     tema.aplicar(preferencias.tema if preferencias else "claro")
+    monedas.usar(preferencias.moneda if preferencias else None)
     if LOGO.exists():
         st.logo(str(LOGO), size="large", icon_image=str(MARCA) if MARCA.exists() else None)
     _vigilante()

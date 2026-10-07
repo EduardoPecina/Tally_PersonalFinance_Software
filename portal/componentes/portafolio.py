@@ -9,7 +9,7 @@ from decimal import Decimal
 import pandas as pd
 import streamlit as st
 
-from motor import cotizaciones, cuentas, perfil, portafolio
+from motor import cotizaciones, cuentas, monedas, perfil, portafolio
 from motor.dinero import a_pesos
 from motor.modelo import Cuenta, TipoOperacionValor
 from portal import navegacion
@@ -82,13 +82,15 @@ def _precios(cuenta: Cuenta, abiertas) -> tuple[dict, dict]:
         if pedido or (automatico and viejos and not st.session_state.get(bandera)):
             st.session_state[bandera] = True          # lo automático, una vez por visita
             with st.spinner("Consultando precios…"):
-                consulta = cotizaciones.consultar(simbolos)
+                consulta = cotizaciones.consultar(simbolos, base=monedas.de(lib))
             cotizaciones.guardar(consulta)
             st.session_state[clave] = consulta
         st.caption(TRANSPARENCIA)
 
     consulta: cotizaciones.Consulta | None = st.session_state.get(clave)
+    base = monedas.de(lib)
     guardados, tipos_guardados = cotizaciones.ultimos()
+    tipos_guardados = {m: g for m, g in tipos_guardados.items() if g.moneda == base}   # contra tu moneda
     precios = {s: (g.valor, g.moneda) for s, g in guardados.items()}
     tipos = {m: g.valor for m, g in tipos_guardados.items()}
     # Si el historial de precios (página Inversiones) tiene un cierre más reciente, se usa ese.
@@ -96,7 +98,9 @@ def _precios(cuenta: Cuenta, abiertas) -> tuple[dict, dict]:
         if not serie.cierres:
             continue
         dia = max(serie.cierres)
-        moneda = simbolo[:3] if simbolo.endswith("MXN=X") else None
+        moneda = simbolo[:3] if simbolo.endswith(f"{base}=X") else None
+        if moneda is None and simbolo.endswith("=X"):
+            continue                                          # tipo de cambio contra otra moneda
         previo = tipos_guardados.get(moneda) if moneda else guardados.get(simbolo)
         if previo is None or dia > previo.actualizado.date():
             if moneda:
@@ -122,17 +126,17 @@ def _precios(cuenta: Cuenta, abiertas) -> tuple[dict, dict]:
         with st.expander("Escribir precios a mano (sin internet)"):
             st.caption("Si no hay conexión o el precio no te convence, escríbelo aquí (0 = no usar). Manda sobre el "
                        "consultado.")
-            monedas = sorted({p.moneda for p in abiertas} - {"MXN"})
-            columnas = st.columns(min(len(abiertas) + len(monedas), 3))
+            otras = sorted({p.moneda for p in abiertas} - {base})
+            columnas = st.columns(min(len(abiertas) + len(otras), 3))
             for i, posicion in enumerate(abiertas):
                 valor = columnas[i % len(columnas)].number_input(
                     f"{posicion.simbolo} ({posicion.moneda} por título)", min_value=0.0, value=0.0, step=1.0,
                     format="%.4f", key=f"manual_{cuenta.id}_{posicion.simbolo}")
                 if valor:
                     precios[posicion.simbolo] = (Decimal(str(valor)), posicion.moneda)
-            for j, moneda in enumerate(monedas, start=len(abiertas)):
+            for j, moneda in enumerate(otras, start=len(abiertas)):
                 valor = columnas[j % len(columnas)].number_input(
-                    f"Tipo de cambio {moneda} (pesos por 1 {moneda})", min_value=0.0, value=0.0, step=0.1,
+                    f"Tipo de cambio {moneda} ({base} por 1 {moneda})", min_value=0.0, value=0.0, step=0.1,
                     format="%.4f", key=f"manual_{cuenta.id}_fx_{moneda}")
                 if valor:
                     tipos[moneda] = Decimal(str(valor))
@@ -202,7 +206,7 @@ def _cuadrar(cuenta: Cuenta, v: portafolio.Valuacion | None) -> None:
         st.caption(referencia)
         with st.form(f"valor_oficial_{cuenta.id}", border=False):
             izquierda, derecha = st.columns(2)
-            valor = izquierda.number_input("Valor oficial de la cuenta (MXN)", min_value=0.0, value=None, step=100.0,
+            valor = izquierda.number_input(f"Valor oficial de la cuenta ({monedas.de(lib)})", min_value=0.0, value=None, step=100.0,
                                            format="%.2f", placeholder="Cópialo de tu app, al centavo",
                                            key=f"oficial_valor_{cuenta.id}")
             fecha = derecha.date_input("Fecha de ese valor", value=lib.hoy(), max_value=lib.hoy(),
@@ -252,7 +256,8 @@ def _historial(cuenta: Cuenta) -> None:
                 "Símbolo": [v.simbolo for v in valores],
                 "Títulos": [f"{v.titulos.normalize():f}" for v in valores],
                 "Precio": [f"{v.precio:,.4f} {v.moneda}" for v in valores],
-                "Tipo de cambio": [f"{v.tipo_cambio.normalize():f}" if v.moneda != "MXN" else "" for v in valores],
+                "Tipo de cambio": [f"{v.tipo_cambio.normalize():f}" if v.moneda != monedas.de(lib) else ""
+                                   for v in valores],
                 "Comisión": [f"{v.comision:,.2f}" if v.comision else "" for v in valores],
                 "Notas": [v.notas for v in valores],
             }), hide_index=True, width="stretch")
@@ -283,9 +288,12 @@ def _formulario_valor(cuenta: Cuenta) -> None:
         titulos = izquierda.number_input("Títulos", min_value=0.0, value=None, step=1.0, format="%.6f",
                                          placeholder="Ej. 3 o 0.0025")
         precio = derecha.number_input("Precio por título", min_value=0.0, value=None, step=1.0, format="%.4f")
-        moneda = izquierda.selectbox("Moneda del precio", ["MXN", "USD", "EUR"])
-        tipo_cambio = derecha.number_input("Tipo de cambio ese día (solo si no es MXN)", min_value=0.0, value=None,
-                                           step=0.1, format="%.4f", placeholder="Ej. 18.45")
+        base = monedas.de(lib)
+        moneda = izquierda.selectbox("Moneda del precio", list(dict.fromkeys([base, "USD", "EUR", *monedas.MONEDAS])),
+                                     help="La moneda en la que cotiza el título (la que muestra Yahoo Finance).")
+        tipo_cambio = derecha.number_input(f"Tipo de cambio ese día (solo si no es {base})", min_value=0.0,
+                                           value=None, step=0.1, format="%.4f",
+                                           help=f"Cuántos {base} valía 1 unidad de esa moneda ese día.")
         comision = izquierda.number_input("Comisión (opcional, en la misma moneda)", min_value=0.0, value=0.0,
                                           step=1.0, format="%.2f")
         notas = derecha.text_input("Notas (opcional)", max_chars=200)
@@ -309,7 +317,7 @@ def _formulario_plazo(cuenta: Cuenta) -> None:
     with st.form(f"plazo_{cuenta.id}", clear_on_submit=True, border=False):
         nombre = st.text_input("Nombre", placeholder="Ej. CETES 28 días, Pagaré BBVA 91 días", max_chars=60)
         izquierda, derecha = st.columns(2)
-        monto = izquierda.number_input("Monto invertido (MXN)", min_value=0.0, value=None, step=100.0, format="%.2f")
+        monto = izquierda.number_input(f"Monto invertido ({monedas.de(lib)})", min_value=0.0, value=None, step=100.0, format="%.2f")
         tasa = derecha.number_input("Tasa anual (%)", min_value=0.0, max_value=100.0, value=None, step=0.1,
                                     format="%.2f", placeholder="Ej. 10.5")
         fecha = izquierda.date_input("Fecha de inicio", value=lib.hoy(), format="DD/MM/YYYY")

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import streamlit as st
 
-from motor import cuentas, perfil, tarjetas
+from motor import cuentas, monedas, perfil, tarjetas
 from motor.config import LEMA
 from motor.consultas import ETIQUETA_TIPO_CUENTA
 from motor.modelo import TipoCuenta
@@ -46,6 +46,11 @@ def mostrar() -> None:
     st.subheader("1. ¿Cómo te llamas?")
     nombre = st.text_input("Tu nombre", key="bienvenida_nombre", placeholder="Así te saludará TALLY",
                            max_chars=60)
+    codigos = list(monedas.MONEDAS)
+    moneda = st.selectbox("¿En qué moneda llevas tus cuentas?", codigos, key="bienvenida_moneda",
+                          format_func=lambda c: f"{monedas.MONEDAS[c].etiqueta} · {monedas.MONEDAS[c].ejemplo}",
+                          help="La de tu país. TALLY mostrará tus importes con su símbolo y su formato.")
+    monedas.usar(moneda)
 
     st.subheader("2. Agrega tus cuentas")
     st.caption(
@@ -67,7 +72,7 @@ def mostrar() -> None:
 
     st.subheader("3. ¡Listo!")
     if st.button("Empezar a usar TALLY", type="primary", disabled=not nombre.strip()):
-        if ejecutar(lambda lib: perfil.configurar(lib, nombre), exito=f"¡Hola, {nombre.strip()}!"):
+        if ejecutar(lambda lib: perfil.configurar(lib, nombre, moneda), exito=f"¡Hola, {nombre.strip()}!"):
             st.rerun()
     if not nombre.strip():
         st.caption("Escribe tu nombre para continuar.")

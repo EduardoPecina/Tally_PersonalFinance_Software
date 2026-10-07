@@ -270,7 +270,7 @@ def eliminar(cuenta: Cuenta, clave: str) -> None:
                  else f"Esta cuenta todavía tiene {formato.dinero_md(saldo)}")
         st.warning(f"{texto}. Si la eliminas así, ese saldo seguirá contando en tu patrimonio.", icon="⚠️")
         dejar_en_cero = st.checkbox(
-            "Ya la pagué o la cancelé: dejar su saldo en $0", value=False, key=f"{clave}_cero",
+            "Ya la pagué o la cancelé: dejar su saldo en cero", value=False, key=f"{clave}_cero",
             help="Registra un ajuste de saldo con fecha de hoy. Un ajuste no cuenta como ingreso ni como gasto. "
                  "Si todavía debes ese dinero, no lo marques.")
     if cuentas.tiene_movimientos(lib, cuenta.id):

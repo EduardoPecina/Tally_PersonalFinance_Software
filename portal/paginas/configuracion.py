@@ -9,7 +9,7 @@ from decimal import Decimal
 
 import streamlit as st
 
-from motor import perfil, reportes, rutas
+from motor import monedas, perfil, reportes, rutas
 from motor.config import LEMA, VERSION
 from motor.perfil import MAXIMO_RESPALDOS
 from portal import accesos
@@ -29,12 +29,31 @@ def _perfil() -> None:
                 st.rerun()
 
 
+def _moneda() -> None:
+    actual = libro().perfil
+    st.subheader("Tu moneda")
+    st.caption("TALLY muestra todos tus importes con el símbolo y el formato de tu moneda. En Inversiones, es contra "
+               "la que se calcula el tipo de cambio.")
+    codigos = list(monedas.MONEDAS)
+    with st.form("configuracion_moneda", border=False):
+        elegida = st.selectbox("Moneda", codigos, index=codigos.index(monedas.de(libro())),
+                               format_func=lambda c: f"{monedas.MONEDAS[c].etiqueta} · {monedas.MONEDAS[c].ejemplo}")
+        st.caption("⚠️ Cambiarla **no convierte** tus importes (no es un tipo de cambio): solo cambia cómo se ven. "
+                   "Elígela al empezar.")
+        if st.form_submit_button("Guardar", type="primary"):
+            if elegida == actual.moneda:
+                st.info("Ya es tu moneda.")
+            elif ejecutar(lambda lib: perfil.ajustar(lib, moneda=elegida),
+                          exito=f"Ahora ves todo en {monedas.MONEDAS[elegida].nombre.lower()}"):
+                st.rerun()
+
+
 def _impuestos() -> None:
     actual = libro().perfil
     st.subheader("IVA de tu país")
-    st.caption("Los bancos cobran IVA sobre los intereses de tarjetas y préstamos. En México es 16 %; en España, "
-               "21 %; en Colombia, 19 %; en Chile, 19 %; en Perú, 18 %; en Argentina, 21 %. TALLY lo usa para "
-               "estimar intereses, pagos mínimos y tablas de préstamos.")
+    st.caption("El IVA que tu banco cobra sobre los intereses de tarjetas y préstamos. En México es 16 %; en muchos "
+               "países los intereses no llevan IVA: revisa tu estado de cuenta y, si no aparece, pon 0. TALLY lo usa "
+               "para estimar intereses, pagos mínimos y tablas de préstamos.")
     with st.form("configuracion_iva", border=False):
         iva = st.number_input("IVA / VAT (%)", min_value=0.0, max_value=50.0, value=float(actual.iva), step=1.0,
                               format="%.2f")
@@ -138,6 +157,8 @@ def mostrar() -> None:
         seguridad.mostrar()
     with tu:
         _perfil()
+        st.divider()
+        _moneda()
         st.divider()
         _impuestos()
     with apariencia:
