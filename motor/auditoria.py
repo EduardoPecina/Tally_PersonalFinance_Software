@@ -48,7 +48,7 @@ def diferencias(antes: Instantanea, despues: Instantanea) -> list[Cambio]:
         nuevos = despues.get(entidad, {})
         for entidad_id in sorted(previos.keys() | nuevos.keys()):
             a, d = previos.get(entidad_id), nuevos.get(entidad_id)
-            if a == d:
+            if a is d or a == d:          # el mismo diccionario: no cambió (sin compararlo campo por campo)
                 continue
             accion = CREAR if a is None else BORRAR if d is None else EDITAR
             cambios.append(Cambio(entidad, entidad_id, accion, a, d))

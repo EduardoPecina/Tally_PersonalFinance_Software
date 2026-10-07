@@ -1,7 +1,7 @@
 """Constantes generales de la aplicación."""
 
 APP_NOMBRE = "TALLY"
-VERSION = "0.19.0"
+VERSION = "0.20.0"
 MONEDA = "MXN"
 LEMA = "Your money. Your computer. Your data."
 PUERTO_PORTAL = 8765

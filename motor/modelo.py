@@ -7,7 +7,7 @@ Todas son inmutables (``frozen``); para modificarlas se crea una copia con
 from __future__ import annotations
 
 import enum
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date, datetime
 from decimal import Decimal
 
@@ -225,12 +225,19 @@ class Operacion:
     msi: int = 0
     # Devolución (o paso a gasto) de un cargo temporal: el id del cargo que liquida (motor/temporales.py).
     liquida: str = ""
+    # Calculadas al crearla (no se guardan ni se comparan): los reportes las piden decenas de miles de veces.
+    _de_cuenta: tuple[Partida, ...] = field(init=False, repr=False, compare=False, default=())
+    _de_categoria: tuple[Partida, ...] = field(init=False, repr=False, compare=False, default=())
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "_de_cuenta", tuple(p for p in self.partidas if p.cuenta_id is not None))
+        object.__setattr__(self, "_de_categoria", tuple(p for p in self.partidas if p.categoria_id is not None))
 
     def partidas_de_cuenta(self) -> tuple[Partida, ...]:
-        return tuple(p for p in self.partidas if p.cuenta_id is not None)
+        return self._de_cuenta
 
     def partidas_de_categoria(self) -> tuple[Partida, ...]:
-        return tuple(p for p in self.partidas if p.categoria_id is not None)
+        return self._de_categoria
 
     @property
     def orden(self) -> tuple[date, int]:

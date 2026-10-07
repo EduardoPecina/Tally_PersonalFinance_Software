@@ -29,7 +29,7 @@ from motor import auditoria, cifrado
 from motor.config import VERSION
 from motor.errores import ErrorBloqueado, ErrorDatos
 from motor.libro import Libro
-from motor.serializacion import Instantanea, instantanea, libro_desde_instantanea
+from motor.serializacion import Instantanea, Memoria, instantanea, libro_desde_instantanea
 
 VERSION_ESQUEMA = 6
 # 1: TALLY 0.1–0.3. 2: categorías con subcategorías (entidad «rubro»). Las tablas no cambian; el contenido lo
@@ -73,6 +73,7 @@ class Almacen:
     def __init__(self, ruta: Path | str) -> None:
         self.ruta = Path(ruta)
         self._guardado: Instantanea = {}
+        self._memoria = Memoria()
         self._secuencia = 0
         self._revision = 0
         self.es_nuevo = False
@@ -283,15 +284,16 @@ class Almacen:
                 revision = int(self._meta(conexion, "revision") or 0)
         except (sqlite3.DatabaseError, json.JSONDecodeError) as error:
             raise ErrorDatos(f"No se pudieron leer los datos ({error}). Restaura un respaldo.") from error
-        libro = libro_desde_instantanea(datos, secuencia, reloj=reloj)
-        self._guardado = instantanea(libro)
+        self._memoria = Memoria()        # recuerda cada movimiento con el diccionario que se leyó del archivo
+        libro = libro_desde_instantanea(datos, secuencia, reloj=reloj, memoria=self._memoria)
+        self._guardado = instantanea(libro, self._memoria)
         self._secuencia = libro.secuencia
         self._revision = revision
         return libro
 
     def libro_guardado(self, *, reloj: Callable[[], datetime] | None = None) -> Libro:
         """El último estado guardado, sin volver a leer el disco (para deshacer)."""
-        return libro_desde_instantanea(self._guardado, self._secuencia, reloj=reloj)
+        return libro_desde_instantanea(self._guardado, self._secuencia, reloj=reloj, memoria=self._memoria)
 
     @property
     def estado_guardado(self) -> Instantanea:
@@ -301,7 +303,7 @@ class Almacen:
 
     def guardar(self, libro: Libro) -> list[auditoria.Cambio]:
         """Guarda los cambios del libro en una sola transacción y los anota en la bitácora."""
-        nuevo = instantanea(libro)
+        nuevo = instantanea(libro, self._memoria)
         cambios = auditoria.diferencias(self._guardado, nuevo)
         if not cambios and libro.secuencia == self._secuencia:
             return []
@@ -314,7 +316,8 @@ class Almacen:
 
         ``adoptar``: los datos quedan con esa contraseña (al restaurar en una PC sin contraseña un respaldo que sí
         la tiene: así sigues entrando con la misma contraseña y el mismo Kit)."""
-        nuevo = instantanea(libro)
+        self._memoria = Memoria()
+        nuevo = instantanea(libro, self._memoria)
         anterior = self._cifrador
         if adoptar is not None:
             if self.config_cifrado() is not None:

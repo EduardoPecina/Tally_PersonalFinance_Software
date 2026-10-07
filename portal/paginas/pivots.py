@@ -88,17 +88,20 @@ def mostrar() -> None:
     st.dataframe(vista, hide_index=True, width="stretch", height=min(38 + 35 * len(datos), 640),
                  column_config=columnas_vista)
 
-    base = pd.DataFrame([
-        {"Fecha": f["fecha"], "Cuenta": f["cuenta"], "Categoría": f["rubro"], "Subcategoría": f["categoria"],
-         "Clasificación": f["grupo"], "Tipo": f["clase"], "Monto": float(f["monto"]), "Descripción": f["descripcion"]}
-        for f in reportes.hechos(lib, desde, hasta)
-        if not config["cuentas"] or f["cuenta"] in {lib.cuenta(c).nombre for c in config["cuentas"]}
-    ])
+    elegidas = {lib.cuenta(c).nombre for c in config["cuentas"]}
+
+    def _movimientos() -> pd.DataFrame:                  # solo al descargar (con años de datos tarda)
+        return pd.DataFrame([
+            {"Fecha": f["fecha"], "Cuenta": f["cuenta"], "Categoría": f["rubro"], "Subcategoría": f["categoria"],
+             "Clasificación": f["grupo"], "Tipo": f["clase"], "Monto": float(f["monto"]),
+             "Descripción": f["descripcion"]}
+            for f in reportes.hechos(lib, desde, hasta) if not elegidas or f["cuenta"] in elegidas
+        ])
     izquierda, derecha = st.columns(2)
     izquierda.download_button(
-        "Exportar a Excel", exportar.excel({"Pivot": datos, "Movimientos": base}), on_click="ignore",
+        "Exportar a Excel", lambda: exportar.excel({"Pivot": datos, "Movimientos": _movimientos()}), on_click="ignore",
         file_name=f"TALLY_pivot_{lib.hoy():%Y-%m-%d}.xlsx", icon=":material/table_view:", width="stretch",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         help="Dos hojas: la tabla dinámica y los movimientos que la forman (para que armes tus propios pivots).")
-    derecha.download_button("Exportar a CSV", exportar.csv(datos), file_name=f"TALLY_pivot_{lib.hoy():%Y-%m-%d}.csv",
+    derecha.download_button("Exportar a CSV", lambda: exportar.csv(datos), file_name=f"TALLY_pivot_{lib.hoy():%Y-%m-%d}.csv",
                             mime="text/csv", on_click="ignore", icon=":material/download:", width="stretch")

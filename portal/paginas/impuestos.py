@@ -93,7 +93,7 @@ def _deducibles() -> None:
               "Subcategoría": p.subcategoria, "Cuenta": p.cuenta, "Importe": float(p.importe),
               "En efectivo": "Sí" if p.en_efectivo else ""} for r in reporte.renglones for p in r.pagos]
     if filas:
-        st.download_button("Descargar en Excel (para tu declaración)", exportar.excel({"Deducibles": pd.DataFrame(filas)}, columnas_dinero={"Importe"}),
+        st.download_button("Descargar en Excel (para tu declaración)", lambda: exportar.excel({"Deducibles": pd.DataFrame(filas)}, columnas_dinero={"Importe"}),
                            file_name=f"TALLY_deducibles_{anio}.xlsx", icon=":material/download:", on_click="ignore",
                            key="imp_excel")
     if lib.fiscal.notas:

@@ -116,7 +116,7 @@ def mostrar(cuenta_id: str) -> None:
         column_config={"Fecha": st.column_config.DateColumn(format="DD/MM/YYYY"), **config},
     )
     st.download_button(
-        "Exportar a Excel", exportar.excel({cuenta.nombre: tabla}), icon=":material/table_view:",
+        "Exportar a Excel", lambda: exportar.excel({cuenta.nombre: tabla}), icon=":material/table_view:",
         file_name=f"TALLY_{cuenta.nombre}_{lib.hoy():%Y-%m-%d}.xlsx", on_click="ignore", key="cuenta_excel",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     )

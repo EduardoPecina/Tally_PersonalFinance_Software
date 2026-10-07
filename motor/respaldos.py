@@ -26,7 +26,7 @@ import sqlite3
 import tempfile
 import zipfile
 from contextlib import closing
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
@@ -225,8 +225,9 @@ def _crear_desde(almacen: Almacen, momento: datetime, destino: Path | str | None
     contenido = {
         "secuencia": libro.secuencia,
         "entidades": almacen.estado_guardado,
-        "bitacora": [
-            {k: v for k, v in asdict(r).items() if k != "id"}
+        "bitacora": [                       # sin copias profundas: los datos de cada renglón se escriben tal cual
+            {"fecha_hora": r.fecha_hora, "entidad": r.entidad, "entidad_id": r.entidad_id, "accion": r.accion,
+             "antes": r.antes, "despues": r.despues}
             for r in almacen.bitacora(mas_recientes_primero=False)
         ],
     }
@@ -236,7 +237,8 @@ def _crear_desde(almacen: Almacen, momento: datetime, destino: Path | str | None
 def _escribir_zip(ruta: Path, contenido: dict, momento: datetime | str, resumen: dict | None,
                   config: cifrado.Config | None, *, version_formato: int = VERSION_FORMATO,
                   version_app: str = VERSION) -> Path:
-    datos = json.dumps(contenido, ensure_ascii=False, sort_keys=True, indent=1).encode("utf-8")
+    # Sin sangría: así Python usa su codificador en C (con sangría es diez veces más lento con años de datos).
+    datos = json.dumps(contenido, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
     manifiesto = {
         "formato": FORMATO,
         "version_formato": version_formato,
