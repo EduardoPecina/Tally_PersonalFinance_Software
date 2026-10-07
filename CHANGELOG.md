@@ -2,7 +2,34 @@
 
 Todos los cambios relevantes de TALLY se documentan aquí.
 
-## [0.8.0] — Sin publicar
+## [0.9.0] — Sin publicar
+
+- **Nueva página 📒 Contabilidad Técnica** (en Análisis): tus estados financieros, armados solos con lo que ya
+  registras. No se captura ni se guarda nada nuevo: son vistas de los mismos movimientos (que ya estaban en
+  partida doble), así que si corriges uno, todos los reportes cambian y siempre cuadran.
+  - **Estado de Situación Financiera**: lo que tienes (Activo), lo que debes (Pasivo) y lo que vales
+    (Patrimonio). Incluye el aviso «Cuadra: Activo = Pasivo + Patrimonio».
+    - El Activo se divide en efectivo y bancos, inversiones, por cobrar y otros. El Pasivo son las tarjetas
+      de crédito, a corto plazo.
+    - El Patrimonio es el patrimonio inicial (los saldos con los que empezaste) más los resultados de años
+      anteriores y el resultado del año.
+  - **Estado de Resultados**: ingresos y gastos por categoría (y por subcategoría), con el **resultado de tu día
+    a día**. Los rendimientos de tus inversiones van aparte, para no mezclarlos con tu sueldo.
+  - **Estado de Flujo de Efectivo**, por el método directo: efectivo al inicio, por dónde entró y salió (tu día
+    a día, tarjetas, inversiones, préstamos y cobros, cuentas nuevas) y efectivo al final. Explica por qué una
+    compra con tarjeta es gasto pero todavía no es salida de efectivo.
+  - **Balanza de Comprobación**:
+    - Saldos inicial y final (deudor y acreedor), movimientos (Debe y Haber), variación, **Origen /
+      Aplicación** con explicación, y una lectura en palabras («Tienes más», «Debes menos ✓»).
+    - Por categoría o por subcategoría (subcuentas), con la comprobación «sumas iguales».
+    - Una cuenta por cobrar que ya te pagaron queda **en ceros: compensada ✓**.
+  - **Comparativos**: este año, año pasado, este mes, mes pasado, últimos 12 meses o las fechas que elijas,
+    contra el mismo periodo del año anterior o el inmediato anterior.
+  - Explicación «¿Cómo se lee? (sin ser contador)» y descarga de los 4 reportes en Excel.
+- **Entrada y Salida** en lugar de «Abono» y «Cargo» en el estado de cuenta y en su descarga a Excel.
+- El menú de la izquierda muestra siempre todas las páginas (ya no se esconden en «View more»).
+
+## [0.8.0]
 
 - **Cuadrar con tu estado de cuenta** (antes «Registrar como rendimiento»):
   - Para pasar la ganancia o pérdida de una inversión a tu contabilidad, ahora es **obligatorio** escribir el valor

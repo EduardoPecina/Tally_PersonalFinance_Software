@@ -101,15 +101,15 @@ def mostrar(cuenta_id: str) -> None:
         "Fecha": [f.fecha for f in filas],
         "Descripción": [f.descripcion + (f" ({f.msi} MSI)" if f.msi else "") for f in filas],
         "Subcategoría o cuenta": [f.detalle for f in filas],
-        "Cargo": [float(f.cargo) or None for f in filas],
-        "Abono": [float(f.abono) or None for f in filas],
+        "Entrada": [float(f.abono) or None for f in filas],
+        "Salida": [float(f.cargo) or None for f in filas],
         columna_saldo: [float(-f.saldo if es_credito else f.saldo) for f in filas],
     })
     entradas, salidas = sum(f.abono for f in filas), sum(f.cargo for f in filas)
-    st.caption(f"{len(filas)} movimiento(s) · Abonos {formato.dinero_md(entradas)} · "
-               f"Cargos {formato.dinero_md(salidas)}. El saldo es el que quedó después de cada movimiento; para "
+    st.caption(f"{len(filas)} movimiento(s) · Entradas {formato.dinero_md(entradas)} · "
+               f"Salidas {formato.dinero_md(salidas)}. El saldo es el que quedó después de cada movimiento; para "
                "verlo de arriba abajo usa «Orden» (al ordenar con clic en una columna, el saldo no se recalcula).")
-    vista, config = formato.tabla_en_pesos(tabla, ("Cargo", "Abono", columna_saldo))
+    vista, config = formato.tabla_en_pesos(tabla, ("Entrada", "Salida", columna_saldo))
     evento = st.dataframe(
         vista, hide_index=True, width="stretch", on_select="rerun", selection_mode="single-row", key="cuenta_tabla",
         height=min(38 + 35 * len(filas), 560),

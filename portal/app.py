@@ -87,7 +87,7 @@ def main() -> None:
         return
 
     _respaldo_del_dia(actual)
-    pagina = st.navigation(navegacion.por_seccion())
+    pagina = st.navigation(navegacion.por_seccion(), expanded=True)   # todas las páginas a la vista
     if pagina.url_path != "cuentas":
         st.session_state.pop("cuenta_abierta", None)       # al volver a Cuentas se ve la lista
     if pagina.url_path not in ("", "inicio"):
