@@ -532,6 +532,7 @@ class Lectura:
     saldo_inicial: int | None = None             # del resumen del estado de cuenta (PDF); en tarjetas, la deuda
     saldo_final: int | None = None
     credito: bool = False
+    sueltos: tuple[tuple[int, str], ...] = ()    # renglones con importe que no parecieron movimientos (PDF)
 
     @property
     def falta(self) -> int | None:
@@ -692,6 +693,10 @@ _CARGOS_DEL_RESUMEN = {"intereses": ("INTERESES", "INTERES ORDINARIO", "INTERESE
                        "comisiones": ("COMISIONES COBRADAS", "COMISIONES", "TOTAL COMISIONES"),
                        "iva": ("IVA", "I.V.A.")}
 _NOMBRE_DEL_RESUMEN = {"intereses": "INTERESES", "comisiones": "COMISIONES", "iva": "IVA"}
+_NO_ES_SUELTO = ("SALDO", "TOTAL", "PAGO MINIMO", "PAGO PARA NO GENERAR", "LIMITE", "CREDITO DISPONIBLE",
+                 "INTERES", "COMISION", "IVA", "CAT", "TASA", "PROMEDIO", "GAT", "ISR", "PAGOS MENSUALES",
+                 "COMPRAS", "PAGOS", "ABONOS", "CARGOS", "DEPOSITOS", "RETIROS", "RENDIMIENTO", "APROXIMAD",
+                 "INFORMATIVO")
 _FIN_DE_DETALLE = ("TOTAL", "SALDO", "PAGINA", "DETALLE", "FECHA", "RESUMEN", "ESTADO DE CUENTA", "PERIODO")
 _PALABRAS_ENTRA = ("ABONO", "DEPOSITO", "DEP EFECTIVO", "RECIBID", "NOMINA", "SU PAGO", "GRACIAS", "DEVOLUCION",
                    "REEMBOLSO", "BONIFICACION", "CASHBACK", "INTERESES GANADOS", "RENDIMIENTO", "REVERSO",
@@ -715,6 +720,7 @@ def _de_texto_libre(texto: str, *, credito: bool, hoy: date) -> Lectura:
     resumen: dict[str, int | None] = dict.fromkeys(("inicial", "final", "cargos", "abonos", *_CARGOS_DEL_RESUMEN))
     lineas_del_resumen: dict[str, int] = {}
     omitidos = 0
+    sueltos: list[tuple[int, str]] = []
     actual: _Renglon | None = None
     for numero, crudo in enumerate(texto.splitlines(), start=1):
         linea = " ".join(crudo.split())
@@ -726,6 +732,8 @@ def _de_texto_libre(texto: str, *, credito: bool, hoy: date) -> Lectura:
             actual = leido
             continue
         omitidos += leido == "sin importe"
+        if _suelto(linea, leido):
+            sueltos.append((numero, linea))
         for llave, frases in (("inicial", _SALDO_INICIAL), ("final", _SALDO_FINAL), ("cargos", _TOTAL_CARGOS),
                               ("abonos", _TOTAL_ABONOS)):
             if resumen[llave] is None:
@@ -785,7 +793,7 @@ def _de_texto_libre(texto: str, *, credito: bool, hoy: date) -> Lectura:
     if any(m.supuesto for m in movimientos):
         avisos.append("En los marcados con 🔍 no supe con certeza si el dinero entró o salió: cámbialo en la columna "
                       "«Movimiento» si hace falta.")
-    return replace(lectura, movimientos=tuple(movimientos), avisos=tuple(avisos))
+    return replace(lectura, movimientos=tuple(movimientos), avisos=tuple(avisos), sueltos=tuple(sueltos[:40]))
 
 
 def _renglon(numero: int, linea: str, referencia: date) -> _Renglon | str | None:
@@ -852,6 +860,18 @@ def _importe_despues(linea: str, frases) -> int | None:
             if m := _IMPORTE.search(plano, inicio):
                 return leer_importe(m.group(1))
     return None
+
+
+def _suelto(linea: str, leido) -> bool:
+    """¿Podría ser un movimiento que TALLY no entendió? Un renglón con fecha pero sin importe, o con un importe y
+    texto que no es del resumen (saldos, totales, tasas). Se muestran al usuario si las cuentas no cuadran."""
+    if leido == "sin importe":
+        return True
+    importes = [leer_importe(m.group(1)) for m in _IMPORTE.finditer(linea)]
+    if "%" in linea or not any(importes) or not re.search(r"[A-Za-z]{3}", linea):
+        return False                                             # sin importes, o solo en ceros
+    k = f" {clave(linea)} "
+    return not any(f" {p}" in k for p in _NO_ES_SUELTO)
 
 
 def _importe_al_inicio(linea: str, frases) -> int | None:

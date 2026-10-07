@@ -2,6 +2,14 @@
 
 Todos los cambios relevantes de TALLY se documentan aquí.
 
+## [0.13.3] — Sin publicar
+
+- **➕ Agregar a mano lo que falta** al importar del banco: fecha, descripción, importe, si entró o salió y la
+  subcategoría o cuenta. Se carga junto con lo demás, y TALLY vuelve a comprobar si ya cuadra (✅) o cuánto falta.
+- **Lo que no entendió, a la vista:** si no cuadra con tu estado de cuenta, TALLY muestra los renglones del PDF que
+  tienen fecha o importe pero no leyó como movimiento (por ejemplo, uno que el banco partió en dos renglones),
+  para que encuentres el que falta. Los del resumen (saldos, totales, tasas, importes en cero) no se muestran.
+
 ## [0.13.2] — Sin publicar
 
 Estados de cuenta de **tarjeta de crédito** en PDF, probados con el formato de una tarjeta mexicana real (sin

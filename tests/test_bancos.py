@@ -620,3 +620,14 @@ def test_tarjeta_sugerencias_y_lo_que_no_reconoce(libro, ctas):
     grupos = bancos.sin_reconocer(propuestas)
     assert grupos == [[5, 6], [4]]                       # los dos pagos juntos: se elige una vez
     assert "Pagaste la tarjeta" in propuestas[5].motivo
+
+
+def test_lo_que_no_entendio_se_muestra_para_agregarlo_a_mano():
+    # El banco partió un movimiento en dos renglones: la fecha y la descripción en uno, el importe en otro.
+    texto = estado_tdc().replace("21/09/2026 TIENDA DESCONOCIDA FICTICIA $ 300.00",
+                                 "21/09/2026 TIENDA DESCONOCIDA FICTICIA\n$ 300.00")
+    lectura = bancos.interpretar(bancos.de_texto(texto), credito=True, hoy=date(2026, 10, 7))
+    assert lectura.falta == -30_000
+    assert [t for _, t in lectura.sueltos] == ["21/09/2026 TIENDA DESCONOCIDA FICTICIA"]
+    # Lo del resumen (saldos, totales, tasas, importes en cero) no se ofrece como movimiento.
+    assert not bancos.interpretar(bancos.de_texto(estado_tdc()), credito=True, hoy=date(2026, 10, 7)).sueltos
