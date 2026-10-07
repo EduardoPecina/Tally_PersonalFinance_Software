@@ -1239,3 +1239,43 @@ def test_calendario_avisa_si_te_quedarias_en_negativo(raiz, con_datos):
                           categoria_id=con_datos["cat"]["RENTA"])
     at = abrir(_pagina("calendario"))                                # (abrir revisa que no haya excepciones)
     assert [e.value for e in at.error if e.value.startswith("**Ojo:**")]
+
+
+# ------------------------------------------------------------ metas
+
+
+def test_metas_fondo_de_emergencia_y_una_meta(raiz, con_datos):
+    from motor import metas
+
+    at = abrir(_pagina("metas"))
+    sin_errores(at)
+    assert at.subheader[0].value == "🛟 Fondo de emergencia"
+    # Crear el fondo.
+    nombre = next(t for t in at.text_input if t.value == "Fondo de emergencia")
+    assert nombre
+    objetivo = [n for n in at.number_input if n.label == "¿Cuánto quieres juntar?"][0]
+    objetivo.set_value(30_000.0)
+    [n for n in at.number_input if n.label == "¿Ya tienes algo apartado?"][0].set_value(1_000.0)
+    [b for b in at.button if b.label == "Crear meta"][0].click().run()
+    sin_errores(at)
+    lib = sesion_en(raiz).libro
+    (fondo,) = lib.metas()
+    assert fondo.emergencia and fondo.objetivo == 3_000_000 and metas.ahorrado(fondo) == 100_000
+    # Una meta guardada en la cuenta de ahorro, con aporte desde el débito.
+    [t for t in at.text_input if t.label == "Nombre"][-1].input("Viaje Ficticio")
+    [n for n in at.number_input if n.label == "¿Cuánto quieres juntar?"][-1].set_value(5_000.0)
+    [s for s in at.selectbox if s.label == "¿Dónde guardas ese dinero?"][-1].set_value(con_datos["ahorro"])
+    [b for b in at.button if b.label == "Crear meta"][-1].click().run()
+    sin_errores(at)
+    viaje = next(m for m in sesion_en(raiz).libro.metas() if m.nombre == "Viaje Ficticio")
+    ahorro_antes = sesion_en(raiz).libro.saldo_centavos(con_datos["ahorro"])
+    aporte = [n for n in at.number_input if n.label == "¿Cuánto?"]
+    origen = [s for s in at.selectbox if s.label == "¿De qué cuenta sale?"]
+    aporte[-2].set_value(5_000.0)                                       # la tarjeta del viaje (última meta)
+    origen[-1].set_value(con_datos["debito"])
+    [b for b in at.button if b.label == "Aportar"][-1].click().run()
+    sin_errores(at)
+    lib = sesion_en(raiz).libro
+    assert metas.ahorrado(lib.meta(viaje.id)) == 500_000
+    assert lib.saldo_centavos(con_datos["ahorro"]) == ahorro_antes + 500_000
+    assert any("Lograste tu meta" in str(t.value) for t in at.toast)

@@ -319,3 +319,26 @@ class Recurrente:
     suscripcion: bool = False
     activa: bool = True
     notas: str = ""
+
+
+@dataclass(frozen=True, slots=True)
+class Aporte:
+    fecha: date
+    centavos: int                  # + aporte, − retiro
+    operacion_id: str = ""         # la transferencia que movió el dinero (si la hubo)
+
+
+@dataclass(frozen=True, slots=True)
+class Meta:
+    """Una meta de ahorro (o el fondo de emergencia), ver motor/metas.py. Lo ahorrado es la suma de sus aportes."""
+
+    id: str
+    nombre: str
+    objetivo: int                  # centavos
+    cuenta_id: str | None = None   # dónde guardas ese dinero (opcional)
+    fecha_limite: date | None = None
+    emergencia: bool = False
+    aportes: tuple[Aporte, ...] = ()
+    creada: date | None = None
+    activa: bool = True            # False: lograda o archivada
+    notas: str = ""
