@@ -29,6 +29,7 @@ from motor.modelo import (
     Operacion,
     OperacionValor,
     Perfil,
+    Recurrente,
     Rubro,
 )
 from motor.reglas import validar_operacion
@@ -47,6 +48,7 @@ class Libro:
         self._plazos: dict[str, InversionPlazo] = {}
         self._bienes: dict[str, Bien] = {}
         self._prestamos: dict[str, Prestamo] = {}
+        self._recurrentes: dict[str, Recurrente] = {}
         self._secuencia = 0
         for categoria in (
             Categoria(CATEGORIA_AJUSTE, "AJUSTE DE SALDO", ClaseCategoria.SISTEMA, orden=-2),
@@ -71,6 +73,7 @@ class Libro:
         plazos: list[InversionPlazo] = (),
         bienes: list[Bien] = (),
         prestamos: list[Prestamo] = (),
+        recurrentes: list[Recurrente] = (),
     ) -> Libro:
         """Reconstruye un libro ya guardado, tal cual (lo usa la persistencia)."""
         libro = cls(reloj=reloj)
@@ -84,6 +87,7 @@ class Libro:
         libro._plazos = {p.id: p for p in plazos}
         libro._bienes = {b.cuenta_id: b for b in bienes}
         libro._prestamos = {p.cuenta_id: p for p in prestamos}
+        libro._recurrentes = {r.id: r for r in recurrentes}
         libro._secuencia = max([secuencia, *(op.secuencia for op in operaciones)])
         return libro
 
@@ -131,6 +135,8 @@ class Libro:
         del self._cuentas[cuenta_id]
         self._bienes.pop(cuenta_id, None)
         self._prestamos.pop(cuenta_id, None)
+        for r in [r for r in self._recurrentes.values() if cuenta_id in (r.cuenta_id, r.destino_id)]:
+            del self._recurrentes[r.id]
 
     # ------------------------------------------------- títulos e inversiones a plazo
 
@@ -198,6 +204,26 @@ class Libro:
         self.cuenta(prestamo.cuenta_id)
         self._prestamos[prestamo.cuenta_id] = prestamo
         return prestamo
+
+    # ------------------------------------------------------- pagos recurrentes
+
+    def recurrentes(self) -> list[Recurrente]:
+        return sorted(self._recurrentes.values(), key=lambda r: (not r.activa, r.nombre.casefold()))
+
+    def recurrente(self, recurrente_id: str) -> Recurrente:
+        try:
+            return self._recurrentes[recurrente_id]
+        except KeyError:
+            raise ErrorNoEncontrado("Ese pago recurrente no existe.") from None
+
+    def guardar_recurrente(self, recurrente: Recurrente) -> Recurrente:
+        self.cuenta(recurrente.cuenta_id)
+        self._recurrentes[recurrente.id] = recurrente
+        return recurrente
+
+    def quitar_recurrente(self, recurrente_id: str) -> None:
+        self.recurrente(recurrente_id)
+        del self._recurrentes[recurrente_id]
 
     def tiene_titulos(self, cuenta_id: str) -> bool:
         return any(v.cuenta_id == cuenta_id for v in self._valores.values()) or any(

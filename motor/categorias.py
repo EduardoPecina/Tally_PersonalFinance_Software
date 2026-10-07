@@ -220,6 +220,9 @@ def eliminar(libro: Libro, categoria_id: str, *, reasignar_a: str | None = None)
                     for p in op.partidas
                 )
                 libro.reemplazar_operacion(op.id, replace(op, partidas=_fusionar(partidas)))
+    for r in libro.recurrentes():                     # los pagos recurrentes pasan a la otra (o quedan sin elegir)
+        if r.categoria_id == categoria_id:
+            libro.guardar_recurrente(replace(r, categoria_id=reasignar_a, activa=r.activa and reasignar_a is not None))
     libro.quitar_categoria(categoria_id)
 
 

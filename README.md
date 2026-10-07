@@ -101,6 +101,7 @@ el acceso directo **Mis datos de TALLY**, dentro de `Escritorio\TALLY`.
 | Categorías | Categorías (SALUD, TECNOLOGIA…) con sus subcategorías y clasificaciones, a tu manera |
 | Cargar datos | Importar los movimientos de tu banco (Excel, CSV o PDF) con la subcategoría sugerida, o subir tu historial de Excel con una plantilla `.txt` |
 | Respaldos y bitácora | Descargar o restaurar respaldos, ver qué cambió o empezar de cero |
+| Calendario 📅 | Lo que te toca pagar y cobrar en 30 días, cómo quedaría tu dinero día con día, tus pagos fijos y suscripciones (y cuánto te cuestan al año) y lo que se repite en tu historial |
 | Configuración ⚙️ | Tu nombre, tema claro u oscuro, color del ícono, respaldo automático diario, periodo del Resumen y datos de la instalación |
 
 ### Cambiar de PC sin perder nada

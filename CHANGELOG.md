@@ -2,6 +2,33 @@
 
 Todos los cambios relevantes de TALLY se documentan aquí.
 
+## [0.14.0] — Sin publicar
+
+- **Nueva página 📅 Calendario** (en Tu dinero):
+  - **Próximos 30 días:** todo lo que te toca pagar y cobrar, en orden:
+    - tus pagos fijos y suscripciones;
+    - el pago de cada tarjeta (fecha límite y lo que falta para no generar intereses, más un estimado del ciclo
+      en curso);
+    - el pago de cada préstamo.
+
+    Cada uno dice si ya está ✅ pagado, ⏳ pendiente o 🔴 vencido.
+  - **Flujo de tu dinero:** con tu dinero disponible de hoy, una gráfica de cómo quedaría día con día. Dice
+    cuánto entra, cuánto sale y lo más bajo que llegarías; si te quedarías en negativo, te avisa en rojo con la
+    fecha. Las compras con tarjeta cuentan en el pago de la tarjeta, no el día que compras.
+  - **Registrar con un clic:** eliges el pago del calendario y TALLY lo registra con su importe y su subcategoría
+    (cámbialo si ese mes fue distinto).
+  - **¿Ya se pagó?:** TALLY lo reconoce solo si registras un movimiento de la misma cuenta y subcategoría, hasta 7
+    días antes o después y por un importe parecido (la luz cambia cada mes).
+- **Mis pagos fijos y suscripciones:**
+  - **Qué puedes agregar:** renta, luz, internet, Netflix, gimnasio, la nómina o pasar dinero al ahorro, con su
+    importe aproximado. Se repiten cada semana, 14 días, quincena (el 15 y el último día), mes, 2, 3 o 6 meses,
+    o cada año, con fecha de fin opcional.
+  - **Cuánto te cuestan:** tus suscripciones al mes y **al año**, tus pagos fijos al mes y tus ingresos fijos.
+  - **Editar, pausar o borrar:** con un clic en el renglón.
+- **✨ Sugerencias:** TALLY busca en tus últimos 6 meses lo que se repite cada mes (o cada quincena) casi igual,
+  por ejemplo Netflix o tu nómina, y te deja agregarlo con un clic.
+- **Resumen:** avisa de los pagos fijos vencidos o que tocan en los próximos 3 días.
+
 ## [0.13.3] — Sin publicar
 
 - **➕ Agregar a mano lo que falta** al importar del banco: fecha, descripción, importe, si entró o salió y la

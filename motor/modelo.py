@@ -297,3 +297,25 @@ class Prestamo:
     @property
     def id(self) -> str:
         return self.cuenta_id
+
+
+@dataclass(frozen=True, slots=True)
+class Recurrente:
+    """Un pago o ingreso que se repite: renta, luz, Netflix, la nómina… (motor/recurrentes.py).
+
+    Es un recordatorio con su importe estimado: no mueve dinero hasta que lo registras.
+    """
+
+    id: str
+    nombre: str
+    tipo: TipoOperacion            # GASTO, INGRESO o TRANSFERENCIA (a otra cuenta tuya, p. ej. al ahorro)
+    monto: int                     # centavos estimados (positivo)
+    cuenta_id: str                 # de dónde sale (o a dónde entra, si es ingreso)
+    frecuencia: str                # semanal, catorcenal, quincenal, mensual, bimestral, trimestral, semestral, anual
+    inicio: date                   # la primera vez (marca el día del mes o de la semana)
+    categoria_id: str | None = None   # gasto o ingreso
+    destino_id: str | None = None     # transferencia: a qué cuenta
+    fin: date | None = None
+    suscripcion: bool = False
+    activa: bool = True
+    notas: str = ""

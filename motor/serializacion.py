@@ -23,6 +23,7 @@ from motor.modelo import (
     MetodoDepreciacion,
     Operacion,
     Prestamo,
+    Recurrente,
     OperacionValor,
     Partida,
     Perfil,
@@ -34,7 +35,7 @@ from motor.modelo import (
 
 # Tipos de entidad, en el orden en que se cargan.
 ENTIDADES = ("perfil", "grupo", "rubro", "categoria", "cuenta", "operacion", "valor", "plazo", "bien",
-             "prestamo")
+             "prestamo", "recurrente")
 ID_PERFIL = "perfil"
 
 
@@ -200,6 +201,22 @@ def prestamo_a_dict(p: Prestamo) -> dict:
             "dia_pago": p.dia_pago, "cat": str(p.cat) if p.cat is not None else None}
 
 
+def recurrente_a_dict(r: Recurrente) -> dict:
+    return {"id": r.id, "nombre": r.nombre, "tipo": r.tipo.value, "monto": r.monto, "cuenta_id": r.cuenta_id,
+            "frecuencia": r.frecuencia, "inicio": _iso(r.inicio), "categoria_id": r.categoria_id,
+            "destino_id": r.destino_id, "fin": _iso(r.fin), "suscripcion": r.suscripcion, "activa": r.activa,
+            "notas": r.notas}
+
+
+def recurrente_desde_dict(d: dict) -> Recurrente:
+    return Recurrente(
+        id=d["id"], nombre=d["nombre"], tipo=TipoOperacion(d["tipo"]), monto=d["monto"], cuenta_id=d["cuenta_id"],
+        frecuencia=d["frecuencia"], inicio=_fecha(d["inicio"]), categoria_id=d.get("categoria_id"),
+        destino_id=d.get("destino_id"), fin=_fecha(d.get("fin")), suscripcion=d.get("suscripcion", False),
+        activa=d.get("activa", True), notas=d.get("notas", ""),
+    )
+
+
 def prestamo_desde_dict(d: dict) -> Prestamo:
     return Prestamo(
         cuenta_id=d["cuenta_id"], clase=d.get("clase", "otro"), monto=d["monto"],
@@ -248,6 +265,7 @@ def instantanea(libro: Libro) -> Instantanea:
         "plazo": {p.id: plazo_a_dict(p) for p in libro.plazos()},
         "bien": {b.id: bien_a_dict(b) for b in libro.bienes()},
         "prestamo": {p.id: prestamo_a_dict(p) for p in libro.prestamos()},
+        "recurrente": {r.id: recurrente_a_dict(r) for r in libro.recurrentes()},
     }
 
 
@@ -268,6 +286,7 @@ def libro_desde_instantanea(
             plazos=[plazo_desde_dict(d) for d in datos.get("plazo", {}).values()],
             bienes=[bien_desde_dict(d) for d in datos.get("bien", {}).values()],
             prestamos=[prestamo_desde_dict(d) for d in datos.get("prestamo", {}).values()],
+            recurrentes=[recurrente_desde_dict(d) for d in datos.get("recurrente", {}).values()],
             secuencia=secuencia,
             reloj=reloj,
         )
