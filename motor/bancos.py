@@ -34,7 +34,7 @@ import logging
 import re
 import unicodedata
 from collections import Counter, defaultdict
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date, datetime, timedelta
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from html.parser import HTMLParser
@@ -517,6 +517,7 @@ class Movimiento:
     descripcion: str
     centavos: int             # + entra (abono), − sale (cargo)
     supuesto: bool = False    # no se supo con certeza si entra o sale (PDF): revísalo
+    del_resumen: bool = False  # no venía en la lista de movimientos: se tomó del resumen (intereses, IVA…)
 
 
 @dataclass(frozen=True, slots=True)
@@ -528,6 +529,17 @@ class Lectura:
     avisos: tuple[str, ...] = ()
     total_cargos: int | None = None              # lo que el propio estado de cuenta dice que suman (PDF)
     total_abonos: int | None = None
+    saldo_inicial: int | None = None             # del resumen del estado de cuenta (PDF); en tarjetas, la deuda
+    saldo_final: int | None = None
+    credito: bool = False
+
+    @property
+    def falta(self) -> int | None:
+        """Lo que no cuadra con los saldos del estado de cuenta (0 = cuadra; + falta que entre, − que salga).
+        ``None`` si el estado de cuenta no trae los dos saldos."""
+        if self.saldo_inicial is None or self.saldo_final is None:
+            return None
+        return (self.saldo_final - self.saldo_inicial) * (-1 if self.credito else 1) - (self.entra - self.sale)
 
     @property
     def entra(self) -> int:
@@ -665,11 +677,21 @@ _NO_ES_MOVIMIENTO = ("PAGO MINIMO", "PAGO PARA NO GENERAR", "LIMITE DE CREDITO",
                      "FECHA LIMITE", "FECHA DE CORTE", "PERIODO DEL")
 _EMPIEZA_COMO_RESUMEN = ("SALDO", "SUBTOTAL", "TOTAL DE", "TOTAL CARGOS", "TOTAL ABONOS", "TOTAL IMPORTE",
                          "TOTAL A PAGAR", "TOTAL DEPOSITOS", "TOTAL RETIROS")
-_SALDO_INICIAL = ("SALDO ANTERIOR", "SALDO INICIAL", "SALDO AL CORTE ANTERIOR")
-_SALDO_FINAL = ("SALDO FINAL", "SALDO AL CORTE", "SALDO ACTUAL", "NUEVO SALDO")
-_TOTAL_CARGOS = ("TOTAL IMPORTE CARGOS", "TOTAL DE CARGOS", "TOTAL CARGOS", "TOTAL DE RETIROS", "TOTAL RETIROS")
+_SALDO_INICIAL = ("SALDO ANTERIOR", "SALDO INICIAL", "SALDO AL CORTE ANTERIOR", "SALDO REVOLVENTE ANTERIOR",
+                  "ADEUDO ANTERIOR", "SALDO DEUDOR ANTERIOR", "SALDO DEL CORTE ANTERIOR")
+_SALDO_FINAL = ("SALDO FINAL", "SALDO AL CORTE", "REVOLVENTE AL CORTE", "SALDO ACTUAL", "NUEVO SALDO",
+                "SALDO DEUDOR TOTAL", "SALDO TOTAL", "ADEUDO TOTAL")
+_TOTAL_CARGOS = ("TOTAL IMPORTE CARGOS", "TOTAL DE CARGOS", "TOTAL CARGOS", "TOTAL DE RETIROS", "TOTAL RETIROS",
+                 "COMPRAS/RETIROS", "COMPRAS Y CARGOS", "COMPRAS Y DISPOSICIONES", "CARGOS DEL PERIODO",
+                 "CARGOS REGULARES", "COMPRAS DEL PERIODO")
 _TOTAL_ABONOS = ("TOTAL IMPORTE ABONOS", "TOTAL DE ABONOS", "TOTAL ABONOS", "TOTAL DE DEPOSITOS",
-                 "TOTAL DEPOSITOS")
+                 "TOTAL DEPOSITOS", "PAGOS/REEMBOLSOS", "PAGOS Y ABONOS", "PAGOS Y BONIFICACIONES",
+                 "PAGOS Y CREDITOS", "ABONOS DEL PERIODO", "PAGOS DEL PERIODO")
+# Cargos que algunas tarjetas solo ponen en el resumen, no en la lista de movimientos.
+_CARGOS_DEL_RESUMEN = {"intereses": ("INTERESES", "INTERES ORDINARIO", "INTERESES ORDINARIOS"),
+                       "comisiones": ("COMISIONES COBRADAS", "COMISIONES", "TOTAL COMISIONES"),
+                       "iva": ("IVA", "I.V.A.")}
+_NOMBRE_DEL_RESUMEN = {"intereses": "INTERESES", "comisiones": "COMISIONES", "iva": "IVA"}
 _FIN_DE_DETALLE = ("TOTAL", "SALDO", "PAGINA", "DETALLE", "FECHA", "RESUMEN", "ESTADO DE CUENTA", "PERIODO")
 _PALABRAS_ENTRA = ("ABONO", "DEPOSITO", "DEP EFECTIVO", "RECIBID", "NOMINA", "SU PAGO", "GRACIAS", "DEVOLUCION",
                    "REEMBOLSO", "BONIFICACION", "CASHBACK", "INTERESES GANADOS", "RENDIMIENTO", "REVERSO",
@@ -690,7 +712,8 @@ class _Renglon:
 def _de_texto_libre(texto: str, *, credito: bool, hoy: date) -> Lectura:
     referencia = _fecha_de_referencia(texto, hoy)
     renglones: list[_Renglon] = []
-    resumen: dict[str, int | None] = dict.fromkeys(("inicial", "final", "cargos", "abonos"))
+    resumen: dict[str, int | None] = dict.fromkeys(("inicial", "final", "cargos", "abonos", *_CARGOS_DEL_RESUMEN))
+    lineas_del_resumen: dict[str, int] = {}
     omitidos = 0
     actual: _Renglon | None = None
     for numero, crudo in enumerate(texto.splitlines(), start=1):
@@ -707,6 +730,9 @@ def _de_texto_libre(texto: str, *, credito: bool, hoy: date) -> Lectura:
                               ("abonos", _TOTAL_ABONOS)):
             if resumen[llave] is None:
                 resumen[llave] = _importe_despues(linea, frases)
+        for llave, frases in _CARGOS_DEL_RESUMEN.items():
+            if resumen[llave] is None and (importe := _importe_al_inicio(linea, frases)) is not None:
+                resumen[llave], lineas_del_resumen[llave] = importe, numero
         k = clave(linea)
         if leido or _IMPORTE.search(linea) or any(k.startswith(p) or f" {p}" in f" {k}" for p in _FIN_DE_DETALLE):
             actual = None                                        # aquí termina el detalle del movimiento
@@ -731,16 +757,35 @@ def _de_texto_libre(texto: str, *, credito: bool, hoy: date) -> Lectura:
         if signo is None:
             signo = 1 if pistas[i] > 0 else -1                   # sin pistas, lo más común: salió
         movimientos.append(Movimiento(r.fila, r.fecha, descripcion, monto * signo, supuesto=not seguro))
+    lectura = Lectura(tuple(movimientos), None, None, omitidos, (), resumen["cargos"], resumen["abonos"],
+                      resumen["inicial"], resumen["final"], credito)
+    if lectura.falta and lectura.falta < 0 and movimientos:
+        # Lo que falta para cuadrar, ¿son los intereses, comisiones o IVA del resumen? Se agregan para que los veas.
+        candidatos = [(k, resumen[k]) for k in _CARGOS_DEL_RESUMEN if resumen[k]]
+        for mascara in range(1, 1 << len(candidatos)):
+            elegidos = [c for n, c in enumerate(candidatos) if mascara >> n & 1]
+            if sum(monto for _, monto in elegidos) == -lectura.falta:
+                corte = _fecha_de_corte(texto) or max(m.fecha for m in movimientos)
+                movimientos += [Movimiento(lineas_del_resumen[k], corte, f"{_NOMBRE_DEL_RESUMEN[k]} DEL PERIODO",
+                                           -monto, del_resumen=True) for k, monto in elegidos]
+                break
     entra = sum(m.centavos for m in movimientos if m.centavos > 0)
     sale = -sum(m.centavos for m in movimientos if m.centavos < 0)
-    verificado = (resumen["cargos"] is not None or resumen["abonos"] is not None) and \
-        resumen["cargos"] in (None, sale) and resumen["abonos"] in (None, entra)
+    lectura = Lectura(tuple(movimientos), None, None, omitidos, (), resumen["cargos"], resumen["abonos"],
+                      resumen["inicial"], resumen["final"], credito)
+    if lectura.falta is not None:
+        verificado = lectura.falta == 0                          # cuadra con el saldo anterior y el del corte
+    else:
+        verificado = (resumen["cargos"] is not None or resumen["abonos"] is not None) and \
+            resumen["cargos"] in (None, sale) and resumen["abonos"] in (None, entra)
+    if verificado:                                               # si cuadra, los signos están bien
+        movimientos = [replace(m, supuesto=False) for m in movimientos]
     avisos = [] if verificado else [
         "Leí este texto lo mejor que pude: revisa cada renglón y compara los totales con tu estado de cuenta."]
     if any(m.supuesto for m in movimientos):
         avisos.append("En los marcados con 🔍 no supe con certeza si el dinero entró o salió: cámbialo en la columna "
                       "«Movimiento» si hace falta.")
-    return Lectura(tuple(movimientos), None, None, omitidos, tuple(avisos), resumen["cargos"], resumen["abonos"])
+    return replace(lectura, movimientos=tuple(movimientos), avisos=tuple(avisos))
 
 
 def _renglon(numero: int, linea: str, referencia: date) -> _Renglon | str | None:
@@ -806,6 +851,27 @@ def _importe_despues(linea: str, frases) -> int | None:
                 continue
             if m := _IMPORTE.search(plano, inicio):
                 return leer_importe(m.group(1))
+    return None
+
+
+def _importe_al_inicio(linea: str, frases) -> int | None:
+    """El importe de un renglón del resumen que empieza con la frase («Intereses $ 12.30», «IVA $ 1.97»), no el
+    de uno que solo la menciona («Pago para no generar intereses $ 1,234.56»)."""
+    plano = " ".join(_plano(linea).split())
+    for frase in frases:
+        if plano.startswith(frase) and (m := re.match(rf"{re.escape(frase)}[^0-9%]{{0,25}}?\$?\s?({_UN_IMPORTE})",
+                                                     plano)):
+            return leer_importe(m.group(1))
+    return None
+
+
+def _fecha_de_corte(texto: str) -> date | None:
+    """El día del corte: «Fecha de corte 03/10/2026» o el final de «del 04/09/2026 al 03/10/2026»."""
+    plano = _plano(texto)
+    fecha = r"(\d{1,2}[/\-.]\d{1,2}[/\-.]\d{2,4}|\d{4}-\d{2}-\d{2}|\d{1,2}[\s/\-.][A-Z]{3,10}[\s/\-.]\d{2,4})"
+    for patron in (rf"FECHA DE CORTE\s*:?\s*{fecha}", rf"\bDEL\s+{fecha}\s+AL\s+{fecha}"):
+        if m := re.search(patron, plano):
+            return leer_fecha(m.groups()[-1])
     return None
 
 
@@ -1038,9 +1104,10 @@ _COMERCIOS = (
                       "CITY MARKET", "FRESKO", "SUPERAMA", "HEB", "H E B", "COSTCO", "SAMS", "SAM S CLUB", "CASA LEY",
                       "CALIMAX", "ALSUPER", "MERZA", "MERCADONA", "CARREFOUR", "LIDL", "ALDI", "EXITO", "JUMBO",
                       "COTO", "OLIMPICA", "SUPERMERCADO*")),
-    (-1, "RESTAURANTES", ("RESTAURANT*", "VIPS", "TOKS", "ITALIANNIS", "MCDONALD*", "MC DONALD*", "BURGER KING",
+    (-1, "RESTAURANTES", ("RESTAURANT*", "REST", "VIPS", "TOKS", "ITALIANNIS", "MCDONALD*", "MC DONALD*", "BURGER KING",
                           "KFC", "DOMINO*", "PIZZA*", "LITTLE CAESARS", "SUBWAY", "CARLS JR", "TAQUERIA*", "SUSHI*",
-                          "WINGSTOP", "CHILIS", "APPLEBEES")),
+                          "WINGSTOP", "CHILIS", "APPLEBEES", "ALITAS*", "BONELESS*",
+                          "HAMBURGUES*", "BURGER*")),
     (-1, "MEDICINAS Y FARMACIA", ("FARMACIA*", "BENAVIDES", "SAN PABLO", "FARMATODO", "CRUZ VERDE")),
     (-1, "ANALISIS Y ESTUDIOS", ("CHOPO", "SALUD DIGNA", "LABORATORIO*")),
     (-1, "DENTISTA", ("DENTAL", "DENTISTA")),
@@ -1057,7 +1124,8 @@ _COMERCIOS = (
                                 "YOUTUBE PREMIUM", "MUBI", "APPLE TV")),
     (-1, "MUSICA", ("SPOTIFY", "DEEZER", "APPLE MUSIC", "YOUTUBE MUSIC", "TIDAL")),
     (-1, "ALMACENAMIENTO EN LA NUBE", ("ICLOUD", "GOOGLE ONE", "DROPBOX", "GOOGLE STORAGE")),
-    (-1, "SERVICIOS DE SOFTWARE", ("MICROSOFT", "ADOBE", "OPENAI", "CHATGPT", "CANVA", "GITHUB", "NOTION")),
+    (-1, "SERVICIOS DE SOFTWARE", ("MICROSOFT", "ADOBE", "OPENAI", "CHATGPT", "ANTHROPIC", "CANVA", "GITHUB",
+                                   "NOTION")),
     (-1, "VIDEOJUEGOS", ("STEAM", "STEAMGAMES", "PLAYSTATION", "PSN", "XBOX", "NINTENDO", "EPIC GAMES")),
     (-1, "COMPRAS EN LINEA", ("AMAZON", "AMZN", "MERCADO LIBRE", "MERCADOLIBRE", "SHEIN", "TEMU", "ALIEXPRESS")),
     (-1, "TIENDAS DEPARTAMENTALES", ("LIVERPOOL", "PALACIO DE HIERRO", "SEARS", "SUBURBIA", "COPPEL", "ELEKTRA",
@@ -1163,6 +1231,22 @@ def buscar_duplicados(libro: Libro, cuenta_id: str, movimientos) -> dict[int, Op
             usadas.add(op.id)
             encontrados[i] = op
     return encontrados
+
+
+def sin_reconocer(propuestas) -> list[list[int]]:
+    """Los movimientos sin subcategoría sugerida, agrupados por descripción igual o casi igual (y sentido), del
+    grupo más grande al más chico: para elegir una vez por grupo."""
+    grupos: list[tuple[tuple[str, ...], bool, list[int]]] = []
+    for i, p in enumerate(propuestas):
+        if p.destino or not p.cargar:
+            continue
+        palabras, entra = nucleo(p.movimiento.descripcion), p.movimiento.centavos > 0
+        grupo = next((g for g in grupos if g[1] == entra and (se_parecen(palabras, g[0]) or palabras == g[0])), None)
+        if grupo is None:
+            grupos.append((palabras, entra, [i]))
+        else:
+            grupo[2].append(i)
+    return sorted((g[2] for g in grupos), key=lambda indices: (-len(indices), indices[0]))
 
 
 def de_respaldo(libro: Libro, movimiento: Movimiento) -> str:

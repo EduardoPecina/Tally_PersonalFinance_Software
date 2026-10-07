@@ -2,6 +2,22 @@
 
 Todos los cambios relevantes de TALLY se documentan aquí.
 
+## [0.13.2] — Sin publicar
+
+Estados de cuenta de **tarjeta de crédito** en PDF, probados con el formato de una tarjeta mexicana real (sin
+guardar sus datos; las pruebas usan una copia inventada del formato):
+
+- **Cuadra con tu deuda:** con el saldo anterior y el del corte del resumen («Saldo revolvente anterior», «al
+  corte», «Saldo total»…), TALLY comprueba que deuda anterior + compras − pagos = deuda al corte. Si cuadra, todos
+  los movimientos quedan con certeza y lo dice con ✅; si no, ⚠️ con la diferencia y qué revisar.
+- **Intereses, comisiones e IVA que solo vienen en el resumen:** si sin ellos no cuadra y son justo lo que falta,
+  TALLY los agrega al día del corte, marcados con 📋, para que los veas antes de cargar.
+- **Totales de tarjeta:** entiende «Compras/Retiros/…» y «Pagos/Reembolsos/…» además de «Total cargos/abonos».
+- **Lo que TALLY no reconoce, agrupado:** arriba de la tabla, una lista de lo que no supo clasificar, con los
+  iguales o casi iguales juntos (por ejemplo, todos los «Su pago… Gracias»): eliges una vez por grupo.
+- Más comercios conocidos: «REST …» (así abrevian los bancos «restaurante»), alitas, boneless, hamburguesas,
+  Anthropic.
+
 ## [0.13.1] — Sin publicar
 
 Mejor lectura del PDF del estado de cuenta, probada con el formato de un banco mexicano real (sin guardar sus

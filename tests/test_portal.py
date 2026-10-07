@@ -1125,3 +1125,26 @@ def test_importar_del_banco_texto_que_no_es_estado_de_cuenta(raiz, con_datos):
     at = abrir(_pagina("cargar"))
     at.text_area(key="banco_texto_0").input("hola\nesto no tiene movimientos").run()
     assert any("No encontré movimientos" in e.value for e in at.error)
+
+
+def test_importar_estado_de_tarjeta_que_cuadra_y_grupos_por_elegir(raiz, con_datos):
+    from test_bancos import estado_tdc
+
+    at = abrir(_pagina("cargar"))
+    at.selectbox(key="banco_cuenta").set_value(con_datos["tdc"]).run()
+    at.text_area(key="banco_texto_0").input(estado_tdc()).run()
+    sin_errores(at)
+    assert any(s.value.startswith("Cuadra con tu estado de cuenta: debías") for s in at.success)
+    assert any("TALLY no reconoce 3 movimiento(s)" in m.value for m in at.markdown)
+    clave = at.session_state["_banco_clave"]
+    at.selectbox(key=f"banco_grupo_{clave}_0").set_value("↔ Débito Ficticio").run()       # los dos pagos
+    assert next(b for b in at.button if b.key == "banco_importar").disabled               # falta la tienda
+    otros = next(o for o in at.selectbox(key=f"banco_grupo_{clave}_1").options if o.endswith("OTROS GASTOS"))
+    at.selectbox(key=f"banco_grupo_{clave}_1").set_value(otros).run()
+    boton_ = next(b for b in at.button if b.key == "banco_importar")
+    assert boton_.label == "Importar 7 movimiento(s)" and not boton_.disabled
+    boton_.click().run()
+    sin_errores(at)
+    lib = sesion_en(raiz).libro
+    importadas = [op for op in lib.operaciones() if op.fecha.month == 9 and op.fecha.year == 2026]
+    assert sorted(op.tipo.value for op in importadas) == ["gasto"] * 5 + ["pago_tarjeta"] * 2

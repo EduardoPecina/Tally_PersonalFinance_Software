@@ -153,13 +153,18 @@ En **Cargar datos → Desde tu banco**:
    *Movimientos → Exportar*), el **PDF** de tu estado de cuenta, o pega la
    tabla de movimientos copiada de la página del banco.
 3. TALLY encuentra las columnas solo y te muestra cuánto salió y cuánto entró,
-   para compararlo con tu estado de cuenta.
+   para compararlo con tu estado de cuenta. Con un PDF, además comprueba que
+   cuadre con el saldo anterior y el del corte (✅ o ⚠️), y si a una tarjeta le
+   faltan los intereses o el IVA que solo venían en el resumen, los agrega
+   marcados con 📋.
 4. Revisa la tabla:
    - **Subcategoría sugerida (✨):** lo que elegiste antes para esa
      descripción (TALLY aprende de tu historial) o, si es nuevo, por el
      nombre de comercios conocidos (OXXO, Walmart, Netflix, CFE, Uber…).
    - **Ya está en TALLY (⏭️):** misma cuenta, mismo importe y a pocos días.
      No se carga, salvo que lo marques.
+   - **Lo que TALLY no reconoce (❓)** aparece arriba, agrupado: eliges una vez
+     y se aplica a todos los iguales.
    - Si el dinero fue a otra de tus cuentas, elígela: es una transferencia y
      no cuenta como gasto.
 5. **Importar.** Antes se hace un respaldo, y si algo falla no se carga nada.
