@@ -380,6 +380,20 @@ class PerfilImpuestos:
 
 
 @dataclass(frozen=True, slots=True)
+class CierreMes:
+    """Un mes que marcaste como cerrado (motor/cierre.py). No bloquea nada: guarda cómo estaban sus números al
+    cerrarlo, para mostrarte después lo que cambió (un movimiento que registraste tarde, una corrección…)."""
+
+    id: str                        # «2026-09»
+    cerrado_en: datetime
+    ingresos: int                  # centavos, al cerrar
+    gastos: int
+    patrimonio: int                # al último día del mes
+    movimientos: int               # cuántos movimientos tenía el mes
+    notas: str = ""
+
+
+@dataclass(frozen=True, slots=True)
 class Fiscal:
     """Tus ajustes de impuestos (uno por libro)."""
 

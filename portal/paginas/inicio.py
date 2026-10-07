@@ -6,7 +6,7 @@ from datetime import date, timedelta
 
 import streamlit as st
 
-from motor import cuentas, reportes, tarjetas
+from motor import cierre, cuentas, reportes, tarjetas
 from motor.modelo import TipoCuenta
 from portal.componentes import estado, formato, graficas, por_recuperar
 from portal.componentes import tarjeta as estado_tarjeta
@@ -82,6 +82,15 @@ def _avisos() -> None:
             st.warning(f"**{formato.md(tarjeta.nombre)}**: paga {monto} antes del {limite} ({cuando}).", icon="⏳")
 
 
+def _recordar_cierre() -> None:
+    """Los primeros días del mes: el mes anterior ya terminó y aún no lo cierras."""
+    mes = cierre.recordar(libro())
+    if mes is not None:
+        st.info(f"**{formato.mes(*mes)} ya terminó.** Revisa su cierre: cómo te fue, qué falta registrar y qué hacer "
+                "este mes.", icon="📆")
+        enlace("cierre", "Ver el cierre de mes", "📆")
+
+
 def _tarjetas() -> None:
     lib = libro()
     lista = cuentas.listar(lib, tipo=TipoCuenta.CREDITO)
@@ -116,6 +125,7 @@ def mostrar() -> None:
         return
 
     _avisos()
+    _recordar_cierre()
     calendario.proximos_avisos()
     por_recuperar.avisos()
     st.subheader("Tu situación hoy")

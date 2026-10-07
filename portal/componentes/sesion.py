@@ -12,7 +12,7 @@ from typing import TypeVar
 
 import streamlit as st
 
-from motor import rutas
+from motor import cierre, rutas
 from motor.errores import ErrorDatos, ErrorTally
 from motor.libro import Libro
 from motor.sesion import Sesion
@@ -54,9 +54,13 @@ def libro() -> Libro:
 
 
 def _intentar(accion: Callable[[Libro], T], exito: str | None) -> tuple[bool, T | None]:
+    tocados: list[str] = []
     try:
         with sesion().cambio() as lib:
+            antes = cierre.huella(lib) if lib.cierres() else None
             resultado = accion(lib)
+            if antes is not None:
+                tocados = cierre.meses_tocados(lib, antes)
     except ErrorDatos as error:
         try:
             sesion().recargar()
@@ -69,7 +73,16 @@ def _intentar(accion: Callable[[Libro], T], exito: str | None) -> tuple[bool, T 
         return False, None
     if exito:
         avisar(exito)
+    for mes in tocados:
+        anio, numero = (int(x) for x in mes.split("-"))
+        avisar(f"Eso cambió {_mes(anio, numero)}, que ya cerraste: en su cierre aparece como cambio posterior.", "🔒")
     return True, resultado
+
+
+def _mes(anio: int, numero: int) -> str:
+    from portal.componentes import formato
+
+    return f"{formato.MESES[numero - 1]} de {anio}"
 
 
 def ejecutar(accion: Callable[[Libro], object], exito: str | None = None) -> bool:

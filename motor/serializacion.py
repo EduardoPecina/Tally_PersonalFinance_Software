@@ -23,6 +23,7 @@ from motor.modelo import (
     MetodoDepreciacion,
     Operacion,
     Meta,
+    CierreMes,
     Aporte,
     ConceptoDeducible,
     Fiscal,
@@ -41,7 +42,7 @@ from motor.modelo import (
 
 # Tipos de entidad, en el orden en que se cargan.
 ENTIDADES = ("perfil", "grupo", "rubro", "categoria", "cuenta", "operacion", "valor", "plazo", "bien",
-             "prestamo", "recurrente", "meta", "fiscal")
+             "prestamo", "recurrente", "meta", "fiscal", "cierre")
 ID_PERFIL = "perfil"
 ID_FISCAL = "fiscal"
 
@@ -247,6 +248,16 @@ def _decimal(valor) -> Decimal | None:
     return Decimal(valor) if valor is not None else None
 
 
+def cierre_a_dict(c: CierreMes) -> dict:
+    return {"id": c.id, "cerrado_en": c.cerrado_en.isoformat(), "ingresos": c.ingresos, "gastos": c.gastos,
+            "patrimonio": c.patrimonio, "movimientos": c.movimientos, "notas": c.notas}
+
+
+def cierre_desde_dict(d: dict) -> CierreMes:
+    return CierreMes(id=d["id"], cerrado_en=_momento(d["cerrado_en"]), ingresos=d["ingresos"], gastos=d["gastos"],
+                     patrimonio=d["patrimonio"], movimientos=d["movimientos"], notas=d.get("notas", ""))
+
+
 def fiscal_a_dict(f: Fiscal) -> dict:
     return {
         "id": ID_FISCAL, "tope_total": f.tope_total,
@@ -326,6 +337,7 @@ def instantanea(libro: Libro) -> Instantanea:
         "recurrente": {r.id: recurrente_a_dict(r) for r in libro.recurrentes()},
         "meta": {m.id: meta_a_dict(m) for m in libro.metas()},
         "fiscal": {ID_FISCAL: fiscal_a_dict(libro.fiscal)} if libro.fiscal != Fiscal() else {},
+        "cierre": {c.id: cierre_a_dict(c) for c in libro.cierres()},
     }
 
 
@@ -349,6 +361,7 @@ def libro_desde_instantanea(
             recurrentes=[recurrente_desde_dict(d) for d in datos.get("recurrente", {}).values()],
             metas=[meta_desde_dict(d) for d in datos.get("meta", {}).values()],
             fiscal=fiscal_desde_dict(datos["fiscal"][ID_FISCAL]) if datos.get("fiscal") else None,
+            cierres=[cierre_desde_dict(d) for d in datos.get("cierre", {}).values()],
             secuencia=secuencia,
             reloj=reloj,
         )
