@@ -1358,26 +1358,31 @@ def test_metas_fondo_de_emergencia_y_una_meta(raiz, con_datos):
 # ------------------------------------------------------------ impuestos
 
 
-def test_impuestos_plantillas_deducibles_y_recibo(raiz, con_datos):
+def test_impuestos_deducibles_y_recibo_hechos_a_mano_y_borrables(raiz, con_datos):
     from datetime import date
+    from decimal import Decimal as Dec
 
+    from motor import impuestos
     from motor import movimientos as mov
+    from motor.modelo import Impuesto
 
     s = sesion_en(raiz)
     hoy = s.libro.hoy()
     with s.cambio() as lib:
         dentista = next(c.id for c in lib.categorias() if c.nombre == "DENTISTA")
         mov.registrar_gasto(lib, date(hoy.year, 2, 3), con_datos["debito"], dentista, 1_500, "Dentista")
+        impuestos.guardar_perfil(lib, "Honorarios ficticios", [
+            Impuesto("IVA", Dec(16)), Impuesto("Retención ISR", Dec(10), retenido=True),
+            Impuesto("Retención IVA", Dec(2) / Dec(3) * 100, "IVA", retenido=True)])
     at = abrir(_pagina("impuestos"))
     sin_errores(at)
     assert [t.label for t in at.tabs][:3] == ["🧾 Gastos deducibles", "🧮 Calcular y revisar un recibo", "⚙️ Configurar"]
-    at.selectbox(key="imp_plantilla_ded").set_value("México (persona física, declaración anual)").run()
-    next(b for b in at.button if b.key == "imp_agregar_ded").click().run()
+    assert not any(k.key and "plantilla" in k.key for k in at.selectbox)            # sin plantillas
+    next(t for t in at.text_input if t.label == "Nombre").input("Médicos")
+    next(m for m in at.multiselect if m.label == "Subcategorías que cuentan").set_value([dentista])
+    boton(at, "Agregar concepto").click().run()
     sin_errores(at)
     assert any(m.label == "Gastos deducibles" and m.value == "$1,500.00" for m in at.metric)
-    at.selectbox(key="imp_plantilla_imp").set_value("México · Honorarios (régimen general)").run()
-    next(b for b in at.button if b.key == "imp_agregar_imp").click().run()
-    sin_errores(at)
     at.number_input(key="imp_monto").set_value(10_000.0).run()
     tabla = next(d.value for d in at.dataframe if "Concepto" in d.value.columns and "Importe" in d.value.columns
                  and "Subtotal" in list(d.value["Concepto"]))
@@ -1389,6 +1394,16 @@ def test_impuestos_plantillas_deducibles_y_recibo(raiz, con_datos):
     [n for n in at.number_input if n.label == "Retención IVA"][0].set_value(1_066.67)
     boton(at, "Revisar").click().run()
     assert any("Retención ISR: dice" in e.value for e in at.error)
+    # Todo lo que agregaste se puede borrar.
+    fiscal = sesion_en(raiz).libro.fiscal
+    (perfil,), (concepto,) = fiscal.perfiles, fiscal.conceptos
+    next(b for b in at.button if b.key == f"imp_borrar_perfil_{perfil.id}").click().run()
+    sin_errores(at)
+    impuestos_ = sesion_en(raiz).libro.fiscal
+    assert impuestos_.perfiles == () and impuestos_.conceptos == (concepto,)
+    next(b for b in at.button if b.key == "imp_quitar_deducibles").click().run()
+    sin_errores(at)
+    assert sesion_en(raiz).libro.fiscal.conceptos == ()
 
 
 def test_impuestos_con_un_deducible_que_apunta_a_una_subcategoria_borrada(raiz, con_datos):

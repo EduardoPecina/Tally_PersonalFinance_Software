@@ -79,8 +79,13 @@ def _tarjetas() -> None:
             if minimo is None:
                 b.metric("Para no generar intereses", formato.dinero(0))
                 c.metric("Pago mínimo estimado", "—")
-                st.caption("Nada por pagar del último corte." if estado.corte else
-                           "Registra su día de corte (Cuentas → Editar) para calcular sus pagos.")
+                corte = estado.corte
+                if corte is not None and corte.deuda_al_corte:
+                    st.success(f"Ya pagaste el corte del {formato.fecha(corte.fin)}: no generas intereses. Lo que "
+                               "gastes ahora va a tu siguiente corte.", icon="✅")
+                else:
+                    st.caption("Nada por pagar del último corte." if corte else
+                               "Registra su día de corte (Cuentas → Editar) para calcular sus pagos.")
             else:
                 b.metric("Para no generar intereses", formato.dinero(minimo.para_no_generar_intereses))
                 c.metric("Pago mínimo estimado", formato.dinero(minimo.minimo),
@@ -367,6 +372,9 @@ def _datos(cuenta_id: str) -> None:
                     dia_pago=int(dia) if dia else None, cat=Decimal(str(cat)) if cat else None),
                     exito="Datos guardados"):
                 st.rerun()
+    st.caption("¿Ya no lo quieres aquí o lo registraste por error? Bórralo desde Cuentas, con el botón «Eliminar» de "
+               "este préstamo.")
+    navegacion.enlace("cuentas", "Ir a Cuentas", "🏦")
 
 
 def _formulario_nuevo() -> None:

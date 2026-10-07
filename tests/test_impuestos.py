@@ -12,12 +12,24 @@ from motor.modelo import Impuesto, PerfilImpuestos
 from motor.serializacion import instantanea, libro_desde_instantanea
 
 
+DOS_TERCIOS = Decimal(2) / Decimal(3) * 100
+HONORARIOS = "Honorarios ficticios (régimen general)"
+RESICO = "Honorarios ficticios en RESICO"
+PERFILES = {          # los ejemplos de la página, armados a mano como lo haría el usuario
+    HONORARIOS: (Impuesto("IVA", D(16)), Impuesto("Retención ISR", D(10), retenido=True),
+                 Impuesto("Retención IVA", DOS_TERCIOS, "IVA", retenido=True)),
+    RESICO: (Impuesto("IVA", D(16)), Impuesto("Retención ISR", D("1.25"), retenido=True),
+             Impuesto("Retención IVA", DOS_TERCIOS, "IVA", retenido=True)),
+    "Venta con IVA": (Impuesto("IVA", D(16)),),
+    "Autónomo (IVA 21 % e IRPF 15 %)": (Impuesto("IVA", D(21)), Impuesto("IRPF", D(15), retenido=True)),
+    "IVA 19 %": (Impuesto("IVA", D(19)),),
+    "Servicios con ReteIVA": (Impuesto("IVA", D(19)), Impuesto("Retención en la fuente", D(11), retenido=True),
+                              Impuesto("ReteIVA", D(15), "IVA", retenido=True)),
+}
+
+
 def perfil(nombre):
-    return PerfilImpuestos("x", nombre, impuestos.PLANTILLAS_IMPUESTOS[nombre][0])
-
-
-HONORARIOS = "México · Honorarios (régimen general)"
-RESICO = "México · Honorarios en RESICO"
+    return PerfilImpuestos("x", nombre, PERFILES[nombre])
 
 
 # ------------------------------------------------------------------ calcular y revisar
@@ -31,7 +43,7 @@ def test_calcular_honorarios_mexico():
     assert impuestos.calcular(perfil(RESICO), 10_000).total == D("10408.33")    # ISR 1.25 %
 
 
-@pytest.mark.parametrize("nombre", list(impuestos.PLANTILLAS_IMPUESTOS))
+@pytest.mark.parametrize("nombre", list(PERFILES))
 @pytest.mark.parametrize("subtotal", ["10000", "1234.56", "99.99", "87654.32", "0.50"])
 def test_desde_lo_que_recibes_vuelve_al_mismo_subtotal(nombre, subtotal):
     p = perfil(nombre)
@@ -41,9 +53,10 @@ def test_desde_lo_que_recibes_vuelve_al_mismo_subtotal(nombre, subtotal):
 
 
 def test_espana_y_otro_pais():
-    d = impuestos.calcular(perfil("España · Autónomo (IVA 21 % e IRPF 15 %)"), 1_000)
+    d = impuestos.calcular(perfil("Autónomo (IVA 21 % e IRPF 15 %)"), 1_000)
     assert d.total == D(1060)
-    assert impuestos.calcular(perfil("Colombia · IVA 19 %"), 1_000).total == D(1190)
+    assert impuestos.calcular(perfil("IVA 19 %"), 1_000).total == D(1190)
+    assert impuestos.calcular(perfil("Servicios con ReteIVA"), 1_000).total == D("1051.50")    # 1000+190−110−28.50
 
 
 def test_revisar_un_recibo():
@@ -87,12 +100,15 @@ def test_perfiles_personalizados_y_guardados(libro):
         impuestos.guardar_perfil(libro, "Repetido", [Impuesto("A", D(1)), Impuesto("a", D(2))])
     with pytest.raises(ErrorValidacion, match="al menos un impuesto"):
         impuestos.guardar_perfil(libro, "Vacío", [{"nombre": " ", "tasa": 1}])
-    copia = impuestos.agregar_plantilla_impuestos(libro, HONORARIOS)
-    otra = impuestos.agregar_plantilla_impuestos(libro, HONORARIOS)
-    assert otra.nombre == f"{HONORARIOS} (2)"
+    copia = impuestos.guardar_perfil(libro, "Copia", PERFILES[HONORARIOS])
+    with pytest.raises(ErrorValidacion, match="Ya tienes un perfil"):
+        impuestos.guardar_perfil(libro, "COPIA", PERFILES[RESICO])
+    editado = impuestos.guardar_perfil(libro, "Copia editada", PERFILES[RESICO], perfil_id=copia.id)
+    assert [x.nombre for x in libro.fiscal.perfiles] == ["Mi país ficticio", "Copia editada"]
+    assert editado.impuestos[1].tasa == D("1.25")
     assert libro_desde_instantanea(instantanea(libro)).fiscal == libro.fiscal
     impuestos.eliminar_perfil(libro, copia.id)
-    assert [x.nombre for x in libro.fiscal.perfiles] == ["Mi país ficticio", f"{HONORARIOS} (2)"]
+    assert [x.nombre for x in libro.fiscal.perfiles] == ["Mi país ficticio"]
 
 
 # ------------------------------------------------------------------ deducibles
@@ -142,19 +158,22 @@ def test_validaciones_de_conceptos(libro, cat):
         impuestos.guardar_concepto(libro, "MÉDICOS", [cat("DENTISTA")])
 
 
-@pytest.mark.parametrize("nombre", list(impuestos.PLANTILLAS_DEDUCIBLES))
-def test_plantillas_de_deducibles(libro, nombre):
-    agregados = impuestos.agregar_plantilla_deducibles(libro, nombre)
-    assert agregados == len(impuestos.PLANTILLAS_DEDUCIBLES[nombre]["conceptos"])
-    assert impuestos.agregar_plantilla_deducibles(libro, nombre) == 0               # no duplica
-    assert libro.fiscal.notas
+def test_borrar_todos_los_deducibles_y_notas(libro, cat):
+    impuestos.guardar_concepto(libro, "Médicos", [cat("DENTISTA")])
+    impuestos.ajustar_topes(libro, tope_porcentaje=15)
+    impuestos.ajustar_notas(libro, "  Revisar topes del año  ")
+    assert libro.fiscal.notas == "Revisar topes del año"
+    impuestos.quitar_deducibles(libro)
+    assert (libro.fiscal.conceptos, libro.fiscal.tope_porcentaje, libro.fiscal.notas) == ((), None, "")
 
 
 def test_conceptos_fuera_del_tope_total(libro, ctas, cat):
     movimientos.registrar_ingreso(libro, date(2026, 1, 15), ctas.debito, cat("NOMINA"), 10_000)
     movimientos.registrar_gasto(libro, date(2026, 2, 3), ctas.debito, cat("DENTISTA"), 4_000)
     movimientos.registrar_gasto(libro, date(2026, 2, 5), ctas.debito, cat("COLEGIATURAS"), 3_000)
-    impuestos.agregar_plantilla_deducibles(libro, "México (persona física, declaración anual)")
+    impuestos.guardar_concepto(libro, "Médicos", [cat("DENTISTA")], sin_efectivo=True)
+    impuestos.guardar_concepto(libro, "Colegiaturas", [cat("COLEGIATURAS")], fuera_del_tope=True)
+    impuestos.ajustar_topes(libro, tope_porcentaje=15)
     r = impuestos.deducibles(libro, 2026)
     assert r.tope == D(1_500) and r.fuera_del_tope == D(3_000)
     assert r.total == D(1_500) + D(3_000)              # el 15 % topa a los médicos, no a la colegiatura

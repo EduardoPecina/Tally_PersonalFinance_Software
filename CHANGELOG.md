@@ -2,6 +2,26 @@
 
 Todos los cambios relevantes de TALLY se documentan aquí.
 
+## [0.17.2] — Sin publicar
+
+- **Deudas sabe lo que ya pagaste de tu tarjeta.** Antes seguía pidiendo «para no generar intereses» y avisaba del
+  mínimo aunque ya hubieras pagado el corte (Cuentas sí lo mostraba al corriente). Ahora:
+  - lo que abonas después del corte baja lo que falta y el pago mínimo;
+  - si ya lo pagaste completo, dice «Ya pagaste el corte» y no avisa nada;
+  - la capacidad de pago tampoco lo cuenta.
+- **Préstamos:** si adelantas el pago del mes (hasta 7 días antes), el próximo pago pasa al mes siguiente en Deudas y
+  en el Calendario. El día que te toca pagar se muestra como hoy, no el mes siguiente.
+- **Impuestos, 100 % tuyo:** se quitaron las plantillas. En su lugar, ejemplos por país (México, España, Argentina,
+  Colombia, Perú, Chile) que explican cómo armar tus deducibles y tus perfiles, y una calculadora de tu tasa
+  aproximada de ISR o IRPF (lo que pagaste ÷ tus ingresos). Nada se agrega solo.
+  - Cada concepto deducible y cada perfil tiene su botón **Borrar** a la vista.
+  - **Borrar todos mis deducibles** (con confirmación) y notas editables.
+  - La tabla de un perfil nuevo empieza con un renglón vacío y claro.
+- **Todo lo que agregas se puede quitar:**
+  - **Quitar mi ingreso principal** (en Ingresos);
+  - **Quitar todos mis presupuestos** (en Presupuestos);
+  - en un préstamo, cómo borrarlo desde Cuentas.
+
 ## [0.17.1] — Sin publicar
 
 Correcciones antes de la 1.0:

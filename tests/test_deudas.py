@@ -154,6 +154,27 @@ def test_pago_minimo_estimado_de_una_tarjeta(libro, ctas, cat, debito):
         cuentas.editar(libro, debito, tasa_anual=10)
 
 
+def test_lo_que_ya_pagaste_de_la_tarjeta_se_ve_en_deudas(libro, ctas, cat, debito):
+    """Un pago registrado en cualquier lado baja lo que falta para no generar intereses y el mínimo."""
+    from motor.transferencias import registrar_pago_tarjeta
+
+    movimientos.registrar_gasto(libro, date(2026, 6, 10), ctas.credito, cat("ALIMENTOS"), 965, "Compra ficticia")
+    registrar_pago_tarjeta(libro, date(2026, 7, 10), debito, ctas.credito, 500, "Abono ficticio")
+    parcial = tarjetas.pago_minimo_estimado(libro, ctas.credito)
+    assert (parcial.para_no_generar_intereses, parcial.minimo) == (D(465), D(0))     # el mínimo ya quedó cubierto
+    registrar_pago_tarjeta(libro, date(2026, 7, 12), debito, ctas.credito, 465, "Pago ficticio")
+    movimientos.registrar_gasto(libro, date(2026, 7, 15), ctas.credito, cat("ALIMENTOS"), 349, "Del siguiente corte")
+    assert tarjetas.pago_minimo_estimado(libro, ctas.credito) is None              # ya pagaste el corte
+    assert planeacion.capacidad(libro).para_no_generar_intereses == 0
+
+
+def test_el_proximo_pago_de_un_prestamo_considera_lo_que_adelantaste(libro, debito):
+    p = _personal(libro, debito)                                    # paga los días 15
+    assert prestamos.estado(libro, p.cuenta_id, date(2026, 2, 15)).proximo_pago == date(2026, 2, 15)   # hoy toca
+    prestamos.registrar_pago(libro, p.cuenta_id, date(2026, 2, 10), 5_000, debito)                   # lo adelantaste
+    assert prestamos.estado(libro, p.cuenta_id, date(2026, 2, 12)).proximo_pago == date(2026, 3, 15)
+
+
 # ------------------------------------------------------------- planeación
 
 
