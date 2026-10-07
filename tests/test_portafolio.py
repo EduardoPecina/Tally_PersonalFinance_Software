@@ -2,7 +2,7 @@
 
 import json
 import urllib.error
-from datetime import date
+from datetime import date, datetime, timezone
 from decimal import Decimal
 
 import pytest
@@ -83,29 +83,33 @@ def test_cetes_se_valuan_sin_internet(libro, inversion):
     assert vencido.vence == date(2026, 7, 29)
 
 
-def test_registrar_rendimiento_solo_agrega_lo_nuevo(libro, inversion):
+def test_el_rendimiento_se_registra_con_el_valor_oficial_al_centavo(libro, inversion):
     portafolio.registrar_compra(libro, inversion, date(2026, 7, 2), "FICT", 10, 100)
     val = portafolio.valuar(libro, inversion, {"FICT": (D(110), "MXN")}, {}, date(2026, 7, 20))
-    op = portafolio.registrar_rendimiento(libro, inversion, val, date(2026, 7, 20))
-    assert op.tipo is TipoOperacion.RENDIMIENTO and cuentas.saldo(libro, inversion) == D(1100)
-    assert reportes.resumen(libro, date(2026, 7, 1), date(2026, 7, 31)).ingresos == D(100)
+    assert portafolio.valor_estimado(libro, inversion, val) == D(1100)         # referencia, no se registra
+    op = portafolio.ajustar_a_valor_oficial(libro, inversion, "1099.37", date(2026, 7, 15))   # lo que dice la app
+    assert op.tipo is TipoOperacion.RENDIMIENTO and op.fecha == date(2026, 7, 15)
+    assert "1,099.37" in op.descripcion and cuentas.saldo(libro, inversion) == D("1099.37")
+    assert reportes.resumen(libro, date(2026, 7, 1), date(2026, 7, 31)).ingresos == D("99.37")
+    assert libro.cuenta(inversion).plusvalia_registrada == 9937
 
-    otra_vez = portafolio.valuar(libro, inversion, {"FICT": (D(110), "MXN")}, {})
-    assert otra_vez.por_registrar == 0 and portafolio.registrar_rendimiento(libro, inversion, otra_vez) is None
-
-    baja = portafolio.valuar(libro, inversion, {"FICT": (D(105), "MXN")}, {})
-    portafolio.registrar_rendimiento(libro, inversion, baja, date(2026, 7, 25))
-    assert cuentas.saldo(libro, inversion) == D(1050)                        # bajó: rendimiento negativo
-
-    portafolio.registrar_venta(libro, inversion, date(2026, 7, 28), "FICT", 10, 105)   # vende todo
-    vendido = portafolio.valuar(libro, inversion, {}, {})
-    assert vendido.ganancia_realizada == D(50) and vendido.por_registrar == 0  # ya estaba registrada
+    assert portafolio.ajustar_a_valor_oficial(libro, inversion, D("1099.37"), date(2026, 7, 15)) is None  # ya cuadra
+    portafolio.ajustar_a_valor_oficial(libro, inversion, 1050, date(2026, 7, 20))          # bajó: pérdida
+    assert cuentas.saldo(libro, inversion) == D(1050)
+    assert libro.cuenta(inversion).plusvalia_registrada == 5000
 
 
-def test_sin_precio_no_se_registra(libro, inversion):
-    portafolio.registrar_compra(libro, inversion, date(2026, 7, 2), "FICT", 1, 100)
-    with pytest.raises(ErrorValidacion, match="Falta el precio de: FICT"):
-        portafolio.registrar_rendimiento(libro, inversion, portafolio.valuar(libro, inversion, {}, {}))
+def test_el_valor_oficial_cuenta_contra_el_saldo_de_ese_dia(libro, inversion, ctas):
+    registrar_transferencia(libro, date(2026, 7, 10), ctas.debito, inversion, 500, "Otra aportación")
+    portafolio.ajustar_a_valor_oficial(libro, inversion, 1020, date(2026, 7, 5))   # antes de la aportación
+    assert cuentas.saldo(libro, inversion, date(2026, 7, 5)) == D(1020)
+    assert cuentas.saldo(libro, inversion) == D(1520)
+    with pytest.raises(ErrorValidacion, match="futura"):
+        portafolio.ajustar_a_valor_oficial(libro, inversion, 1000, date(2026, 8, 1))
+    with pytest.raises(ErrorValidacion):
+        portafolio.ajustar_a_valor_oficial(libro, inversion, -5)
+    with pytest.raises(ErrorValidacion, match="Inversión"):
+        portafolio.ajustar_a_valor_oficial(libro, ctas.debito, 100)
 
 
 def test_se_guardan_en_respaldos_y_protegen_la_cuenta(libro, inversion):
@@ -204,3 +208,74 @@ def test_los_ultimos_precios_se_guardan_en_la_pc_y_sobreviven_sin_conexion(tmp_p
     assert set(guardado["precios"]["FICT.MX"]) == {"valor", "moneda", "actualizado"}  # solo datos públicos
     ruta.write_text("dañado", encoding="utf-8")
     assert cotizaciones.ultimos(ruta) == ({}, {})                         # archivo dañado: se ignora
+
+
+# ------------------------------------------------------- historial de precios
+
+
+def _historial(simbolo, cierres, moneda="MXN"):
+    """Respuesta ficticia con cierres diarios: {fecha: precio} (con huecos y nulos, como el real)."""
+    tiempos = [int(datetime(d.year, d.month, d.day, 14, 30, tzinfo=timezone.utc).timestamp()) for d in cierres]
+    return json.dumps({"chart": {"result": [{
+        "meta": {"symbol": simbolo, "currency": moneda, "gmtoffset": -21600},
+        "timestamp": tiempos + [tiempos[-1] + 86400],
+        "indicators": {"quote": [{"close": [float(p) for p in cierres.values()] + [None]}]}}], "error": None}})
+
+
+def test_el_historial_solo_envia_simbolo_y_periodo_estandar():
+    enviados = []
+
+    def falso(simbolo, rango):
+        enviados.append((simbolo, rango))
+        if simbolo == "USDMXN=X":
+            return _historial(simbolo, {date(2026, 7, 1): D("18.5"), date(2026, 7, 2): D("18.7")})
+        return _historial(simbolo, {date(2026, 7, 1): D(10), date(2026, 7, 2): D("10.5")}, "USD")
+
+    consulta = cotizaciones.consultar_historial({"FUSD": date(2026, 2, 1)}, date(2026, 7, 20), enviar=falso)
+    assert enviados == [("FUSD", "6mo"), ("USDMXN=X", "6mo")]          # nunca la fecha exacta ni cantidades
+    serie = consulta.series["FUSD"]
+    assert serie.moneda == "USD" and serie.cierres == {date(2026, 7, 1): D(10), date(2026, 7, 2): D("10.5")}
+    assert consulta.series["USDMXN=X"].cierres[date(2026, 7, 2)] == D("18.7") and consulta.aviso == ""
+    assert [cotizaciones.rango_para(date(2026, 7, 1), date(2026, 7, 20)), cotizaciones.rango_para(
+        date(2020, 1, 1), date(2026, 7, 20)), cotizaciones.rango_para(date(2000, 1, 1), date(2026, 7, 20))] == [
+        "1mo", "10y", "max"]
+    with pytest.raises(ValueError):
+        cotizaciones.enviar_historial("FUSD", "15y")                    # solo periodos conocidos
+    with pytest.raises(ValueError):
+        cotizaciones.enviar_historial("../x", "1y")
+
+
+def test_el_historial_sin_conexion_no_insiste_y_se_guarda_en_la_pc(tmp_path):
+    llamadas = []
+
+    def sin_red(simbolo, rango):
+        llamadas.append(simbolo)
+        raise urllib.error.URLError("red bloqueada")
+
+    consulta = cotizaciones.consultar_historial({"A": date(2026, 7, 1), "B": date(2026, 7, 1)}, date(2026, 7, 20),
+                                                enviar=sin_red)
+    assert llamadas == ["A"] and consulta.sin_conexion and "guardados" in consulta.aviso
+
+    ruta = tmp_path / "historial_precios.json"
+    primera = cotizaciones.consultar_historial({"FICT": date(2026, 7, 1)}, date(2026, 7, 20), enviar=lambda s, r:
+                                               _historial(s, {date(2026, 7, 1): D(10)}))
+    cotizaciones.guardar_historial(primera, ruta)
+    segunda = cotizaciones.consultar_historial({"FICT": date(2026, 7, 2)}, date(2026, 7, 20), enviar=lambda s, r:
+                                               _historial(s, {date(2026, 7, 2): D(11)}))
+    cotizaciones.guardar_historial(segunda, ruta)
+    guardado = cotizaciones.historial_guardado(ruta)
+    assert guardado["FICT"].cierres == {date(2026, 7, 1): D(10), date(2026, 7, 2): D(11)}   # se juntan
+    assert cotizaciones.desde_pendiente("FICT", date(2026, 7, 1), guardado) == date(2026, 7, 2)  # solo lo nuevo
+    assert cotizaciones.desde_pendiente("FICT", date(2025, 1, 1), guardado) == date(2025, 1, 1)  # falta lo viejo
+    assert set(json.loads(ruta.read_text(encoding="utf-8"))["series"]["FICT"]) == {"moneda", "actualizado", "cierres"}
+    ruta.write_text("dañado", encoding="utf-8")
+    assert cotizaciones.historial_guardado(ruta) == {}
+
+
+def test_respuestas_raras_del_historial():
+    vacia = cotizaciones.leer_historial("X", json.dumps({"chart": {"result": None, "error": {"description": "No"}}}))
+    assert "revisa el símbolo" in vacia.error and not vacia.falla_proveedor
+    assert cotizaciones.leer_historial("X", "<html>").falla_proveedor
+    sin_precios = json.dumps({"chart": {"result": [{"meta": {}, "timestamp": [1], "indicators": {"quote": [
+        {"close": [None]}]}}]}})
+    assert cotizaciones.leer_historial("X", sin_precios).falla_proveedor

@@ -5,8 +5,10 @@ Es un **detalle** de la cuenta, no un movimiento:
 - El dinero entra y sale de la cuenta con transferencias, como siempre.
 - Comprar o vender títulos con el dinero que ya está en la cuenta no cambia su saldo.
 - La ganancia (o pérdida) solo entra a la contabilidad cuando el usuario lo pide con
-  :func:`registrar_rendimiento`. Se registra como rendimiento, y la cuenta recuerda cuánto ya se registró
-  (``Cuenta.plusvalia_registrada``), así que la siguiente vez solo se agrega lo nuevo: nada se cuenta dos veces.
+  :func:`ajustar_a_valor_oficial`: escribe cuánto vale la cuenta según su app oficial (GBM, Cetesdirecto…) y la
+  diferencia contra el saldo de TALLY se registra como rendimiento. El valor consultado en internet es solo una
+  referencia: lo que manda es el estado de cuenta oficial, al centavo. Registrar dos veces el mismo valor no
+  agrega nada.
 
 El costo de cada título es el **costo promedio** (lo que pagaste, comisiones incluidas, entre los títulos que
 tienes), en pesos al tipo de cambio del día de cada compra. Las inversiones a plazo se valúan sin internet, con
@@ -171,7 +173,7 @@ class Valuacion:
     ganancia_realizada: Decimal           # de lo que ya vendiste
     interes_plazos: Decimal
     faltan: list[str]                     # símbolos sin precio (o sin tipo de cambio)
-    registrada: Decimal                   # ganancia que ya está en el saldo de la cuenta
+    registrada: Decimal                   # rendimientos ya registrados con el valor oficial
 
     @property
     def valor_plazos(self) -> Decimal:
@@ -225,28 +227,37 @@ def valuar(libro: Libro, cuenta_id: str, precios: dict[str, tuple[Decimal, str]]
     )
 
 
-def registrar_rendimiento(libro: Libro, cuenta_id: str, valuacion: Valuacion, fecha: date | None = None
-                          ) -> Operacion | None:
-    """Pasa al saldo de la cuenta la ganancia (o pérdida) que aún no estaba registrada, como rendimiento.
+def ajustar_a_valor_oficial(libro: Libro, cuenta_id: str, valor_oficial, fecha: date | None = None
+                            ) -> Operacion | None:
+    """La cuenta vale ``valor_oficial`` en ``fecha`` según tu app oficial (títulos + efectivo + intereses).
 
-    Devuelve ``None`` si no hay nada nuevo que registrar.
+    Registra la diferencia contra el saldo que TALLY tiene ese día como **rendimiento** (negativo si bajó), para
+    que ambos coincidan al centavo. Devuelve ``None`` si ya coincidían.
     """
     cuenta = _cuenta_de_inversion(libro, cuenta_id)
-    if valuacion.por_registrar is None:
-        raise ErrorValidacion("Falta el precio de: " + ", ".join(valuacion.faltan) + ". Consulta el valor o "
-                              "escríbelo a mano.")
-    centavos = a_centavos(valuacion.por_registrar)
-    if centavos == 0:
+    fecha = fecha or libro.hoy()
+    if fecha > libro.hoy():
+        raise ErrorValidacion("La fecha del valor oficial no puede ser futura.")
+    oficial = a_centavos(_decimal(valor_oficial, "El valor oficial", cero=True))
+    diferencia = oficial - libro.saldo_centavos(cuenta.id, fecha)
+    if diferencia == 0:
         return None
     subcategoria = categorias.buscar(libro, SUBCATEGORIA_RENDIMIENTO, ClaseCategoria.INGRESO)
     if subcategoria is None:
         raise ErrorValidacion(f"No encuentro la subcategoría de ingreso «{SUBCATEGORIA_RENDIMIENTO}». Créala de "
                               "nuevo en Categorías → Ingresos.")
-    op = construir_con_signo(TipoOperacion.RENDIMIENTO, fecha or libro.hoy(), cuenta.id, subcategoria.id,
-                             a_pesos(centavos), "Valuación de tus títulos")
+    op = construir_con_signo(TipoOperacion.RENDIMIENTO, fecha, cuenta.id, subcategoria.id, a_pesos(diferencia),
+                             f"Ajuste al valor oficial ({a_pesos(oficial):,.2f} MXN)")
     op = libro.agregar_operacion(op)
-    libro.guardar_cuenta(replace(cuenta, plusvalia_registrada=a_centavos(valuacion.ganancia_total)))
+    libro.guardar_cuenta(replace(cuenta, plusvalia_registrada=cuenta.plusvalia_registrada + diferencia))
     return op
+
+
+def valor_estimado(libro: Libro, cuenta_id: str, valuacion: Valuacion) -> Decimal | None:
+    """Referencia (no oficial) de cuánto vale la cuenta hoy: su saldo más la ganancia aún no registrada."""
+    if valuacion.por_registrar is None:
+        return None
+    return a_pesos(libro.saldo_centavos(cuenta_id)) + valuacion.por_registrar
 
 
 # ----------------------------------------------------------------- internos

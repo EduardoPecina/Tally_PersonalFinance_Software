@@ -9,9 +9,10 @@ from decimal import Decimal
 import pandas as pd
 import streamlit as st
 
-from motor import cotizaciones, perfil, portafolio
+from motor import cotizaciones, cuentas, perfil, portafolio
 from motor.dinero import a_pesos
 from motor.modelo import Cuenta, TipoOperacionValor
+from portal import navegacion
 from portal.componentes import formato
 from portal.componentes.sesion import ejecutar, libro
 
@@ -27,7 +28,7 @@ def mostrar(cuenta: Cuenta) -> None:
     st.subheader("Tus títulos e inversiones a plazo")
     st.caption("Acciones, ETFs, cripto, CETES, pagarés… lo que compraste **dentro** de esta cuenta. Registrarlos no "
                "cambia el saldo (el dinero ya estaba en la cuenta); sirve para saber cuánto vale hoy lo que tienes "
-               "y, si quieres, pasar la ganancia a tu contabilidad.")
+               "y ver su rendimiento en el tiempo.")
     if cuenta.activa:
         izquierda, derecha = st.columns(2)
         with izquierda, st.expander("➕ Compra o venta de títulos"):
@@ -37,20 +38,22 @@ def mostrar(cuenta: Cuenta) -> None:
 
     abiertas = [p for p in portafolio.posiciones(lib, cuenta.id) if p.titulos]
     plazos = lib.plazos(cuenta.id)
+    valuacion = None
     if not lib.valores(cuenta.id) and not plazos:
         st.caption("Aún no registras títulos en esta cuenta.")
-        return
-
-    precios, tipos = _precios(cuenta, abiertas)
-    valuacion = portafolio.valuar(lib, cuenta.id, precios, tipos)
-    _resumen(valuacion)
-    if valuacion.filas:
-        _tabla_titulos(valuacion)
-    if valuacion.plazos:
-        _tabla_plazos(valuacion)
+    else:
+        precios, tipos = _precios(cuenta, abiertas)
+        valuacion = portafolio.valuar(lib, cuenta.id, precios, tipos)
+        _resumen(valuacion)
+        if valuacion.filas:
+            _tabla_titulos(valuacion)
+        if valuacion.plazos:
+            _tabla_plazos(valuacion)
+        navegacion.enlace("inversiones", "Ver el rendimiento en el tiempo (gráficas)", "📈")
     if cuenta.activa:
-        _registrar(cuenta, valuacion)
-    _historial(cuenta)
+        _cuadrar(cuenta, valuacion)
+    if valuacion is not None:
+        _historial(cuenta)
 
 
 # ----------------------------------------------------------------- precios
@@ -88,6 +91,18 @@ def _precios(cuenta: Cuenta, abiertas) -> tuple[dict, dict]:
     guardados, tipos_guardados = cotizaciones.ultimos()
     precios = {s: (g.valor, g.moneda) for s, g in guardados.items()}
     tipos = {m: g.valor for m, g in tipos_guardados.items()}
+    # Si el historial de precios (página Inversiones) tiene un cierre más reciente, se usa ese.
+    for simbolo, serie in cotizaciones.historial_guardado().items():
+        if not serie.cierres:
+            continue
+        dia = max(serie.cierres)
+        moneda = simbolo[:3] if simbolo.endswith("MXN=X") else None
+        previo = tipos_guardados.get(moneda) if moneda else guardados.get(simbolo)
+        if previo is None or dia > previo.actualizado.date():
+            if moneda:
+                tipos[moneda] = serie.cierres[dia]
+            else:
+                precios[simbolo] = (serie.cierres[dia], serie.moneda)
     if consulta and consulta.falla_proveedor:
         st.error(f"⚠️ {cotizaciones.PROVEEDOR} no está respondiendo como antes: puede que haya cambiado o dejado de "
                  "funcionar. **TALLY sigue funcionando**: usa tus últimos precios guardados o escríbelos a mano. Si "
@@ -169,23 +184,60 @@ def _tabla_plazos(v: portafolio.Valuacion) -> None:
     st.caption("Interés simple, año de 360 días, antes de impuestos (aproximado).")
 
 
-def _registrar(cuenta: Cuenta, v: portafolio.Valuacion) -> None:
-    if v.por_registrar is None:
-        return
+def _cuadrar(cuenta: Cuenta, v: portafolio.Valuacion | None) -> None:
+    """Para pasar la ganancia a la contabilidad hay que escribir el valor oficial: TALLY registra la diferencia."""
+    lib = libro()
+    pendiente = f"_cuadrar_{cuenta.id}"
     with st.container(border=True):
-        st.markdown(f"**¿Pasar la ganancia a tu contabilidad?** Ya registrada: {formato.dinero_md(v.registrada)} · "
-                    f"Ganancia total hoy: {formato.dinero_md(v.ganancia_total)}")
-        if not v.por_registrar:
-            st.caption("Tu saldo ya refleja esta valuación: no hay nada nuevo que registrar.")
+        st.markdown("**Cuadrar con tu estado de cuenta**")
+        st.caption("Para pasar la ganancia (o pérdida) a tu contabilidad, escribe cuánto vale tu cuenta según tu "
+                   "app oficial (GBM, Cetesdirecto, tu banco…): títulos + efectivo + intereses. TALLY registra la "
+                   "diferencia contra su saldo como **rendimiento** (INTERESES Y RENDIMIENTOS) y así coinciden al "
+                   "centavo. El valor consultado en internet es solo una referencia.")
+        saldo = cuentas.saldo(lib, cuenta.id)
+        estimado = portafolio.valor_estimado(lib, cuenta.id, v) if v is not None else None
+        referencia = f"Saldo en TALLY hoy: {formato.dinero_md(saldo)}"
+        if estimado is not None:
+            referencia += f" · Valor aproximado con los precios consultados: {formato.dinero_md(estimado)}"
+        st.caption(referencia)
+        with st.form(f"valor_oficial_{cuenta.id}", border=False):
+            izquierda, derecha = st.columns(2)
+            valor = izquierda.number_input("Valor oficial de la cuenta (MXN)", min_value=0.0, value=None, step=100.0,
+                                           format="%.2f", placeholder="Cópialo de tu app, al centavo",
+                                           key=f"oficial_valor_{cuenta.id}")
+            fecha = derecha.date_input("Fecha de ese valor", value=lib.hoy(), max_value=lib.hoy(),
+                                       format="DD/MM/YYYY", key=f"oficial_fecha_{cuenta.id}")
+            if st.form_submit_button("Revisar diferencia"):
+                if valor is None:
+                    st.error("Escribe el valor oficial de la cuenta.")
+                else:
+                    st.session_state[pendiente] = (Decimal(str(valor)).quantize(Decimal("0.01")), fecha)
+        if pendiente not in st.session_state:
             return
-        st.caption("Se registra la diferencia como **rendimiento** en esta cuenta (cuenta como ingreso de "
-                   "INTERESES Y RENDIMIENTOS; si es negativa, lo resta). Consultar no cambia nada: solo este botón.")
-        signo = "+" if v.por_registrar > 0 else "−"
-        if st.button(f"Registrar como rendimiento ({signo}{formato.dinero(abs(v.por_registrar))})",
-                     key=f"registrar_rendimiento_{cuenta.id}"):
-            if ejecutar(lambda lib: portafolio.registrar_rendimiento(lib, cuenta.id, v),
-                        exito="Rendimiento registrado"):
+        oficial, dia = st.session_state[pendiente]
+        en_tally = cuentas.saldo(lib, cuenta.id, dia)
+        diferencia = oficial - en_tally
+        if not diferencia:
+            st.success(f"Ya cuadra: el {formato.fecha(dia)} TALLY tiene {formato.dinero_md(en_tally)}, igual que tu "
+                       "app. No hay nada que registrar.")
+            if st.button("Listo", key=f"oficial_listo_{cuenta.id}"):
+                st.session_state.pop(pendiente, None)
                 st.rerun()
+            return
+        signo = "+" if diferencia > 0 else "−"
+        st.info(f"El {formato.fecha(dia)} TALLY tiene {formato.dinero_md(en_tally)} y tu app dice "
+                f"{formato.dinero_md(oficial)}: se registra un rendimiento de **{signo}"
+                f"{formato.dinero_md(abs(diferencia))}** ({'ganancia' if diferencia > 0 else 'pérdida'}).")
+        confirmar, cancelar = st.columns(2)
+        if confirmar.button(f"Registrar rendimiento ({signo}{formato.dinero(abs(diferencia))})", type="primary",
+                            key=f"registrar_rendimiento_{cuenta.id}", width="stretch"):
+            if ejecutar(lambda lib: portafolio.ajustar_a_valor_oficial(lib, cuenta.id, oficial, dia),
+                        exito="Rendimiento registrado: tu cuenta ya cuadra con tu app"):
+                st.session_state.pop(pendiente, None)
+                st.rerun()
+        if cancelar.button("Cancelar", key=f"oficial_cancelar_{cuenta.id}", width="stretch"):
+            st.session_state.pop(pendiente, None)
+            st.rerun()
 
 
 def _historial(cuenta: Cuenta) -> None:

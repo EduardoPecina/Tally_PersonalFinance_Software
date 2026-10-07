@@ -33,6 +33,14 @@ Excel.
     últimos precios guardados o con los que escribas a mano. El proveedor está
     concentrado en `motor/cotizaciones.py`, así que cambiarlo por otro es un
     cambio pequeño.
+  - El botón **Actualizar historial de precios** (página Inversiones) pide los
+    cierres diarios de cada símbolo. Envía el símbolo y un periodo estándar
+    (`range=5y`), nunca la fecha exacta de tu primera compra ni cantidades. Se
+    guarda en `Datos\historial_precios.json` para ver las gráficas sin
+    internet.
+  - La ganancia de tus inversiones entra a tu contabilidad **solo con el valor
+    oficial** que tú escribes («Cuadrar con tu estado de cuenta»). El precio de
+    internet es una referencia.
 - Los datos financieros nunca forman parte de este repositorio (ver `.gitignore`).
 
 ## Qué resuelve
@@ -80,10 +88,11 @@ el acceso directo **Mis datos de TALLY**, dentro de `Escritorio\TALLY`.
 | Resumen | ¿Cuánto dinero tengo? ¿Cuánto gasté y en qué? ¿Tengo pagos de tarjeta por vencer? ¿Cómo voy con mis presupuestos? ¿Qué cargos temporales me deben devolver? |
 | Registrar | Anotar un gasto (también a meses sin intereses, repartido o como cargo temporal que te van a devolver), ingreso, transferencia, pago de tarjeta o reembolso |
 | Historial | Buscar, filtrar, editar, repetir o eliminar movimientos |
-| Cuentas | Saldo de cada cuenta, estado de cuenta con saldo corrido, estado de cada tarjeta (línea, disponible, pago) y, en las de inversión, tus títulos (acciones, ETFs, cripto) y CETES o pagarés con su valor aproximado |
+| Cuentas | Saldo de cada cuenta, estado de cuenta con saldo corrido, estado de cada tarjeta (línea, disponible, pago) y, en las de inversión, tus títulos (acciones, ETFs, cripto) y CETES o pagarés con su valor aproximado, y «Cuadrar con tu estado de cuenta» para registrar la ganancia con el valor oficial |
 | Presupuestos | Tope mensual por categoría y cuánto llevas |
 | Tablas dinámicas | Pivots por categoría, mes, cuenta… exportables a Excel |
 | Gráficas | Dona, barras, tendencias, ingresos vs. gastos y patrimonio; clic en una rebanada o barra para ver de qué movimientos se compone |
+| Inversiones | ¿Cuánto ganaron mis inversiones este mes, este año o en 5 años? Valor en el tiempo, lo que metiste y la ganancia por mes o año, filtrando por cuentas (CETES, GBM…) y por títulos (IVV, VT…); estimado con precios de mercado u oficial con tus valores registrados |
 | Categorías | Categorías (SALUD, TECNOLOGIA…) con sus subcategorías y clasificaciones, a tu manera |
 | Cargar datos | Subir tu historial de Excel de una vez con una plantilla `.txt` |
 | Respaldos y bitácora | Descargar o restaurar respaldos, ver qué cambió o empezar de cero |
