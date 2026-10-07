@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING
 from motor.errores import ErrorValidacion
 from motor.modelo import (
     CATEGORIA_AJUSTE,
+    CATEGORIA_BIENES,
     CATEGORIA_SALDO_INICIAL,
     ClaseCategoria,
     Operacion,
@@ -67,7 +68,7 @@ def validar_operacion(libro: Libro, op: Operacion, original: Operacion | None = 
                 raise ErrorValidacion("Un rendimiento se registra en una categoría de ingreso.")
         case TipoOperacion.AJUSTE:
             _una_cuenta(cuentas)
-            if len(categorias) != 1 or categorias[0].categoria_id != CATEGORIA_AJUSTE:
+            if len(categorias) != 1 or categorias[0].categoria_id not in (CATEGORIA_AJUSTE, CATEGORIA_BIENES):
                 raise ErrorValidacion("Un ajuste usa la categoría «Ajuste de saldo».")
         case TipoOperacion.SALDO_INICIAL:
             _una_cuenta(cuentas)

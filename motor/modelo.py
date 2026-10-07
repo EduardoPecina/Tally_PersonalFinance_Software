@@ -22,6 +22,7 @@ class TipoCuenta(enum.StrEnum):
     INVERSION = "inversion"
     POR_COBRAR = "por_cobrar"
     OTRA = "otra"
+    BIEN = "bien"            # casa, auto, laptop… (motor/bienes.py): su valor baja con la depreciación
 
 
 # Cuentas que cuentan como "dinero disponible" salvo que el usuario diga otra cosa.
@@ -54,6 +55,7 @@ class TipoOperacion(enum.StrEnum):
 # Categorías del sistema: existen siempre, no se pueden borrar ni renombrar y
 # nunca cuentan como ingreso ni como gasto.
 CATEGORIA_AJUSTE = "sistema-ajuste"
+CATEGORIA_BIENES = "sistema-bienes"     # ganancia o pérdida al vender un bien (motor/bienes.py)
 CATEGORIA_SALDO_INICIAL = "sistema-saldo-inicial"
 
 
@@ -224,3 +226,40 @@ class Operacion:
     def orden(self) -> tuple[date, int]:
         """Orden cronológico: fecha y, dentro del día, orden de captura."""
         return (self.fecha, self.secuencia)
+
+
+class MetodoDepreciacion(enum.StrEnum):
+    LINEA_RECTA = "linea_recta"      # pierde lo mismo cada año hasta su valor de rescate
+    DECRECIENTE = "decreciente"      # pierde un % de lo que vale cada año (más al principio): autos
+    NINGUNA = "ninguna"              # casa, terreno: su valor cambia solo con avalúos
+
+
+@dataclass(frozen=True, slots=True)
+class Avaluo:
+    """Lo que vale el bien en una fecha según un avalúo o el mercado (plusvalía o minusvalía)."""
+
+    fecha: date
+    valor: int               # centavos
+
+
+@dataclass(frozen=True, slots=True)
+class Bien:
+    """Cómo se valúa una cuenta de tipo ``BIEN``. Su id es el de la cuenta. Ver motor/bienes.py.
+
+    El costo (compra, mejoras) son movimientos de la cuenta; la depreciación y los avalúos se **calculan** con
+    estos datos, no se guardan como movimientos.
+    """
+
+    cuenta_id: str
+    clase: str                                   # auto, computadora, casa… (bienes.CLASES)
+    metodo: MetodoDepreciacion
+    vida_anios: Decimal = Decimal(0)             # línea recta
+    tasa_anual: Decimal = Decimal(0)             # decreciente, en %
+    rescate: Decimal = Decimal(0)                # % del costo que conserva al final
+    avaluos: tuple[Avaluo, ...] = ()
+    fecha_baja: date | None = None               # lo vendiste o lo diste de baja
+    operaciones_baja: tuple[str, ...] = ()       # los movimientos de la venta (para deshacerla)
+
+    @property
+    def id(self) -> str:
+        return self.cuenta_id

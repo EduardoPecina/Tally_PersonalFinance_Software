@@ -1,8 +1,10 @@
-"""Contabilidad técnica (motor/contabilidad.py): estados financieros y balanza, derivados de tus movimientos."""
+"""Contabilidad técnica (motor/contabilidad.py): estados financieros, balanza y bienes, derivados de tus movimientos.
+
+Da clic en cualquier renglón para ver los movimientos que lo forman.
+"""
 
 from __future__ import annotations
 
-import html
 from datetime import date, timedelta
 from decimal import Decimal
 
@@ -10,33 +12,23 @@ import pandas as pd
 import streamlit as st
 
 from motor import contabilidad as cb
+from portal.componentes import bienes as bienes_ui
 from portal.componentes import exportar, formato
 from portal.componentes.sesion import libro
 
-ESTILO = """
-<style>
-table.tally-estado {width:100%; border-collapse:collapse; font-size:0.95rem; margin-bottom:0.5rem}
-table.tally-estado th {text-align:right; font-weight:600; padding:6px 10px; opacity:0.75;
-  border-bottom:1px solid rgba(128,128,128,0.35)}
-table.tally-estado th:first-child {text-align:left}
-table.tally-estado td {padding:4px 10px; text-align:right; white-space:nowrap}
-table.tally-estado td:first-child {text-align:left; white-space:normal}
-table.tally-estado tr.titulo td {font-weight:700; padding-top:14px; letter-spacing:0.02em}
-table.tally-estado tr.grupo td {font-weight:600; padding-top:8px; opacity:0.85}
-table.tally-estado tr.renglon td:first-child {padding-left:28px}
-table.tally-estado tr.subtotal td {font-weight:600; border-top:1px solid rgba(128,128,128,0.35)}
-table.tally-estado tr.total td {font-weight:700; border-top:2px solid rgba(128,128,128,0.6);
-  border-bottom:2px solid rgba(128,128,128,0.6)}
-table.tally-estado td.nota {opacity:0.7; font-size:0.85rem; text-align:left}
-</style>
-"""
+# Fondo de los renglones de título y total (con transparencia: se ve bien en tema claro y oscuro).
+FONDOS = {"titulo": "background-color: rgba(107, 83, 241, 0.10); font-weight: 700",
+          "grupo": "font-weight: 600",
+          "subtotal": "background-color: rgba(128, 128, 128, 0.10); font-weight: 600",
+          "total": "background-color: rgba(107, 83, 241, 0.18); font-weight: 700"}
+SANGRIA = "  "
+TIP = "Da clic en un renglón para ver de qué movimientos sale."
 
 
 def mostrar() -> None:
     st.title("Contabilidad Técnica")
     st.caption("Tus finanzas como las ve un contador, armadas solas con lo que ya registras. No tienes que capturar "
                "nada más: si corriges un movimiento, todos los reportes cambian y siempre cuadran entre sí.")
-    st.markdown(ESTILO, unsafe_allow_html=True)
     lib = libro()
     hoy = lib.hoy()
     izquierda, centro, derecha = st.columns([1, 1, 1.2])
@@ -59,22 +51,26 @@ def mostrar() -> None:
     with st.expander("¿Cómo se lee? (sin ser contador)"):
         st.markdown(
             "- **Estado de Situación Financiera**: una foto de un día. **Activo** es lo que tienes (bancos, efectivo, "
-            "inversiones, lo que te deben), **Pasivo** lo que debes (tarjetas) y **Patrimonio** lo que de verdad "
-            "es tuyo: Activo − Pasivo.\n"
+            "inversiones, lo que te deben, tus bienes), **Pasivo** lo que debes (tarjetas) y **Patrimonio** lo que "
+            "de verdad es tuyo: Activo − Pasivo.\n"
             "- **Estado de Resultados**: una película del periodo. Cuánto ganaste, cuánto gastaste y cuánto te "
-            "quedó. Una compra con tarjeta ya es gasto aunque la pagues después.\n"
+            "quedó. Una compra con tarjeta ya es gasto aunque la pagues después. Los **cambios de valor** (tus "
+            "inversiones, la depreciación de tus bienes) van aparte: no es dinero que entró o salió.\n"
             "- **Flujo de Efectivo**: por dónde entró y salió el dinero de tus cuentas de débito, ahorro y "
             "efectivo. Aquí la compra con tarjeta aparece hasta que **pagas** la tarjeta.\n"
             "- **Balanza de Comprobación**: la vista técnica. Cada movimiento se anota dos veces, en el **Debe** "
             "(lo que entra a una cuenta o lo que gastas) y en el **Haber** (de dónde salió); por eso las sumas "
-            "siempre son iguales.")
+            "siempre son iguales.\n"
+            "- **Bienes**: tu casa, auto, laptop… lo que vale hoy, cuánto se ha depreciado y su plusvalía.\n\n"
+            + TIP)
 
-    situacion = cb.situacion(lib, [p[1] for p in periodos])
+    situacion = cb.situacion(lib, [p[1] for p in periodos], desde)
     resultados = cb.resultados(lib, periodos)
     flujo = cb.flujo(lib, periodos)
     balanza = cb.balanza(lib, desde, hasta)
 
-    pestanas = st.tabs(["Situación financiera", "Resultados", "Flujo de efectivo", "Balanza de comprobación"])
+    pestanas = st.tabs(["Situación financiera", "Resultados", "Flujo de efectivo", "Balanza de comprobación",
+                        "Bienes"])
     with pestanas[0]:
         _situacion(situacion)
     with pestanas[1]:
@@ -83,16 +79,23 @@ def mostrar() -> None:
         _flujo(flujo)
     with pestanas[3]:
         _balanza(balanza)
+    with pestanas[4]:
+        bienes_ui.mostrar()
 
     st.download_button(
         "Descargar los 4 reportes en Excel", on_click="ignore", icon=":material/table_view:",
-        data=exportar.excel({"Situación financiera": _tabla_situacion(situacion),
-                             "Resultados": _tabla_resultados(resultados), "Flujo de efectivo": _tabla_flujo(flujo),
+        data=exportar.excel({"Situación financiera": _exportable(_filas_situacion(situacion),
+                                                                 _columnas_fecha(situacion.fechas)),
+                             "Resultados": _exportable(_filas_resultados(resultados, detalle=True),
+                                                       _columnas_periodo(resultados.periodos)),
+                             "Flujo de efectivo": _exportable(_filas_flujo(flujo), _columnas_periodo(flujo.periodos)),
                              "Balanza": _tabla_balanza(balanza)}),
         file_name=f"TALLY_contabilidad_{desde:%Y-%m-%d}_a_{hasta:%Y-%m-%d}.xlsx")
 
 
-# ----------------------------------------------------------------- dibujar
+# ------------------------------------------------------------ tabla y detalle
+
+Fila = tuple[str, str, tuple, str, "cb.Origen | None"]     # (clase, concepto, importes, nota, origen)
 
 
 def _dinero(valor: Decimal) -> str:
@@ -106,21 +109,49 @@ def _variacion(valores: tuple[Decimal, ...]) -> str:
     return ("+" if cambio > 0 else "") + formato.dinero(cambio) if cambio else "—"
 
 
-def _estado(encabezados: list[str], filas: list[tuple[str, str, tuple, str]]) -> None:
-    """Tabla con estilo de estado financiero. Cada fila: (clase, concepto, importes, nota)."""
-    partes = ["<table class='tally-estado'><thead><tr>"]
-    partes += [f"<th>{html.escape(e)}</th>" for e in encabezados]
-    partes.append("</tr></thead><tbody>")
-    for clase, concepto, importes, nota in filas:
-        celdas = [f"<td>{html.escape(concepto)}</td>"]
-        celdas += [f"<td>{html.escape(_dinero(v)) if clase != 'titulo' else ''}</td>" for v in importes]
-        if len(encabezados) > len(importes) + 1:
-            celdas.append(f"<td>{html.escape(_variacion(importes)) if clase != 'titulo' else ''}</td>")
-        if len(encabezados) > len(importes) + 2:
-            celdas.append(f"<td class='nota'>{html.escape(nota)}</td>")
-        partes.append(f"<tr class='{clase}'>{''.join(celdas)}</tr>")
-    partes.append("</tbody></table>")
-    st.markdown("".join(partes), unsafe_allow_html=True)
+def _estado(clave: str, columnas: list[str], filas: list[Fila], *, lectura: bool = False) -> None:
+    """El estado financiero como tabla; al dar clic en un renglón, debajo aparece su detalle."""
+    datos = {"Concepto": [(SANGRIA if f[0] == "renglon" else "") + f[1] for f in filas]}
+    for i, nombre in enumerate(columnas):
+        datos[nombre] = ["" if f[0] == "titulo" and not any(f[2]) else _dinero(f[2][i]) for f in filas]
+    if len(columnas) > 1:
+        datos["Variación"] = ["" if f[0] == "titulo" and not any(f[2]) else _variacion(f[2]) for f in filas]
+    if lectura:
+        datos["Lectura"] = [f[3] for f in filas]
+    tabla = pd.DataFrame(datos)
+    estilo = tabla.style.apply(lambda fila: [FONDOS.get(filas[fila.name][0], "")] * len(fila), axis=1)
+    config = {c: st.column_config.TextColumn(alignment="right") for c in tabla.columns
+              if c not in ("Concepto", "Lectura")}
+    evento = st.dataframe(estilo, column_config=config, hide_index=True, width="stretch", key=clave,
+                          on_select="rerun", selection_mode="single-row", height=min(40 + 35 * len(tabla), 900))
+    st.caption(TIP)
+    seleccion = evento.selection.rows if evento else []
+    if seleccion and seleccion[0] < len(filas):
+        _detalle(filas[seleccion[0]])
+
+
+def _detalle(fila: Fila, *, tecnico: bool = False) -> None:
+    _, concepto, importes, _, origen = fila
+    st.markdown(f"#### Detalle de {formato.md(concepto.strip())}")
+    if origen is None:
+        st.caption("Este renglón es una suma de otros: da clic en ellos para ver su detalle.")
+        return
+    lista = cb.movimientos(libro(), origen)
+    if not lista:
+        st.caption("No tuvo movimientos en el periodo: su saldo viene de antes.")
+        return
+    total = sum((m.importe for m in lista), Decimal(0))
+    st.caption(f"{len(lista)} movimiento(s) en el periodo · suman {formato.dinero_md(total)}")
+    tabla = pd.DataFrame({
+        "Fecha": [m.fecha for m in lista], "Descripción": [m.descripcion for m in lista],
+        "Tipo": [m.tipo for m in lista], "Contrapartida": [m.detalle for m in lista],
+        **({"Debe": [float(m.debe) or None for m in lista], "Haber": [float(m.haber) or None for m in lista]}
+           if tecnico else {"Importe": [float(m.importe) for m in lista]}),
+    })
+    vista, config = formato.tabla_en_pesos(tabla, ("Debe", "Haber") if tecnico else ("Importe",))
+    config["Fecha"] = st.column_config.DateColumn(format="DD/MM/YYYY")
+    st.dataframe(vista, column_config=config, hide_index=True, width="stretch",
+                 height=min(40 + 35 * len(tabla), 420))
 
 
 def _columnas_fecha(fechas: tuple[date, ...]) -> list[str]:
@@ -129,6 +160,13 @@ def _columnas_fecha(fechas: tuple[date, ...]) -> list[str]:
 
 def _columnas_periodo(periodos) -> list[str]:
     return [formato.rango(d, h) for d, h in periodos]
+
+
+def _delta(valores: tuple[Decimal, ...]) -> str | None:
+    if len(valores) < 2 or valores[0] == valores[1]:
+        return None
+    cambio = valores[0] - valores[1]
+    return ("+" if cambio > 0 else "−") + formato.dinero(abs(cambio))
 
 
 def _lectura(naturaleza: str, valores: tuple[Decimal, ...]) -> str:
@@ -154,35 +192,28 @@ def _situacion(s: cb.Situacion) -> None:
         st.success("Cuadra: Activo = Pasivo + Patrimonio.", icon="✅")
     else:
         st.error("No cuadra: Activo ≠ Pasivo + Patrimonio. Revisa la bitácora o restaura un respaldo.")
-    _estado(["Concepto", *_columnas_fecha(s.fechas), *(["Variación", "Lectura"] if len(s.fechas) > 1 else [])],
-            _filas_situacion(s))
+    _estado("conta_sel_situacion", _columnas_fecha(s.fechas), _filas_situacion(s), lectura=len(s.fechas) > 1)
 
 
-def _delta(valores: tuple[Decimal, ...]) -> str | None:
-    if len(valores) < 2 or valores[0] == valores[1]:
-        return None
-    cambio = valores[0] - valores[1]
-    return ("+" if cambio > 0 else "−") + formato.dinero(abs(cambio))
-
-
-def _filas_situacion(s: cb.Situacion) -> list:
-    filas = []
+def _filas_situacion(s: cb.Situacion) -> list[Fila]:
+    filas: list[Fila] = []
     titulos = {cb.ACTIVO: "ACTIVO · lo que tienes", cb.PASIVO: "PASIVO · lo que debes",
                cb.PATRIMONIO: "PATRIMONIO · lo que es tuyo"}
     for naturaleza in (cb.ACTIVO, cb.PASIVO, cb.PATRIMONIO):
-        filas.append(("titulo", titulos[naturaleza], s.total(naturaleza), ""))
+        total = s.total(naturaleza)
+        filas.append(("titulo", titulos[naturaleza], total, "", s.origen(naturaleza)))
         grupos = s.grupos(naturaleza)
         for grupo in grupos:
             if naturaleza != cb.PATRIMONIO:
-                filas.append(("grupo", grupo, s.total(naturaleza, grupo), ""))
+                filas.append(("grupo", grupo, s.total(naturaleza, grupo), "", s.origen(naturaleza, grupo)))
             for r in (r for r in s.renglones if r.naturaleza == naturaleza and r.grupo == grupo):
-                filas.append(("renglon", r.nombre, r.importes, _lectura(naturaleza, r.importes)))
+                filas.append(("renglon", r.nombre, r.importes, _lectura(naturaleza, r.importes), r.origen))
         if not grupos:
-            filas.append(("renglon", "Sin saldo", s.total(naturaleza), ""))
-        filas.append(("subtotal", f"Total {naturaleza.lower()}", s.total(naturaleza),
-                      _lectura(naturaleza, s.total(naturaleza))))
+            filas.append(("renglon", "Sin saldo", total, "", None))
+        filas.append(("subtotal", f"Total {naturaleza.lower()}", total, _lectura(naturaleza, total),
+                      s.origen(naturaleza)))
     suma = tuple(p + c for p, c in zip(s.total(cb.PASIVO), s.total(cb.PATRIMONIO)))
-    filas.append(("total", "PASIVO + PATRIMONIO", suma, ""))
+    filas.append(("total", "PASIVO + PATRIMONIO", suma, "", None))
     return filas
 
 
@@ -196,32 +227,36 @@ def _resultados(r: cb.Resultados) -> None:
     a.metric("Ingresos", formato.dinero(r.total_ingresos()[0]), delta=_delta(r.total_ingresos()))
     b.metric("Gastos", formato.dinero(r.total_gastos()[0]), delta=_delta(r.total_gastos()), delta_color="inverse")
     c.metric("Resultado del periodo", formato.dinero(r.resultado()[0]), delta=_delta(r.resultado()))
-    encabezados = ["Concepto", *_columnas_periodo(r.periodos), *(["Variación"] if len(r.periodos) > 1 else [])]
-    _estado(encabezados, _filas_resultados(r, detalle=False))
-    st.caption("**Resultado del día a día**: lo que te quedó de lo que ganaste menos lo que gastaste. Los "
-               "rendimientos de tus cuentas de inversión (cuando cuadras con el valor oficial) van aparte, para no "
-               "mezclarlos con tu sueldo. Los saldos iniciales de cuentas nuevas no son resultado: son patrimonio.")
-    with st.expander("Ver por subcategoría"):
-        _estado(encabezados, _filas_resultados(r, detalle=True))
+    detalle = st.toggle("Ver cada subcategoría", key="conta_resultados_sub")
+    _estado("conta_sel_resultados", _columnas_periodo(r.periodos), _filas_resultados(r, detalle=detalle))
+    st.caption("**Resultado del día a día**: lo que te quedó de lo que ganaste menos lo que gastaste. Los **cambios "
+               "de valor** van aparte: rendimientos de tus inversiones (cuando cuadras con el valor oficial), "
+               "depreciación y plusvalía de tus bienes, y lo que ganaste o perdiste al venderlos. Los saldos "
+               "iniciales de cuentas nuevas no son resultado: son patrimonio.")
 
 
-def _filas_resultados(r: cb.Resultados, *, detalle: bool) -> list:
-    filas = []
+def _filas_resultados(r: cb.Resultados, *, detalle: bool) -> list[Fila]:
+    filas: list[Fila] = []
+    n = len(r.periodos)
     for titulo, renglones, total in (("INGRESOS", r.ingresos, r.total_ingresos()),
                                      ("GASTOS", r.gastos, r.total_gastos())):
-        filas.append(("titulo", titulo, total, ""))
+        filas.append(("titulo", titulo, total, "", r.origen(renglones)))
         for grupo in dict.fromkeys(x.grupo for x in renglones):
             del_grupo = [x for x in renglones if x.grupo == grupo]
-            filas.append(("grupo" if detalle else "renglon", grupo, cb._sumar_renglones(del_grupo, len(total)), ""))
+            filas.append(("grupo" if detalle else "renglon", grupo, cb._sumar_renglones(del_grupo, n), "",
+                          r.origen(del_grupo)))
             if detalle:
-                filas += [("renglon", x.nombre, x.importes, "") for x in del_grupo]
-        filas.append(("subtotal", f"Total {titulo.lower()}", total, ""))
-    filas.append(("total", "RESULTADO DE TU DÍA A DÍA", r.dia_a_dia(), ""))
-    if any(r.rendimientos_inversion):
-        filas.append(("renglon", cb.RENDIMIENTOS_INVERSION, r.rendimientos_inversion, ""))
-    if any(r.ajustes):
-        filas.append(("renglon", cb.AJUSTES, r.ajustes, ""))
-    filas.append(("total", "RESULTADO DEL PERIODO", r.resultado(), ""))
+                filas += [("renglon", x.nombre, x.importes, "", x.origen) for x in del_grupo]
+        filas.append(("subtotal", f"Total {titulo.lower()}", total, "", r.origen(renglones)))
+    filas.append(("total", "RESULTADO DE TU DÍA A DÍA", r.dia_a_dia(), "", r.origen(r.ingresos + r.gastos)))
+    cambios = [x for x in r.cambios_de_valor if any(x.importes)]
+    if cambios:
+        filas.append(("titulo", "CAMBIOS DE VALOR (no es dinero que entró o salió)", r.total_cambios_de_valor(), "",
+                      r.origen(cambios)))
+        filas += [("renglon", x.nombre, x.importes, "", x.origen) for x in cambios]
+    if any(r.ajustes.importes):
+        filas.append(("renglon", r.ajustes.nombre, r.ajustes.importes, "", r.ajustes.origen))
+    filas.append(("total", "RESULTADO DEL PERIODO", r.resultado(), "", None))
     return filas
 
 
@@ -235,15 +270,7 @@ def _flujo(f: cb.Flujo) -> None:
     a.metric("Efectivo al inicio", formato.dinero(f.inicial[0]))
     b.metric("Entró − salió", formato.dinero(f.total()[0]))
     c.metric("Efectivo al final", formato.dinero(f.final[0]), delta=_delta(f.final))
-    encabezados = ["Concepto", *_columnas_periodo(f.periodos), *(["Variación"] if len(f.periodos) > 1 else [])]
-    filas = [("subtotal", "Efectivo al inicio del periodo", f.inicial, "")]
-    for seccion in f.secciones():
-        filas.append(("titulo", seccion.upper(), f.total(seccion), ""))
-        filas += [("renglon", r.nombre, r.importes, "") for r in f.renglones if r.naturaleza == seccion]
-        filas.append(("subtotal", f"Neto de {seccion.lower()}", f.total(seccion), ""))
-    filas.append(("subtotal", "Aumento (o disminución) de efectivo", f.total(), ""))
-    filas.append(("total", "Efectivo al final del periodo", f.final, ""))
-    _estado(encabezados, filas)
+    _estado("conta_sel_flujo", _columnas_periodo(f.periodos), _filas_flujo(f))
     if not f.cuadra:
         st.error("El flujo no cuadra con tus saldos: revisa la bitácora o restaura un respaldo.")
     st.caption("Cuenta como efectivo: " + (", ".join(f.cuentas) or "ninguna cuenta todavía") + ". Positivo = "
@@ -252,6 +279,17 @@ def _flujo(f: cb.Flujo) -> None:
         st.info(f"Gastaste {formato.dinero_md(f.gasto_con_tarjeta[0])} con tarjeta de crédito en el periodo: ya es "
                 "gasto en el Estado de Resultados, pero aquí aparece hasta que pagas la tarjeta. Por eso el "
                 "resultado y el flujo no tienen que coincidir.", icon="💳")
+
+
+def _filas_flujo(f: cb.Flujo) -> list[Fila]:
+    filas: list[Fila] = [("subtotal", "Efectivo al inicio del periodo", f.inicial, "", None)]
+    for seccion in f.secciones():
+        filas.append(("titulo", seccion.upper(), f.total(seccion), "", f.origen(seccion)))
+        filas += [("renglon", r.nombre, r.importes, "", r.origen) for r in f.renglones if r.naturaleza == seccion]
+        filas.append(("subtotal", f"Neto de {seccion.lower()}", f.total(seccion), "", f.origen(seccion)))
+    filas.append(("subtotal", "Aumento (o disminución) de efectivo", f.total(), "", f.origen()))
+    filas.append(("total", "Efectivo al final del periodo", f.final, "", None))
+    return filas
 
 
 # ---------------------------------------------------- balanza de comprobación
@@ -277,41 +315,25 @@ def _balanza(b: cb.Balanza) -> None:
                                                  "lo que gastaste (en gastos).")
     config["Haber"] = st.column_config.TextColumn(alignment="right", help="De dónde salió: lo que salió de la "
                                                   "cuenta, lo que debes o lo que ganaste.")
-    st.dataframe(mostrada, column_config=config, hide_index=True, width="stretch",
-                 height=min(40 + 35 * len(mostrada), 640))
+    evento = st.dataframe(mostrada, column_config=config, hide_index=True, width="stretch", key="conta_sel_balanza",
+                          on_select="rerun", selection_mode="single-row", height=min(40 + 35 * len(mostrada), 640))
     st.caption("**Deudor** es el saldo de lo que tienes o gastaste; **acreedor**, el de lo que debes, ganaste o es "
                "patrimonio. Las cuentas de ingresos y gastos empiezan cada periodo en ceros: lo de antes está en "
                "«Resultados de periodos anteriores». Una cuenta por cobrar que ya te pagaron queda en ceros "
-               "(compensada).")
+               "(compensada). " + TIP)
+    seleccion = evento.selection.rows if evento else []
+    if seleccion and seleccion[0] < len(vista.cuentas):
+        c = vista.cuentas[seleccion[0]]
+        _detalle(("renglon", c.nombre, (), "", c.origen), tecnico=True)
 
 
 # ------------------------------------------------------ tablas (y exportar)
 
 
-def _tabla_situacion(s: cb.Situacion) -> pd.DataFrame:
-    filas = _filas_situacion(s)
+def _exportable(filas: list[Fila], columnas: list[str]) -> pd.DataFrame:
     datos = {"Concepto": [f[1] for f in filas]}
-    for i, nombre in enumerate(_columnas_fecha(s.fechas)):
-        datos[nombre] = [float(f[2][i]) if f[0] != "titulo" else None for f in filas]
-    return pd.DataFrame(datos)
-
-
-def _tabla_resultados(r: cb.Resultados) -> pd.DataFrame:
-    filas = _filas_resultados(r, detalle=True)
-    datos = {"Concepto": [f[1] for f in filas]}
-    for i, nombre in enumerate(_columnas_periodo(r.periodos)):
-        datos[nombre] = [float(f[2][i]) for f in filas]
-    return pd.DataFrame(datos)
-
-
-def _tabla_flujo(f: cb.Flujo) -> pd.DataFrame:
-    filas = [("Efectivo al inicio del periodo", f.inicial)]
-    for seccion in f.secciones():
-        filas += [(f"{seccion}: {r.nombre}", r.importes) for r in f.renglones if r.naturaleza == seccion]
-    filas += [("Aumento (o disminución) de efectivo", f.total()), ("Efectivo al final del periodo", f.final)]
-    datos = {"Concepto": [n for n, _ in filas]}
-    for i, nombre in enumerate(_columnas_periodo(f.periodos)):
-        datos[nombre] = [float(v[i]) for _, v in filas]
+    for i, nombre in enumerate(columnas):
+        datos[nombre] = [float(f[2][i]) if f[2] and (f[0] != "titulo" or any(f[2])) else None for f in filas]
     return pd.DataFrame(datos)
 
 
@@ -323,7 +345,7 @@ def _tabla_balanza(b: cb.Balanza) -> pd.DataFrame:
         return float(-v) if v < 0 else None
 
     sumas = b.sumas()
-    tabla = pd.DataFrame({
+    return pd.DataFrame({
         "Naturaleza": [c.naturaleza for c in b.cuentas] + [""],
         "Cuenta": [c.nombre for c in b.cuentas] + ["SUMAS IGUALES"],
         "Saldo inicial deudor": [deudor(c.inicial) for c in b.cuentas] + [float(sumas.get("inicial_deudor", 0))],
@@ -337,4 +359,3 @@ def _tabla_balanza(b: cb.Balanza) -> pd.DataFrame:
         "Origen / Aplicación": [c.origen_aplicacion for c in b.cuentas] + [""],
         "Lectura": [c.lectura for c in b.cuentas] + [""],
     })
-    return tabla

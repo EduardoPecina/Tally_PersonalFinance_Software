@@ -92,7 +92,7 @@ el acceso directo **Mis datos de TALLY**, dentro de `Escritorio\TALLY`.
 | Presupuestos | Tope mensual por categoría y cuánto llevas |
 | Tablas dinámicas | Pivots por categoría, mes, cuenta… exportables a Excel |
 | Gráficas | Dona, barras, tendencias, ingresos vs. gastos y patrimonio; clic en una rebanada o barra para ver de qué movimientos se compone |
-| Contabilidad Técnica | Estado de Situación Financiera, Estado de Resultados, Flujo de Efectivo y Balanza de Comprobación, comparativos por periodo, armados solos con tus movimientos y explicados sin tecnicismos |
+| Contabilidad Técnica | Estado de Situación Financiera, Estado de Resultados, Flujo de Efectivo y Balanza de Comprobación, comparativos por periodo, armados solos con tus movimientos y explicados sin tecnicismos; clic en un renglón para ver sus movimientos. **Bienes** (casa, auto, laptop) con depreciación, mejoras, avalúos y venta |
 | Inversiones | ¿Cuánto ganaron mis inversiones este mes, este año o en 5 años? Valor en el tiempo, lo que metiste y la ganancia por mes o año, filtrando por cuentas (CETES, GBM…) y por títulos (IVV, VT…); estimado con precios de mercado u oficial con tus valores registrados |
 | Categorías | Categorías (SALUD, TECNOLOGIA…) con sus subcategorías y clasificaciones, a tu manera |
 | Cargar datos | Subir tu historial de Excel de una vez con una plantilla `.txt` |

@@ -5,7 +5,7 @@ from __future__ import annotations
 import pandas as pd
 import streamlit as st
 
-from motor import categorias, consultas, cuentas, movimientos
+from motor import bienes, categorias, consultas, cuentas, movimientos
 from motor.consultas import ETIQUETA_TIPO_OPERACION, ORDENES
 from motor.modelo import TipoCuenta, TipoOperacion
 from portal.componentes import estado, formato
@@ -122,7 +122,12 @@ def detalle_movimiento(operacion_id: str, tabla: str = TABLA) -> None:
         st.info("El saldo inicial se cambia desde **Cuentas → Saldo inicial**.")
         return
 
-    editar, repetir, eliminar = st.tabs(["Editar", "Repetir", "Eliminar"])
+    es_gasto = detalle.tipo is TipoOperacion.GASTO
+    pestanas = st.tabs(["Editar", "Repetir", "Eliminar", *(["Convertir en un bien"] if es_gasto else [])])
+    editar, repetir, eliminar = pestanas[:3]
+    if es_gasto:
+        with pestanas[3]:
+            _convertir_en_bien(operacion_id, tabla)
     with editar:
         _editar(detalle, tabla)
     with repetir:
@@ -141,6 +146,35 @@ def detalle_movimiento(operacion_id: str, tabla: str = TABLA) -> None:
             if ejecutar(lambda lib: movimientos.eliminar(lib, operacion_id), exito="Movimiento eliminado"):
                 st.session_state.pop(tabla, None)
                 st.rerun()
+
+
+def _convertir_en_bien(operacion_id: str, tabla: str) -> None:
+    """Un gasto que en realidad fue comprar (o mejorar) un bien: laptop, auto, remodelación…"""
+    lib = libro()
+    st.caption("¿Fue la compra de algo que conservas y tiene valor (laptop, auto, muebles) o una mejora a tu casa? "
+               "Conviértelo en un **bien**: deja de contar como gasto y su valor se va depreciando con el tiempo. "
+               "Ves y ajustas tus bienes en **Contabilidad Técnica → Bienes**.")
+    op = lib.operacion(operacion_id)
+    existentes = {b.cuenta_id: lib.cuenta(b.cuenta_id).nombre for b in lib.bienes()
+                  if b.fecha_baja is None and lib.cuenta(b.cuenta_id).activa}
+    NUEVO = "__nuevo__"
+    destino = st.selectbox("¿A qué bien?", [NUEVO, *existentes], key=f"bien_destino_{operacion_id}",
+                           format_func=lambda c: "Un bien nuevo" if c == NUEVO else f"{existentes[c]} (como mejora)")
+    if destino == NUEVO:
+        izquierda, derecha = st.columns(2)
+        nombre = izquierda.text_input("Nombre del bien", value=op.descripcion[:60], max_chars=60,
+                                      key=f"bien_nombre_{operacion_id}")
+        clase = derecha.selectbox("Tipo de bien", list(bienes.CLASES), format_func=lambda c: bienes.CLASES[c].nombre,
+                                  key=f"bien_clase_{operacion_id}")
+    if st.button("Convertir en un bien", type="primary", key=f"convertir_bien_{operacion_id}"):
+        def convertir(lib):
+            if destino == NUEVO:
+                return bienes.crear_desde_gasto(lib, operacion_id, nombre, clase)
+            return bienes.convertir_gasto(lib, operacion_id, destino)
+
+        if ejecutar(convertir, exito="Listo: ya es un bien y dejó de contar como gasto"):
+            st.session_state.pop(tabla, None)
+            st.rerun()
 
 
 def _editar(detalle: movimientos.Detalle, tabla: str = TABLA) -> None:

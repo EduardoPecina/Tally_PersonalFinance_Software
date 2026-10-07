@@ -8,13 +8,14 @@ from __future__ import annotations
 
 import calendar
 from collections import defaultdict
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date, timedelta
 from decimal import Decimal
 
 from motor.dinero import a_pesos
 from motor.libro import Libro
 from motor.modelo import (
+    CATEGORIA_AJUSTE,
     TIPOS_AHORRO,
     TIPOS_EN_CUENTAS,
     ClaseCategoria,
@@ -52,7 +53,7 @@ def resumen(libro: Libro, desde: date, hasta: date) -> Resumen:
                 gastos += p.importe
             elif clase is ClaseCategoria.INGRESO:
                 ingresos -= p.importe
-            elif op.tipo is TipoOperacion.AJUSTE:
+            elif p.categoria_id == CATEGORIA_AJUSTE:
                 ajustes -= p.importe
         if op.tipo in (TipoOperacion.TRANSFERENCIA, TipoOperacion.PAGO_TARJETA):
             apartado += _hacia_ahorro(libro, op)
@@ -209,7 +210,11 @@ class Indicadores:
 
 def indicadores(libro: Libro, al: date | None = None) -> Indicadores:
     """Situación a una fecha. Las cuentas archivadas con saldo también cuentan."""
-    return _indicadores(libro, {c.id: libro.saldo_centavos(c.id, al) for c in libro.cuentas()})
+    from motor import bienes
+
+    indicadores_ = _indicadores(libro, {c.id: libro.saldo_centavos(c.id, al) for c in libro.cuentas()})
+    ajuste = bienes.ajuste_de_valor(libro, al or libro.hoy()) if libro.bienes() else 0
+    return replace(indicadores_, patrimonio_neto=indicadores_.patrimonio_neto + a_pesos(ajuste))
 
 
 def _indicadores(libro: Libro, saldos: dict[str, int]) -> Indicadores:
@@ -265,6 +270,9 @@ def evolucion(libro: Libro, desde: date, hasta: date) -> list[PuntoEvolucion]:
     if not puntos or puntos[-1] != hasta:
         puntos.append(hasta)
 
+    from motor import bienes
+
+    con_bienes = bool(libro.bienes())     # la depreciación y los avalúos también cambian el patrimonio
     saldos: dict[str, int] = defaultdict(int)
     operaciones = libro.operaciones(hasta=hasta)
     resultado, i = [], 0
@@ -274,7 +282,8 @@ def evolucion(libro: Libro, desde: date, hasta: date) -> list[PuntoEvolucion]:
                 saldos[p.cuenta_id] += p.importe
             i += 1
         ind = _indicadores(libro, saldos)
-        resultado.append(PuntoEvolucion(punto, ind.patrimonio_neto, ind.dinero_disponible, ind.deuda_tarjetas))
+        patrimonio = ind.patrimonio_neto + (a_pesos(bienes.ajuste_de_valor(libro, punto)) if con_bienes else 0)
+        resultado.append(PuntoEvolucion(punto, patrimonio, ind.dinero_disponible, ind.deuda_tarjetas))
     return resultado
 
 

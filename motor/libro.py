@@ -17,7 +17,9 @@ from datetime import date, datetime
 from motor.errores import ErrorNoEncontrado, ErrorValidacion
 from motor.modelo import (
     CATEGORIA_AJUSTE,
+    CATEGORIA_BIENES,
     CATEGORIA_SALDO_INICIAL,
+    Bien,
     Categoria,
     ClaseCategoria,
     Cuenta,
@@ -42,10 +44,12 @@ class Libro:
         self._operaciones: dict[str, Operacion] = {}
         self._valores: dict[str, OperacionValor] = {}
         self._plazos: dict[str, InversionPlazo] = {}
+        self._bienes: dict[str, Bien] = {}
         self._secuencia = 0
         for categoria in (
             Categoria(CATEGORIA_AJUSTE, "AJUSTE DE SALDO", ClaseCategoria.SISTEMA, orden=-2),
             Categoria(CATEGORIA_SALDO_INICIAL, "SALDO INICIAL", ClaseCategoria.SISTEMA, orden=-1),
+            Categoria(CATEGORIA_BIENES, "VENTA DE BIENES", ClaseCategoria.SISTEMA, orden=-3),
         ):
             self._categorias[categoria.id] = categoria
 
@@ -63,6 +67,7 @@ class Libro:
         reloj: Callable[[], datetime] | None = None,
         valores: list[OperacionValor] = (),
         plazos: list[InversionPlazo] = (),
+        bienes: list[Bien] = (),
     ) -> Libro:
         """Reconstruye un libro ya guardado, tal cual (lo usa la persistencia)."""
         libro = cls(reloj=reloj)
@@ -74,6 +79,7 @@ class Libro:
         libro._operaciones = {op.id: op for op in operaciones}
         libro._valores = {v.id: v for v in valores}
         libro._plazos = {p.id: p for p in plazos}
+        libro._bienes = {b.cuenta_id: b for b in bienes}
         libro._secuencia = max([secuencia, *(op.secuencia for op in operaciones)])
         return libro
 
@@ -119,6 +125,7 @@ class Libro:
         if self.tiene_titulos(cuenta_id):
             raise ErrorValidacion("La cuenta tiene títulos o inversiones a plazo; archívala en lugar de borrarla.")
         del self._cuentas[cuenta_id]
+        self._bienes.pop(cuenta_id, None)
 
     # ------------------------------------------------- títulos e inversiones a plazo
 
@@ -160,6 +167,19 @@ class Libro:
     def quitar_plazo(self, plazo_id: str) -> None:
         self.plazo(plazo_id)
         del self._plazos[plazo_id]
+
+    # ------------------------------------------------------------------ bienes
+
+    def bienes(self) -> list[Bien]:
+        return [self._bienes[c] for c in sorted(self._bienes, key=lambda c: self.cuenta(c).nombre.casefold())]
+
+    def bien(self, cuenta_id: str) -> Bien | None:
+        return self._bienes.get(cuenta_id)
+
+    def guardar_bien(self, bien: Bien) -> Bien:
+        self.cuenta(bien.cuenta_id)
+        self._bienes[bien.cuenta_id] = bien
+        return bien
 
     def tiene_titulos(self, cuenta_id: str) -> bool:
         return any(v.cuenta_id == cuenta_id for v in self._valores.values()) or any(
