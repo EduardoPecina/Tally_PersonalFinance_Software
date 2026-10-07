@@ -5,6 +5,7 @@ las acciones lleguen al motor. Se omiten si Streamlit no está instalado.
 """
 
 from datetime import date
+from decimal import Decimal
 from pathlib import Path
 
 import pytest
@@ -602,11 +603,16 @@ def test_titulos_en_una_cuenta_de_inversion(raiz, monkeypatch):
     next(b for b in at.button if b.key == f"consultar_{inv}").click().run()
     sin_errores(at)
     assert enviados == ["FICT.MX"]                                       # solo el símbolo
+    assert not any(b.key == f"registrar_rendimiento_{inv}" for b in at.button)   # primero, el valor oficial
+    at.number_input(key=f"oficial_valor_{inv}").set_value(1123.45)
+    next(b for b in at.button if b.label == "Revisar diferencia").click().run()
+    sin_errores(at)
+    assert any("se registra un rendimiento de **+" in i.value for i in at.info)
     next(b for b in at.button if b.key == f"registrar_rendimiento_{inv}").click().run()
     sin_errores(at)
     lib = sesion_en(raiz).libro
-    assert cuentas.saldo(lib, inv) > 1000                                # 125 de títulos + interés de los cetes
-    assert lib.cuenta(inv).plusvalia_registrada > 0
+    assert cuentas.saldo(lib, inv) == Decimal("1123.45")                # igual que la app oficial, al centavo
+    assert lib.cuenta(inv).plusvalia_registrada == 12345
 
 
 def test_precios_automaticos_solo_si_el_usuario_los_activa(raiz, monkeypatch):
@@ -663,3 +669,69 @@ def test_graficas_dicen_que_hay_dentro_de_otros(raiz, con_datos):
     assert len(movimientos_tabla) >= len(por_categoria)
     at.selectbox(key="grafica_detalle").set_value("HOGAR").run()
     assert "Subcategoría" in at.dataframe[1].value.columns                      # una categoría se abre en subcategorías
+
+
+def test_inversiones_rendimiento_en_el_tiempo(raiz, monkeypatch):
+    import json
+    from datetime import datetime, timezone
+
+    from motor import cotizaciones, portafolio
+
+    s = sesion_en(raiz)
+    hoy = s.libro.hoy()
+    inicio = date(hoy.year - 1, hoy.month, 1)
+    with s.cambio() as lib:
+        perfil.configurar(lib, "Usuario Ficticio")
+        gbm = cuentas.crear(lib, "Casa de Bolsa Ficticia", "inversion", saldo_inicial=5000, fecha_creacion=inicio).id
+        cetes = cuentas.crear(lib, "Cetes Ficticios", "inversion", saldo_inicial=2000, fecha_creacion=inicio).id
+        portafolio.registrar_compra(lib, gbm, inicio, "FICTA", 10, 100)
+        portafolio.registrar_compra(lib, gbm, inicio, "FICTB", 5, 10, moneda="USD", tipo_cambio=20)
+        portafolio.registrar_plazo(lib, cetes, "Cetes 28 días", inicio, 1000, 10, 28)
+        portafolio.ajustar_a_valor_oficial(lib, gbm, 5100, hoy)
+    enviados = []
+
+    def falso(simbolo, rango):
+        enviados.append((simbolo, rango))
+        tiempo = int(datetime(hoy.year, hoy.month, hoy.day, 15, tzinfo=timezone.utc).timestamp())
+        precio, moneda = {"FICTA": (120, "MXN"), "FICTB": (11, "USD"), "USDMXN=X": (19, "MXN")}[simbolo]
+        return json.dumps({"chart": {"result": [{"meta": {"currency": moneda, "gmtoffset": 0}, "timestamp": [tiempo],
+                                                 "indicators": {"quote": [{"close": [precio]}]}}]}})
+
+    monkeypatch.setattr(cotizaciones, "enviar_historial", falso)
+    at = abrir(_pagina("inversiones"))
+    sin_errores(at)
+    assert enviados == []                                    # nada sale a internet sin pedirlo
+    assert any(m.label == "Ganancia del periodo" for m in at.metric)
+    assert any("Sin historial de precios todavía" in c.value for c in at.caption)
+
+    next(b for b in at.button if b.key == "inv_actualizar").click().run()
+    sin_errores(at)
+    assert sorted(s for s, _ in enviados) == ["FICTA", "FICTB", "USDMXN=X"]   # solo símbolos y periodo
+    assert {r for _, r in enviados} <= {"1y", "2y"}                    # periodo estándar, no la fecha exacta
+    detalle = at.dataframe[0].value
+    assert list(detalle["Título o inversión"]) == ["FICTA", "FICTB", "Cetes 28 días (a plazo)"]
+    assert list(detalle["Valor al final"])[:2] == ["$1,200.00", "$1,045.00"]          # 10 × 120; 5 × 11 × 19
+    at.toggle(key="inv_separar").set_value(True).run()                # una línea por título
+    sin_errores(at)
+
+    at.multiselect(key="inv_instrumentos").set_value(["FICTB"]).run()
+    sin_errores(at)
+    assert list(at.dataframe[0].value["Título o inversión"]) == ["FICTB"]
+    at.multiselect(key="inv_cuentas").set_value([cetes]).run()      # FICTB ya no está en esa cuenta: se quita
+    sin_errores(at)
+    assert list(at.dataframe[0].value["Título o inversión"]) == ["Cetes 28 días (a plazo)"]
+    at.selectbox(key="inv_periodo").set_value("todo").run()
+    sin_errores(at)
+
+    at.radio(key="inv_vista").set_value("oficial").run()
+    at.multiselect(key="inv_cuentas").set_value([]).run()
+    sin_errores(at)
+    por_cuenta = at.dataframe[0].value
+    assert list(por_cuenta["Cuenta"]) == ["Casa de Bolsa Ficticia", "Cetes Ficticios"]
+    assert list(por_cuenta["Ganancia"])[0] == "$100.00"                 # el ajuste al valor oficial
+
+
+def test_inversiones_sin_cuentas_de_inversion(con_datos):
+    at = abrir(_pagina("inversiones"))
+    sin_errores(at)
+    assert any("Aún no tienes cuentas de inversión" in i.value for i in at.info)

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections import defaultdict
 from datetime import date
 from decimal import Decimal
 
@@ -197,3 +198,101 @@ def ingresos_y_gastos(datos: pd.DataFrame, orden: list[str]) -> None:
                  alt.Tooltip("Texto:N", title="Importe")],
     )
     st.altair_chart(grafica.properties(height=360), width="stretch")
+
+
+# ------------------------------------------------------------- inversiones
+GANANCIA_COLOR, PERDIDA_COLOR = PALETA[0], PALETA[1]   # azul / naranja: se distinguen también con daltonismo
+MAXIMO_PUNTOS = 400
+
+
+def _reducir(filas: list, maximo: int = MAXIMO_PUNTOS) -> list:
+    """Uno de cada tantos días para que la gráfica no pese; siempre conserva el primero y el último."""
+    paso = -(-len(filas) // maximo)
+    return [f for i, f in enumerate(filas) if i % paso == 0 or i == len(filas) - 1]
+
+
+def _eje_fecha(dias: int) -> alt.Axis:
+    return alt.Axis(format="%d/%m/%y" if dias <= 400 else "%m/%Y", labelColor=TEXTO_SECUNDARIO, grid=False,
+                    labelAngle=0)
+
+
+def valor_y_lo_invertido(puntos: list[tuple[date, Decimal, Decimal]]) -> None:
+    """El valor (línea de color) y lo que metiste (gris punteada). La distancia entre ambas es la ganancia."""
+    if len(puntos) < 2:
+        st.caption("Aún no hay suficiente historia para la gráfica.")
+        return
+    puntos = _reducir(puntos)
+    nombres = ["Valor", "Lo que metiste"]
+    largo = pd.DataFrame(
+        [{"Fecha": pd.Timestamp(f), "Serie": nombres[0], "Valor": float(v)} for f, v, _ in puntos]
+        + [{"Fecha": pd.Timestamp(f), "Serie": nombres[1], "Valor": float(m)} for f, _, m in puntos])
+    ancho = pd.DataFrame({"Fecha": [pd.Timestamp(f) for f, _, _ in puntos],
+                          "Valor": [float(v) for _, v, _ in puntos],
+                          "Texto": [dinero(v) for _, v, _ in puntos],
+                          "Metiste": [dinero(m) for _, _, m in puntos],
+                          "Ganancia": [dinero(v - m) for _, v, m in puntos]})
+    x = alt.X("Fecha:T", title=None, axis=_eje_fecha((puntos[-1][0] - puntos[0][0]).days))
+    y = alt.Y("Valor:Q", title=None, scale=alt.Scale(zero=False),
+              axis=alt.Axis(format="$,.0f", labelColor=TEXTO_SECUNDARIO, gridOpacity=0.4))
+    lineas = alt.Chart(largo).mark_line(strokeWidth=2).encode(
+        x=x, y=y,
+        color=alt.Color("Serie:N", scale=alt.Scale(domain=nombres, range=[COLOR, GRIS]), legend=_leyenda()),
+        strokeDash=alt.StrokeDash("Serie:N", scale=alt.Scale(domain=nombres, range=[[1, 0], [5, 4]]), legend=None))
+    cercano = alt.selection_point(nearest=True, on="pointerover", fields=["Fecha"], empty=False)
+    regla = alt.Chart(ancho).mark_rule(color=GRIS).encode(x=x).transform_filter(cercano)
+    marcas = alt.Chart(ancho).mark_point(color=COLOR, size=70, filled=True).encode(
+        x=x, y=y, opacity=alt.condition(cercano, alt.value(1), alt.value(0)),
+        tooltip=[alt.Tooltip("Fecha:T", title="Fecha", format="%d/%m/%Y"), alt.Tooltip("Texto:N", title="Valor"),
+                 alt.Tooltip("Metiste:N", title="Lo que metiste"), alt.Tooltip("Ganancia:N", title="Ganancia")],
+    ).add_params(cercano)
+    st.altair_chart((lineas + regla + marcas).properties(height=320), width="stretch")
+
+
+def valor_por_serie(series: dict[str, list[tuple[date, Decimal]]]) -> None:
+    """Una línea por título (o cuenta), con su valor en el tiempo; color fijo por nombre."""
+    series = {n: _reducir(p) for n, p in series.items() if len(p) >= 2}
+    if not series:
+        st.caption("Aún no hay suficiente historia para la gráfica.")
+        return
+    totales = {n: abs(p[-1][1]) + abs(max((v for _, v in p), default=0)) for n, p in series.items()}
+    grupo = plegar(totales)
+    filas: dict[tuple, float] = defaultdict(float)
+    for nombre, puntos in series.items():
+        for fecha_, valor in puntos:
+            filas[(pd.Timestamp(fecha_), grupo[nombre])] += float(valor)
+    datos = pd.DataFrame([{"Fecha": f, "Grupo": g, "Valor": v} for (f, g), v in filas.items()])
+    datos["Texto"] = [dinero(Decimal(str(round(v, 2)))) for v in datos["Valor"]]
+    dias = (datos["Fecha"].max() - datos["Fecha"].min()).days
+    base = alt.Chart(datos).encode(
+        x=alt.X("Fecha:T", title=None, axis=_eje_fecha(dias)),
+        y=alt.Y("Valor:Q", title=None, axis=alt.Axis(format="$,.0f", labelColor=TEXTO_SECUNDARIO, gridOpacity=0.4)),
+        color=alt.Color("Grupo:N", scale=_escala(list(datos["Grupo"].unique())), legend=_leyenda()),
+    )
+    cercano = alt.selection_point(nearest=True, on="pointerover", fields=["Fecha", "Grupo"], empty=False)
+    marcas = base.mark_point(size=70, filled=True).encode(
+        opacity=alt.condition(cercano, alt.value(1), alt.value(0)),
+        tooltip=[alt.Tooltip("Fecha:T", title="Fecha", format="%d/%m/%Y"), alt.Tooltip("Grupo:N", title="Qué"),
+                 alt.Tooltip("Texto:N", title="Valor")],
+    ).add_params(cercano)
+    st.altair_chart((base.mark_line(strokeWidth=2) + marcas).properties(height=320), width="stretch")
+
+
+def ganancias(filas: list[tuple[str, Decimal]]) -> None:
+    """Ganancia (azul) o pérdida (naranja) de cada mes o año, con su importe al pasar el cursor."""
+    if not filas:
+        st.caption("Sin datos en este periodo.")
+        return
+    nombres = ["Ganancia", "Pérdida"]
+    datos = pd.DataFrame({"Periodo": [p for p, _ in filas], "Valor": [float(v) for _, v in filas],
+                          "Texto": [("+" if v > 0 else "") + dinero(v) for _, v in filas],
+                          "Signo": [nombres[0] if v >= 0 else nombres[1] for _, v in filas]})
+    orden = [p for p, _ in filas]
+    barras_ = alt.Chart(datos).mark_bar(cornerRadiusEnd=4).encode(
+        x=alt.X("Periodo:N", sort=orden, title=None, axis=alt.Axis(labelAngle=0, labelColor=TEXTO_SECUNDARIO)),
+        y=alt.Y("Valor:Q", title=None, axis=alt.Axis(format="$,.0f", labelColor=TEXTO_SECUNDARIO, gridOpacity=0.4)),
+        color=alt.Color("Signo:N", scale=alt.Scale(domain=nombres, range=[GANANCIA_COLOR, PERDIDA_COLOR]),
+                        legend=_leyenda()),
+        tooltip=[alt.Tooltip("Periodo:N", title="Periodo"), alt.Tooltip("Texto:N", title="Ganancia")],
+    )
+    cero = alt.Chart(pd.DataFrame({"y": [0]})).mark_rule(color=GRIS).encode(y="y:Q")
+    st.altair_chart((barras_ + cero).properties(height=300), width="stretch")

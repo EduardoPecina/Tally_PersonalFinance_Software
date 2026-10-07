@@ -54,6 +54,10 @@ que los dos siempre buscan los datos en el mismo lugar.
   consultados (símbolo, precio, moneda, hora). No es parte de tus datos ni de
   los respaldos: si se borra o se daña, TALLY lo ignora y lo rehace en la
   siguiente consulta.
+- `Datos\historial_precios.json` (TALLY 0.8) guarda los cierres diarios
+  públicos de cada símbolo y tipo de cambio (fecha, precio, moneda), para las
+  gráficas de la página Inversiones. Igual que `precios.json`: no es parte de
+  tus datos ni de los respaldos, y si se borra se vuelve a pedir.
 - Un **contador de revisión** detecta si otra ventana de TALLY modificó los
   datos y pide recargar en lugar de sobrescribir.
 - **Al abrir** se ejecuta `PRAGMA quick_check` y se verifica que cada

@@ -2,7 +2,46 @@
 
 Todos los cambios relevantes de TALLY se documentan aquí.
 
-## [0.7.3] — Sin publicar
+## [0.8.0] — Sin publicar
+
+- **Cuadrar con tu estado de cuenta** (antes «Registrar como rendimiento»):
+  - Para pasar la ganancia o pérdida de una inversión a tu contabilidad, ahora es **obligatorio** escribir el valor
+    oficial de la cuenta según tu app (GBM, Cetesdirecto, tu banco…), con su fecha.
+  - TALLY te muestra la diferencia contra su saldo de ese día y, al confirmar, la registra como rendimiento
+    (INTERESES Y RENDIMIENTOS). Así la cuenta coincide **al centavo** con la oficial: el precio de internet
+    queda solo como referencia.
+  - Incluye lo que el precio de internet no ve: efectivo dentro de la cuenta, dividendos y comisiones.
+  - Funciona sin internet y también en cuentas de inversión sin títulos registrados. Registrar el mismo valor
+    dos veces no agrega nada.
+- **Nueva página 📈 Inversiones** (en Análisis): el rendimiento de tus inversiones a lo largo del tiempo.
+  - **Periodo**: este mes, mes pasado, 3 o 6 meses, este año, 1, 2, 5 o 10 años, desde el inicio, o las fechas
+    que elijas.
+  - **Filtros**: las cuentas que quieras (CETES + GBM, solo una…) y, dentro de ellas, los títulos o inversiones a
+    plazo que quieras (solo IVV, IVV + VT, solo CETES…).
+  - **Cifras del periodo**: valor al inicio, lo que metiste, lo que sacaste, valor al final y ganancia, con su %.
+    El % considera cuándo metiste o sacaste el dinero (método de Dietz modificado).
+  - **Gráficas**:
+    - Valor en el tiempo contra lo que metiste; la distancia entre ambas líneas es la ganancia.
+    - Una línea por título o por cuenta.
+    - Ganancia o pérdida de cada mes o año.
+  - **Detalle** por título, inversión a plazo o cuenta.
+  - **Dos vistas**:
+    - **Por título**: un estimado con precios de cierre diarios.
+    - **Oficial**: exacta. Usa el saldo de la cuenta con tus ajustes al valor oficial; la ganancia son los
+      rendimientos registrados y las transferencias son aportaciones o retiros.
+  - Los CETES crecen con interés simple. Al vencer, su dinero sale del CETE; si lo reinviertes, no se cuenta dos
+    veces.
+- **Historial de precios**:
+  - Botón «Actualizar historial de precios» que trae los cierres diarios de Yahoo Finance.
+  - Envía **solo** los símbolos y un periodo estándar (por ejemplo «5 años»), nunca la fecha de tu primera compra
+    ni cantidades. Siempre por HTTPS y sin registros.
+  - Se guarda en tu PC (`Datos\historial_precios.json`) para ver las gráficas sin internet. La siguiente vez solo
+    pide los días que faltan.
+  - Con «Actualizar precios automáticamente» activado, se actualiza solo al abrir la página, una vez por visita.
+  - Si no hay historial, la página usa tus precios de compra o el último precio consultado, y lo dice.
+  - Las cuentas de inversión usan el cierre más reciente del historial si es más nuevo que la última consulta.
+
+## [0.7.3]
 
 - **Instalador a prueba de «lo corrí desde dentro del ZIP»**:
   - Antes, si se corría `INSTALAR.bat` sin extraer el ZIP, Windows podía borrar su copia temporal mientras se
