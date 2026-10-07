@@ -1419,3 +1419,46 @@ def test_impuestos_con_un_deducible_que_apunta_a_una_subcategoria_borrada(raiz, 
     at = abrir(_pagina("impuestos"))
     sin_errores(at)
     assert any(m.value == [dentista] for m in at.multiselect if m.label == "Subcategorías que cuentan")
+
+
+# ------------------------------------------------------------ cierre de mes
+
+
+def test_cierre_de_mes_cerrar_avisar_y_volver_a_cerrar(raiz, con_datos):
+    from motor import cierre
+
+    s = sesion_en(raiz)
+    hoy = s.libro.hoy()
+    anio, mes = cierre.anterior(hoy)
+    with s.cambio() as lib:
+        movimientos.registrar_ingreso(lib, date(anio, mes, 15), con_datos["debito"], con_datos["cat"]["NOMINA"], 9_000)
+        movimientos.registrar_gasto(lib, date(anio, mes, 16), con_datos["debito"], con_datos["cat"]["RENTA"], 3_000)
+    if hoy.day <= cierre.DIAS_AVISO:
+        at = abrir()
+        assert any("ya terminó" in i.value for i in at.info)
+    at = abrir(_pagina("cierre"))
+    sin_errores(at)
+    assert at.selectbox(key="cierre_mes").value == (anio, mes)
+    metricas = {m.label: m.value for m in at.metric}
+    assert metricas["Entró"] == "$9,000.00" and metricas["Ahorraste"] == "$6,000.00"
+    next(b for b in at.button if b.key == "cierre_cerrar").click().run()
+    sin_errores(at)
+    assert sesion_en(raiz).libro.cierre(cierre.clave(anio, mes)) is not None
+    assert any("No ha cambiado nada" in x.value for x in at.success)
+
+    at.switch_page(_pagina("registrar")).run()                     # un gasto olvidado de ese mes
+    next(s for s in at.selectbox if s.label == "Subcategoría").set_value(con_datos["cat"]["ALIMENTOS"])
+    next(n for n in at.number_input if n.label == "Importe").set_value(250.0)
+    next(d for d in at.date_input if d.label == "Fecha").set_value(date(anio, mes, 20))
+    boton(at, "Guardar").click().run()
+    sin_errores(at)
+    assert any("ya cerraste" in str(t.value) for t in at.toast)
+
+    at.switch_page(_pagina("cierre")).run()
+    sin_errores(at)
+    assert any("Desde entonces cambió" in w.value for w in at.warning)
+    next(b for b in at.button if b.key == "cierre_volver").click().run()
+    assert any("No ha cambiado nada" in x.value for x in at.success)
+    next(b for b in at.button if b.key == "cierre_reabrir").click().run()
+    sin_errores(at)
+    assert sesion_en(raiz).libro.cierres() == []

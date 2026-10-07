@@ -30,6 +30,7 @@ from motor.modelo import (
     OperacionValor,
     Fiscal,
     Meta,
+    CierreMes,
     Perfil,
     Recurrente,
     Rubro,
@@ -53,6 +54,7 @@ class Libro:
         self._prestamos: dict[str, Prestamo] = {}
         self._recurrentes: dict[str, Recurrente] = {}
         self._metas: dict[str, Meta] = {}
+        self._cierres: dict[str, CierreMes] = {}
         self._secuencia = 0
         for categoria in (
             Categoria(CATEGORIA_AJUSTE, "AJUSTE DE SALDO", ClaseCategoria.SISTEMA, orden=-2),
@@ -80,6 +82,7 @@ class Libro:
         recurrentes: list[Recurrente] = (),
         metas: list[Meta] = (),
         fiscal: Fiscal | None = None,
+        cierres: list[CierreMes] = (),
     ) -> Libro:
         """Reconstruye un libro ya guardado, tal cual (lo usa la persistencia)."""
         libro = cls(reloj=reloj)
@@ -95,6 +98,7 @@ class Libro:
         libro._prestamos = {p.cuenta_id: p for p in prestamos}
         libro._recurrentes = {r.id: r for r in recurrentes}
         libro._metas = {m.id: m for m in metas}
+        libro._cierres = {c.id: c for c in cierres}
         libro.fiscal = fiscal or Fiscal()
         libro._secuencia = max([secuencia, *(op.secuencia for op in operaciones)])
         return libro
@@ -256,6 +260,24 @@ class Libro:
     def quitar_meta(self, meta_id: str) -> None:
         self.meta(meta_id)
         del self._metas[meta_id]
+
+    # ------------------------------------------------------------------ cierres de mes
+
+    def cierres(self) -> list[CierreMes]:
+        return sorted(self._cierres.values(), key=lambda c: c.id)
+
+    def cierre(self, cierre_id: str) -> CierreMes | None:
+        """El cierre de ese mes («2026-09»), o ``None`` si no lo has cerrado."""
+        return self._cierres.get(cierre_id)
+
+    def guardar_cierre(self, cierre: CierreMes) -> CierreMes:
+        self._cierres[cierre.id] = cierre
+        return cierre
+
+    def quitar_cierre(self, cierre_id: str) -> None:
+        if cierre_id not in self._cierres:
+            raise ErrorNoEncontrado("Ese mes no está cerrado.")
+        del self._cierres[cierre_id]
 
     def tiene_titulos(self, cuenta_id: str) -> bool:
         return any(v.cuenta_id == cuenta_id for v in self._valores.values()) or any(

@@ -79,6 +79,7 @@ ETIQUETA_ENTIDAD = {
     "recurrente": "Pago recurrente",
     "meta": "Meta de ahorro",
     "fiscal": "Ajustes de impuestos",
+    "cierre": "Cierre de mes",
     "respaldo": "Respaldo",
 }
 ETIQUETA_ACCION = {CREAR: "Creó", EDITAR: "Editó", BORRAR: "Borró", RESTAURAR: "Restauró"}
@@ -101,6 +102,8 @@ def resumen(registro: Registro | Cambio) -> str:
         datos = {**datos, "nombre": f"{datos.get('tipo', '')} {datos.get('titulos', '')} {datos.get('simbolo', '')}".strip()}
     if registro.accion == EMPEZAR_DE_CERO:
         return f"Empezó de cero (lo anterior quedó en «{datos.get('respaldo_de_seguridad', '')}»)"
+    if registro.entidad == "cierre":
+        datos = {**datos, "nombre": datos.get("id", "")}                # «2026-09»
     nombre = datos.get("nombre") or datos.get("descripcion") or datos.get("archivo") or ""
     texto = f"{ETIQUETA_ACCION.get(registro.accion, registro.accion)} {ETIQUETA_ENTIDAD.get(registro.entidad, registro.entidad)}"
     if nombre:

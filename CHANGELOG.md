@@ -2,6 +2,25 @@
 
 Todos los cambios relevantes de TALLY se documentan aquí.
 
+## [0.18.0] — Sin publicar
+
+- **Nueva página 📆 Cierre de mes** (en Análisis): la boleta de cada mes.
+  - **El resultado:** cuánto entró, cuánto salió y cuánto ahorraste, contra tu meta de ahorro, el mes anterior y tu
+    promedio de los meses previos.
+  - **A dónde se fue:** cada categoría contra tu promedio (marca las que subieron), los **gastos hormiga** (muchos
+    gastos de menos de $100) y las suscripciones que te cobraron.
+  - **Presupuestos** cumplidos o no, **ingresos fijos** que llegaron o faltan, **deudas** al empezar y al terminar con
+    los intereses y comisiones que pagaste, **metas** y **patrimonio**.
+  - **Para cerrar bien:** lo que falta registrar (pagos del calendario, cargos temporales, el pago de una tarjeta),
+    con casillas para ir marcando.
+  - **3 recomendaciones** para el mes siguiente, calculadas con tus números (nada sale de tu computadora).
+  - **Descarga en Excel** (resumen, recomendaciones, categorías, presupuestos, deudas, pendientes y movimientos) e
+    historial de tus meses anteriores.
+- **Cerrar un mes no lo bloquea.** Guarda cómo estaban sus números. Si después registras, corriges o borras algo de
+  ese mes, TALLY te avisa al momento y el cierre lo muestra como **cambios después de cerrar**. Puedes volver a
+  cerrarlo para aceptarlos, o quitar el cierre.
+- **Resumen:** los primeros 10 días del mes te recuerda revisar el cierre del mes anterior.
+
 ## [0.17.2] — Sin publicar
 
 - **Deudas sabe lo que ya pagaste de tu tarjeta.** Antes seguía pidiendo «para no generar intereses» y avisaba del
