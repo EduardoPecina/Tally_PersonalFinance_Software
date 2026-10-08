@@ -44,12 +44,12 @@ def _capacidad() -> None:
         navegacion.enlace("ingresos", "Ir a Ingresos", "💰")
         return
     a, b, c, d = st.columns(4)
-    a.metric("Ingreso esperado al mes", formato.dinero(cap.ingreso))
-    b.metric("Pagos de deudas al mes", formato.dinero(cap.compromisos),
+    a.metric("Ingreso esperado al mes", formato.dinero_metrica(cap.ingreso))
+    b.metric("Pagos de deudas al mes", formato.dinero_metrica(cap.compromisos),
              help=f"Préstamos {formato.dinero(cap.prestamos)} + pagos mínimos de tarjetas "
                   f"{formato.dinero(cap.minimos_tarjetas)}.")
     c.metric("Parte de tu ingreso", f"{cap.porcentaje} %")
-    d.metric("Te queda para vivir", formato.dinero(cap.libre))
+    d.metric("Te queda para vivir", formato.dinero_metrica(cap.libre))
     st.progress(min(float(cap.porcentaje) / 100, 1.0))
     icono, tipo, texto = NIVELES[cap.nivel]
     getattr(st, tipo)(f"{texto} Lo máximo sano serían {formato.dinero_md(cap.maximo_sano)} al mes.", icon=icono)
@@ -75,9 +75,9 @@ def _tarjetas() -> None:
             st.markdown(f"**{formato.md(tarjeta.nombre)}**" + (f" · CAT {tarjeta.cat.normalize():f} %"
                                                                if tarjeta.cat else ""))
             a, b, c = st.columns(3)
-            a.metric("Debes hoy", formato.dinero(estado.deuda))
+            a.metric("Debes hoy", formato.dinero_metrica(estado.deuda))
             if minimo is None:
-                b.metric("Para no generar intereses", formato.dinero(0))
+                b.metric("Para no generar intereses", formato.dinero_metrica(0))
                 c.metric("Pago mínimo estimado", "—")
                 corte = estado.corte
                 if corte is not None and corte.deuda_al_corte:
@@ -87,8 +87,8 @@ def _tarjetas() -> None:
                     st.caption("Nada por pagar del último corte." if corte else
                                "Registra su día de corte (Cuentas → Editar) para calcular sus pagos.")
             else:
-                b.metric("Para no generar intereses", formato.dinero(minimo.para_no_generar_intereses))
-                c.metric("Pago mínimo estimado", formato.dinero(minimo.minimo),
+                b.metric("Para no generar intereses", formato.dinero_metrica(minimo.para_no_generar_intereses))
+                c.metric("Pago mínimo estimado", formato.dinero_metrica(minimo.minimo),
                          help="Regla del Banco de México: el mayor entre 1.5 % del saldo más intereses e IVA, y "
                               "1.25 % de tu línea. Cada banco lo calcula a su manera: el oficial es el de tu "
                               "estado de cuenta.")
@@ -148,7 +148,7 @@ def _prestamos() -> None:
                         "Tasa anual": f"{p.tasa_anual.normalize():f} %",
                         "Te faltan": "Liquidado ✓" if e.liquidado else (_tiempo(e.proyeccion.meses)
                                                                         if e.proyeccion.alcanza else "—")})
-    st.dataframe(pd.DataFrame(resumen), hide_index=True, width="stretch")
+    st.dataframe(formato.pintar(pd.DataFrame(resumen)), hide_index=True, width="stretch")
     nombres = {p.cuenta_id: lib.cuenta(p.cuenta_id).nombre for p in todos}
     if st.session_state.get(ELEGIDO) not in nombres:
         st.session_state[ELEGIDO] = todos[0].cuenta_id
@@ -166,10 +166,10 @@ def _detalle(cuenta_id: str) -> None:
                f"{' + IVA' if prestamos.iva_de(lib, p) else ''} a {p.plazo_meses} meses, desde el "
                f"{formato.fecha(p.fecha_inicio)}" + (f" · CAT {p.cat.normalize():f} %" if p.cat else ""))
     a, b, c, d = st.columns(4)
-    a.metric("Debes hoy", formato.dinero(e.deuda))
-    b.metric("Pago mensual", formato.dinero(e.pago_mensual),
+    a.metric("Debes hoy", formato.dinero_metrica(e.deuda))
+    b.metric("Pago mensual", formato.dinero_metrica(e.pago_mensual),
              help="El pactado si lo registraste; si no, el que da la tabla del contrato.")
-    c.metric("Intereses + IVA de este mes", formato.dinero(e.interes_del_mes),
+    c.metric("Intereses + IVA de este mes", formato.dinero_metrica(e.interes_del_mes),
              help="Lo que se come el interés de tu pago este mes; el resto baja tu deuda.")
     if e.liquidado:
         d.metric("Te faltan", "Liquidado ✓")
@@ -213,13 +213,13 @@ def _recomendaciones(cuenta_id: str, e: prestamos.Estado) -> None:
         return
     base = e.proyeccion.intereses if e.proyeccion.alcanza else None
     st.markdown("**¿Cuánto pagar para salir antes?**")
-    st.dataframe(pd.DataFrame({
+    st.dataframe(formato.pintar(pd.DataFrame({
         "Si pagas al mes": [f"{n} · {formato.dinero(p.pago)}" for n, p in filas],
         "Terminas en": [_tiempo(p.meses) if p.alcanza else "Nunca" for _, p in filas],
         "Intereses + IVA por pagar": [formato.dinero(p.intereses) for _, p in filas],
         "Te ahorras": [formato.dinero(base - p.intereses) if base is not None and p.alcanza and base > p.intereses
                        else "—" for _, p in filas],
-    }), hide_index=True, width="stretch")
+    })), hide_index=True, width="stretch")
     cap = planeacion.capacidad(lib)
     if cap.ingreso and cap.libre > 0:
         st.caption(f"Antes de subir tu pago, revisa que te quede para lo básico: después de tus deudas te quedan "
@@ -312,7 +312,7 @@ def _simulador(cuenta_id: str, e: prestamos.Estado) -> None:
     x.metric("Terminas en", _tiempo(simulada.meses) if simulada.meses else "Hoy",
              delta=(f"{e.proyeccion.meses - simulada.meses} meses antes" if e.proyeccion.alcanza
                     and e.proyeccion.meses > simulada.meses else None))
-    y.metric("Intereses + IVA por pagar", formato.dinero(simulada.intereses),
+    y.metric("Intereses + IVA por pagar", formato.dinero_metrica(simulada.intereses),
              delta=(f"−{formato.dinero(e.proyeccion.intereses - simulada.intereses)}" if e.proyeccion.alcanza
                     and e.proyeccion.intereses > simulada.intereses else None), delta_color="inverse")
     z.metric("Terminarías el", formato.fecha(simulada.fin) if simulada.fin else "—")
@@ -339,7 +339,7 @@ def _tabla(cuenta_id: str) -> None:
     })
     vista, config = formato.tabla_en_pesos(datos, ("Pago", "Intereses", "IVA", "Capital", "Debes después"))
     config["Fecha"] = st.column_config.DateColumn(format="DD/MM/YYYY")
-    st.dataframe(vista, column_config=config, hide_index=True, width="stretch", height=min(40 + 35 * len(tabla), 460))
+    st.dataframe(formato.pintar(vista), column_config=config, hide_index=True, width="stretch", height=min(40 + 35 * len(tabla), 460))
     st.caption(f"Total de intereses + IVA del contrato: "
                f"{formato.dinero_md(sum((m.interes + m.iva for m in tabla), Decimal(0)))}")
 

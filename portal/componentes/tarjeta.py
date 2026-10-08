@@ -42,10 +42,10 @@ def mostrar(tarjeta: Cuenta) -> None:
     lib = libro()
     estado = tarjetas.estado(lib, tarjeta.id)
     columnas = st.columns(3)
-    columnas[0].metric("Debes", formato.dinero(estado.deuda))
+    columnas[0].metric("Debes", formato.dinero_metrica(estado.deuda))
     if estado.limite is not None:
-        columnas[1].metric("Disponible", formato.dinero(estado.disponible))
-        columnas[2].metric("Línea de crédito", formato.dinero(estado.limite))
+        columnas[1].metric("Disponible", formato.dinero_metrica(estado.disponible))
+        columnas[2].metric("Línea de crédito", formato.dinero_metrica(estado.limite))
         uso = float(estado.uso)
         texto = f"Usas el {uso:.0%} de tu línea"
         if estado.excedida:

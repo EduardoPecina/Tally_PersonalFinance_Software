@@ -49,7 +49,7 @@ def _msi(cuenta_id: str) -> None:
     if not compras:
         return
     st.markdown("**Compras a meses sin intereses**")
-    st.dataframe(pd.DataFrame({
+    st.dataframe(formato.pintar(pd.DataFrame({
         "Compra": [formato.fecha(c.fecha) for c in compras],
         "Descripción": [c.descripcion for c in compras],
         "Total": [float(c.total) for c in compras],
@@ -57,7 +57,7 @@ def _msi(cuenta_id: str) -> None:
         "Pagadas": [f"{c.cobradas} de {c.meses}" for c in compras],
         "Falta": [float(c.restante) for c in compras],
         "Última mensualidad": [formato.fecha(c.ultima) for c in compras],
-    }), hide_index=True, width="stretch", column_config={
+    })), hide_index=True, width="stretch", column_config={
         k: st.column_config.NumberColumn(format=formato.columna_dinero()) for k in ("Total", "Mensualidad", "Falta")})
 
 
@@ -75,7 +75,7 @@ def mostrar(cuenta_id: str) -> None:
             estado_tarjeta.mostrar(cuenta)
         _msi(cuenta.id)
     else:
-        st.metric("Saldo", formato.dinero(cuentas.saldo(lib, cuenta.id)))
+        st.metric("Saldo", formato.dinero_metrica(cuentas.saldo(lib, cuenta.id)))
     if cuenta.tipo is TipoCuenta.INVERSION:
         with st.container(border=True):
             portafolio.mostrar(cuenta)
@@ -111,9 +111,12 @@ def mostrar(cuenta_id: str) -> None:
     st.caption(f"{len(filas)} movimiento(s) · Entradas {formato.dinero_md(entradas)} · "
                f"Salidas {formato.dinero_md(salidas)}. El saldo es el que quedó después de cada movimiento; para "
                "verlo de arriba abajo usa «Orden» (al ordenar con clic en una columna, el saldo no se recalcula).")
-    vista, config = formato.tabla_en_pesos(tabla, ("Entrada", "Salida", columna_saldo))
+    mostrar = formato.cuantos_mostrar(len(filas), "cuenta_todos")
+    filas = filas[:mostrar]
+    vista, config = formato.tabla_en_pesos(tabla.head(mostrar), ("Entrada", "Salida", columna_saldo))
     evento = st.dataframe(
-        vista, hide_index=True, width="stretch", on_select="rerun", selection_mode="single-row", key="cuenta_tabla",
+        formato.pintar(vista, rojas=("Salida",)), hide_index=True, width="stretch", on_select="rerun",
+        selection_mode="single-row", key="cuenta_tabla",
         height=min(38 + 35 * len(filas), 560),
         column_config={"Fecha": st.column_config.DateColumn(format="DD/MM/YYYY"), **config},
     )

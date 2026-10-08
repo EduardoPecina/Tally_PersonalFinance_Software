@@ -73,6 +73,7 @@ def mostrar() -> None:
         st.info("No hay movimientos con estos filtros.")
         return
 
+    filas = filas[:formato.cuantos_mostrar(len(filas), "historial_todos")]
     tabla = pd.DataFrame(
         {
             "Fecha": [f.fecha for f in filas],
@@ -85,7 +86,7 @@ def mostrar() -> None:
         }
     )
     evento = st.dataframe(
-        tabla, hide_index=True, on_select="rerun", selection_mode="single-row", key=TABLA,
+        formato.pintar(tabla), hide_index=True, on_select="rerun", selection_mode="single-row", key=TABLA,
         column_config={"Fecha": st.column_config.DateColumn(format="DD/MM/YYYY")},
         height=min(38 + 35 * len(filas), 520),
     )

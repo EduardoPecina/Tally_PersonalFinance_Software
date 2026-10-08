@@ -122,7 +122,7 @@ def _estado(clave: str, columnas: list[str], filas: list[Fila], *, lectura: bool
     estilo = tabla.style.apply(lambda fila: [FONDOS.get(filas[fila.name][0], "")] * len(fila), axis=1)
     config = {c: st.column_config.TextColumn(alignment="right") for c in tabla.columns
               if c not in ("Concepto", "Lectura")}
-    evento = st.dataframe(estilo, column_config=config, hide_index=True, width="stretch", key=clave,
+    evento = st.dataframe(formato.pintar(estilo), column_config=config, hide_index=True, width="stretch", key=clave,
                           on_select="rerun", selection_mode="single-row", height=min(40 + 35 * len(tabla), 900))
     st.caption(TIP)
     seleccion = evento.selection.rows if evento else []
@@ -150,7 +150,7 @@ def _detalle(fila: Fila, *, tecnico: bool = False) -> None:
     })
     vista, config = formato.tabla_en_pesos(tabla, ("Debe", "Haber") if tecnico else ("Importe",))
     config["Fecha"] = st.column_config.DateColumn(format="DD/MM/YYYY")
-    st.dataframe(vista, column_config=config, hide_index=True, width="stretch",
+    st.dataframe(formato.pintar(vista), column_config=config, hide_index=True, width="stretch",
                  height=min(40 + 35 * len(tabla), 420))
 
 
@@ -185,9 +185,9 @@ def _situacion(s: cb.Situacion) -> None:
     st.caption(f"Lo que tienes, lo que debes y lo que vales · al {formato.fecha_larga(s.fechas[0])}")
     activo, pasivo, patrimonio = s.total(cb.ACTIVO), s.total(cb.PASIVO), s.total(cb.PATRIMONIO)
     a, b, c = st.columns(3)
-    a.metric("Lo que tienes (Activo)", formato.dinero(activo[0]), delta=_delta(activo))
-    b.metric("Lo que debes (Pasivo)", formato.dinero(pasivo[0]), delta=_delta(pasivo), delta_color="inverse")
-    c.metric("Lo que vales (Patrimonio)", formato.dinero(patrimonio[0]), delta=_delta(patrimonio))
+    a.metric("Lo que tienes (Activo)", formato.dinero_metrica(activo[0]), delta=_delta(activo))
+    b.metric("Lo que debes (Pasivo)", formato.dinero_metrica(pasivo[0]), delta=_delta(pasivo), delta_color="inverse")
+    c.metric("Lo que vales (Patrimonio)", formato.dinero_metrica(patrimonio[0]), delta=_delta(patrimonio))
     if s.cuadra:
         st.success("Cuadra: Activo = Pasivo + Patrimonio.", icon="✅")
     else:
@@ -224,9 +224,9 @@ def _resultados(r: cb.Resultados) -> None:
     st.subheader("Estado de Resultados")
     st.caption(f"¿Cuánto ganaste y cuánto gastaste? · {formato.rango(*r.periodos[0])}")
     a, b, c = st.columns(3)
-    a.metric("Ingresos", formato.dinero(r.total_ingresos()[0]), delta=_delta(r.total_ingresos()))
-    b.metric("Gastos", formato.dinero(r.total_gastos()[0]), delta=_delta(r.total_gastos()), delta_color="inverse")
-    c.metric("Resultado del periodo", formato.dinero(r.resultado()[0]), delta=_delta(r.resultado()))
+    a.metric("Ingresos", formato.dinero_metrica(r.total_ingresos()[0]), delta=_delta(r.total_ingresos()))
+    b.metric("Gastos", formato.dinero_metrica(r.total_gastos()[0]), delta=_delta(r.total_gastos()), delta_color="inverse")
+    c.metric("Resultado del periodo", formato.dinero_metrica(r.resultado()[0]), delta=_delta(r.resultado()))
     detalle = st.toggle("Ver cada subcategoría", key="conta_resultados_sub")
     _estado("conta_sel_resultados", _columnas_periodo(r.periodos), _filas_resultados(r, detalle=detalle))
     st.caption("**Resultado del día a día**: lo que te quedó de lo que ganaste menos lo que gastaste. Los **cambios "
@@ -267,9 +267,9 @@ def _flujo(f: cb.Flujo) -> None:
     st.subheader("Estado de Flujo de Efectivo")
     st.caption(f"¿Por dónde entró y salió tu dinero? · {formato.rango(*f.periodos[0])} · método directo")
     a, b, c = st.columns(3)
-    a.metric("Efectivo al inicio", formato.dinero(f.inicial[0]))
-    b.metric("Entró − salió", formato.dinero(f.total()[0]))
-    c.metric("Efectivo al final", formato.dinero(f.final[0]), delta=_delta(f.final))
+    a.metric("Efectivo al inicio", formato.dinero_metrica(f.inicial[0]))
+    b.metric("Entró − salió", formato.dinero_metrica(f.total()[0]))
+    c.metric("Efectivo al final", formato.dinero_metrica(f.final[0]), delta=_delta(f.final))
     _estado("conta_sel_flujo", _columnas_periodo(f.periodos), _filas_flujo(f))
     if not f.cuadra:
         st.error("El flujo no cuadra con tus saldos: revisa la bitácora o restaura un respaldo.")
@@ -315,7 +315,7 @@ def _balanza(b: cb.Balanza) -> None:
                                                  "lo que gastaste (en gastos).")
     config["Haber"] = st.column_config.TextColumn(alignment="right", help="De dónde salió: lo que salió de la "
                                                   "cuenta, lo que debes o lo que ganaste.")
-    evento = st.dataframe(mostrada, column_config=config, hide_index=True, width="stretch", key="conta_sel_balanza",
+    evento = st.dataframe(formato.pintar(mostrada), column_config=config, hide_index=True, width="stretch", key="conta_sel_balanza",
                           on_select="rerun", selection_mode="single-row", height=min(40 + 35 * len(mostrada), 640))
     st.caption("**Deudor** es el saldo de lo que tienes o gastaste; **acreedor**, el de lo que debes, ganaste o es "
                "patrimonio. Las cuentas de ingresos y gastos empiezan cada periodo en ceros: lo de antes está en "

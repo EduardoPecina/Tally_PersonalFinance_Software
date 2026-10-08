@@ -37,15 +37,15 @@ def _periodo() -> tuple[date, date]:
 def _situacion() -> None:
     ind = reportes.indicadores(libro())
     columnas = st.columns(5 if ind.te_deben else 4)
-    columnas[0].metric("Dinero disponible", formato.dinero(ind.dinero_disponible),
+    columnas[0].metric("Dinero disponible", formato.dinero_metrica(ind.dinero_disponible),
                        help="Lo que puedes usar ya: tus cuentas marcadas como disponibles (débito, efectivo…).")
-    columnas[1].metric("Total en cuentas", formato.dinero(ind.total_en_cuentas),
+    columnas[1].metric("Total en cuentas", formato.dinero_metrica(ind.total_en_cuentas),
                        help="Débito, ahorro, efectivo, inversiones y otras cuentas.")
-    columnas[2].metric("Deuda de tarjetas", formato.dinero(ind.deuda_tarjetas))
-    columnas[3].metric("Patrimonio neto", formato.dinero(ind.patrimonio_neto),
+    columnas[2].metric("Deuda de tarjetas", formato.dinero_metrica(ind.deuda_tarjetas))
+    columnas[3].metric("Patrimonio neto", formato.dinero_metrica(ind.patrimonio_neto),
                        help="Todo lo que tienes menos lo que debes (aproximado).")
     if ind.te_deben:
-        columnas[4].metric("Te deben", formato.dinero(ind.te_deben))
+        columnas[4].metric("Te deben", formato.dinero_metrica(ind.te_deben))
 
 
 def _delta(valor) -> str | None:
@@ -56,11 +56,11 @@ def _periodo_resumen(desde: date, hasta: date) -> None:
     comparacion = reportes.comparar(libro(), desde, hasta, hoy=libro().hoy())
     actual, diferencia = comparacion.actual, comparacion.diferencia
     columnas = st.columns(4)
-    columnas[0].metric("Ingresos", formato.dinero(actual.ingresos), delta=_delta(diferencia.ingresos))
-    columnas[1].metric("Gastos", formato.dinero(actual.gastos), delta=_delta(diferencia.gastos), delta_color="inverse")
-    columnas[2].metric("Ahorro real", formato.dinero(actual.ahorro_real), delta=_delta(diferencia.ahorro_real),
+    columnas[0].metric("Ingresos", formato.dinero_metrica(actual.ingresos), delta=_delta(diferencia.ingresos))
+    columnas[1].metric("Gastos", formato.dinero_metrica(actual.gastos), delta=_delta(diferencia.gastos), delta_color="inverse")
+    columnas[2].metric("Ahorro real", formato.dinero_metrica(actual.ahorro_real), delta=_delta(diferencia.ahorro_real),
                        help="Ingresos menos gastos del periodo.")
-    columnas[3].metric("Apartado a ahorro", formato.dinero(actual.apartado_a_ahorro),
+    columnas[3].metric("Apartado a ahorro", formato.dinero_metrica(actual.apartado_a_ahorro),
                        help="Lo que pasaste a tus cuentas de ahorro e inversión (neto).")
     if comparacion.al is not None:                          # el periodo va a la mitad
         st.caption(f"Comparado con los mismos días del periodo anterior: {formato.rango(desde, comparacion.al)} "

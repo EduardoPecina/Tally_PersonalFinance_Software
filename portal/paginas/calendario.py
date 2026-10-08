@@ -48,12 +48,12 @@ def _proximos() -> None:
                 "se repite cada mes. Los pagos de tus tarjetas y préstamos aparecen solos.", icon="📅")
         return
     a, b, c, d = st.columns(4)
-    a.metric("Disponible hoy", formato.dinero(a_pesos(f.disponible)),
+    a.metric("Disponible hoy", formato.dinero_metrica(a_pesos(f.disponible)),
              help="Tu dinero disponible (las cuentas que marcaste como disponibles).")
-    b.metric("Entra en 30 días", formato.dinero(a_pesos(f.entra)), help="Ingresos pendientes que esperas.")
-    c.metric("Sale en 30 días", formato.dinero(a_pesos(f.sale)),
+    b.metric("Entra en 30 días", formato.dinero_metrica(a_pesos(f.entra)), help="Ingresos pendientes que esperas.")
+    c.metric("Sale en 30 días", formato.dinero_metrica(a_pesos(f.sale)),
              help="Pagos pendientes: fijos, suscripciones de débito, tarjetas y préstamos.")
-    d.metric("En 30 días tendrías", formato.dinero(a_pesos(f.final)))
+    d.metric("En 30 días tendrías", formato.dinero_metrica(a_pesos(f.final)))
     dia_minimo, minimo = f.minimo
     if f.negativo:
         st.error(f"**Ojo:** el **{formato.fecha_larga(dia_minimo)}** te quedarías en "
@@ -71,7 +71,7 @@ def _proximos() -> None:
         st.warning("**Pendientes de días pasados:** "
                    + "; ".join(f"{formato.md(e.nombre)} ({formato.fecha(e.fecha)})" for e in vencidos)
                    + ". Si ya los pagaste, regístralos abajo; si no, págalos pronto.", icon="⏳")
-    st.dataframe(pd.DataFrame({
+    st.dataframe(formato.pintar(pd.DataFrame({
         "Fecha": [e.fecha for e in f.eventos],
         "Qué": [f"{ICONOS[e.clase]} {e.nombre}" for e in f.eventos],
         "Cuenta": [lib.cuenta(e.cuenta_id).nombre for e in f.eventos],
@@ -79,7 +79,7 @@ def _proximos() -> None:
                     for e in f.eventos],
         "Estado": [ESTADOS[e.estado] for e in f.eventos],
         "Detalle": [("⭐ Suscripción · " if e.suscripcion else "") + e.detalle for e in f.eventos],
-    }), hide_index=True, width="stretch", height=min(38 + 35 * len(f.eventos), 560),
+    })), hide_index=True, width="stretch", height=min(38 + 35 * len(f.eventos), 560),
         column_config={"Fecha": st.column_config.DateColumn(format="DD/MM/YYYY")})
     _registrar([e for e in f.eventos if e.clase == recurrentes.RECURRENTE and e.estado != recurrentes.PAGADO])
     if any(e.clase in (recurrentes.TARJETA, recurrentes.PRESTAMO) and e.estado != recurrentes.PAGADO
@@ -120,10 +120,10 @@ def _fijos() -> None:
     lib = libro()
     t = recurrentes.totales(lib)
     a, b, c, d = st.columns(4)
-    a.metric("Suscripciones al mes", formato.dinero(t.suscripciones_al_mes), help=f"{t.suscripciones} suscripción(es).")
-    b.metric("Suscripciones al año", formato.dinero(t.suscripciones_al_anio))
-    c.metric("Pagos fijos al mes", formato.dinero(t.gastos_al_mes), help="Todos tus gastos fijos, con suscripciones.")
-    d.metric("Ingresos fijos al mes", formato.dinero(t.ingresos_al_mes))
+    a.metric("Suscripciones al mes", formato.dinero_metrica(t.suscripciones_al_mes), help=f"{t.suscripciones} suscripción(es).")
+    b.metric("Suscripciones al año", formato.dinero_metrica(t.suscripciones_al_anio))
+    c.metric("Pagos fijos al mes", formato.dinero_metrica(t.gastos_al_mes), help="Todos tus gastos fijos, con suscripciones.")
+    d.metric("Ingresos fijos al mes", formato.dinero_metrica(t.ingresos_al_mes))
     if t.suscripciones_al_anio:
         st.caption(f"💡 Tus suscripciones te cuestan **{formato.dinero_md(t.suscripciones_al_anio)} al año**. ¿Usas "
                    "todas? Cancelar una que no usas es ahorro seguro.")
@@ -143,7 +143,7 @@ def _fijos() -> None:
             "Activo": ["Sí" if r.activa else "Pausado" for r in lista],
         })
         st.caption("Haz clic en un renglón para editarlo, pausarlo o borrarlo.")
-        seleccion = st.dataframe(tabla, hide_index=True, width="stretch", on_select="rerun",
+        seleccion = st.dataframe(formato.pintar(tabla), hide_index=True, width="stretch", on_select="rerun",
                                  selection_mode="single-row", key="cal_sel",
                                  column_config={"Próxima vez": st.column_config.DateColumn(format="DD/MM/YYYY")})
         filas = seleccion.selection.rows if seleccion else []

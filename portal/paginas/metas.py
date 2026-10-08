@@ -37,11 +37,11 @@ def _fondo() -> None:
                     "de tus gastos esenciales, en una cuenta aparte que puedas sacar rápido.")
         if f.esencial_al_mes > 0:
             a, b, c = st.columns(3)
-            a.metric("Gastos esenciales al mes", formato.dinero(f.esencial_al_mes),
+            a.metric("Gastos esenciales al mes", formato.dinero_metrica(f.esencial_al_mes),
                      help="Promedio de los últimos 3 meses de lo que clasificaste como Necesidad y Compromisos, más "
                           "los pagos de tus préstamos.")
-            b.metric("Mínimo (3 meses)", formato.dinero(f.recomendado_minimo))
-            c.metric("Ideal (6 meses)", formato.dinero(f.recomendado_ideal))
+            b.metric("Mínimo (3 meses)", formato.dinero_metrica(f.recomendado_minimo))
+            c.metric("Ideal (6 meses)", formato.dinero_metrica(f.recomendado_ideal))
         else:
             st.info("Cuando registres tus gastos de algunos meses, TALLY calculará cuánto te conviene juntar. Mientras, "
                     "escribe tú el objetivo.", icon="💡")

@@ -153,8 +153,8 @@ def _resumen(v: portafolio.Valuacion) -> None:
     columnas[1].metric("Ganancia sin vender", formato.dinero(v.ganancia_no_realizada)
                        if v.ganancia_no_realizada is not None else "—",
                        help="Valor actual de lo que tienes menos lo que te costó.")
-    columnas[2].metric("Ganancia de lo vendido", formato.dinero(v.ganancia_realizada))
-    columnas[3].metric("Interés de inversiones a plazo", formato.dinero(v.interes_plazos))
+    columnas[2].metric("Ganancia de lo vendido", formato.dinero_metrica(v.ganancia_realizada))
+    columnas[3].metric("Interés de inversiones a plazo", formato.dinero_metrica(v.interes_plazos))
     if v.faltan:
         st.caption("Sin precio todavía: " + ", ".join(v.faltan) + ". Usa «Consultar valor aproximado actual» o "
                    "escríbelo a mano.")
@@ -171,11 +171,11 @@ def _tabla_titulos(v: portafolio.Valuacion) -> None:
         "Ganancia": [formato.dinero(f.ganancia) if f.ganancia is not None else "—" for f in v.filas],
         "%": [f"{f.porcentaje:+.1f} %" if f.porcentaje is not None else "—" for f in v.filas],
     })
-    st.dataframe(tabla, hide_index=True, width="stretch")
+    st.dataframe(formato.pintar(tabla), hide_index=True, width="stretch")
 
 
 def _tabla_plazos(v: portafolio.Valuacion) -> None:
-    st.dataframe(pd.DataFrame({
+    st.dataframe(formato.pintar(pd.DataFrame({
         "Inversión": [p.plazo.nombre for p in v.plazos],
         "Monto": [formato.dinero(a_pesos(p.plazo.monto)) for p in v.plazos],
         "Tasa anual": [f"{p.plazo.tasa_anual.normalize():f} %" for p in v.plazos],
@@ -184,7 +184,7 @@ def _tabla_plazos(v: portafolio.Valuacion) -> None:
         "Interés a hoy": [formato.dinero(p.interes_hoy) for p in v.plazos],
         "Valor hoy": [formato.dinero(p.valor_hoy) for p in v.plazos],
         "Al vencer": [formato.dinero(p.valor_al_vencer) for p in v.plazos],
-    }), hide_index=True, width="stretch")
+    })), hide_index=True, width="stretch")
     st.caption("Interés simple, año de 360 días, antes de impuestos (aproximado).")
 
 
@@ -250,7 +250,7 @@ def _historial(cuenta: Cuenta) -> None:
     plazos = lib.plazos(cuenta.id)
     with st.expander(f"Compras, ventas e inversiones a plazo registradas ({len(valores) + len(plazos)})"):
         if valores:
-            st.dataframe(pd.DataFrame({
+            st.dataframe(formato.pintar(pd.DataFrame({
                 "Fecha": [formato.fecha(v.fecha) for v in valores],
                 "Operación": ["Compra" if v.tipo is TipoOperacionValor.COMPRA else "Venta" for v in valores],
                 "Símbolo": [v.simbolo for v in valores],
@@ -260,7 +260,7 @@ def _historial(cuenta: Cuenta) -> None:
                                    for v in valores],
                 "Comisión": [f"{v.comision:,.2f}" if v.comision else "" for v in valores],
                 "Notas": [v.notas for v in valores],
-            }), hide_index=True, width="stretch")
+            })), hide_index=True, width="stretch")
         if not cuenta.activa:
             return
         opciones = {**{v.id: f"{formato.fecha(v.fecha)} · {'Compra' if v.tipo is TipoOperacionValor.COMPRA else 'Venta'} "

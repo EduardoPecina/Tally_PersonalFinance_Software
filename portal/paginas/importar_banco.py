@@ -129,8 +129,8 @@ def _lectura(fuente: bancos.Fuente, cuenta, clave: str) -> bancos.Lectura | None
                       "cámbialo.")
     a, b, c = st.columns(3)
     a.metric("Movimientos", len(lectura.movimientos))
-    b.metric("Salió", formato.dinero(a_pesos(lectura.sale)))
-    c.metric("Entró", formato.dinero(a_pesos(lectura.entra)))
+    b.metric("Salió", formato.dinero_metrica(a_pesos(lectura.sale)))
+    c.metric("Entró", formato.dinero_metrica(a_pesos(lectura.entra)))
     st.caption(f"Periodo: {formato.rango(lectura.desde, lectura.hasta)}. Compara estos totales con tu estado de "
                "cuenta: si coinciden, TALLY leyó bien tu archivo.")
     _comparar_con_el_banco(lectura)
@@ -189,8 +189,8 @@ def _columnas(fuente: bancos.Fuente, detectadas: bancos.Columnas | None, clave: 
     with st.expander("¿Leí mal alguna columna? Corrígela aquí", expanded=detectadas is None):
         if detectadas is None:
             st.warning("No supe qué columna es cada cosa. Elígelas:")
-        st.dataframe(pd.DataFrame([list(f) + [""] * (len(nombres) - len(f)) for f in fuente.tabla[:8]],
-                                  columns=[f"{i + 1}. {n}" for i, n in enumerate(nombres)]),
+        st.dataframe(formato.pintar(pd.DataFrame([list(f) + [""] * (len(nombres) - len(f)) for f in fuente.tabla[:8]],
+                                  columns=[f"{i + 1}. {n}" for i, n in enumerate(nombres)])),
                      hide_index=True, width="stretch")
         etiqueta = {i: f"{i + 1}. {n}" for i, n in enumerate(nombres)}
 

@@ -76,12 +76,12 @@ def _desglose(config: dict, totales: dict, desde, hasta, cuentas, clic: str | No
     total = sum(totales.values())
     with st.expander(f"Todos los importes ({len(orden)})" + (f" · OTROS junta {len(en_otros)}" if en_otros else ""),
                      expanded=bool(en_otros)):
-        st.dataframe(pd.DataFrame({
+        st.dataframe(formato.pintar(pd.DataFrame({
             nombre: orden,
             "Importe": [formato.dinero(totales[k]) for k in orden],
             "% del total": [f"{totales[k] / total:.1%}" if total else "" for k in orden],
             "En la gráfica": ["dentro de OTROS" if k in en_otros else k for k in orden],
-        }), hide_index=True, width="stretch", height=min(38 + 35 * len(orden), 420))
+        })), hide_index=True, width="stretch", height=min(38 + 35 * len(orden), 420))
 
     opciones = ([graficas.OTROS] if en_otros else []) + orden
     if clic is not None and clic != st.session_state.get("_grafica_ultimo_clic"):
@@ -111,20 +111,20 @@ def _desglose(config: dict, totales: dict, desde, hasta, cuentas, clic: str | No
     izquierda, derecha = st.columns([2, 3])
     with izquierda:
         st.markdown(f"**Por {titulo.lower()}**")
-        st.dataframe(pd.DataFrame({
+        st.dataframe(formato.pintar(pd.DataFrame({
             titulo: nombres,
             "Importe": [formato.dinero(partes[k]) for k in nombres],
             "%": [f"{partes[k] / subtotal:.0%}" if subtotal else "" for k in nombres],
-        }), hide_index=True, width="stretch")
+        })), hide_index=True, width="stretch")
     with derecha:
         st.markdown("**Movimientos**")
-        st.dataframe(pd.DataFrame({
+        st.dataframe(formato.pintar(pd.DataFrame({
             "Fecha": [formato.fecha(f.fecha) for f in filas],
             "Descripción": [f.descripcion for f in filas],
             "Subcategoría": [f"{f.rubro} › {f.categoria}" for f in filas],
             "Cuenta": [f.cuenta for f in filas],
             "Importe": [formato.dinero(f.monto) for f in filas],
-        }), hide_index=True, width="stretch", height=min(38 + 35 * len(filas), 420))
+        })), hide_index=True, width="stretch", height=min(38 + 35 * len(filas), 420))
 
 
 def mostrar() -> None:

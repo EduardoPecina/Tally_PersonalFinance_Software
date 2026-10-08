@@ -85,7 +85,7 @@ def mostrar() -> None:
     datos = tabla(pivot, analisis.FILAS[config["filas"]])
     dinero = [c for c in datos.columns if c != analisis.FILAS[config["filas"]]]
     vista, columnas_vista = formato.tabla_en_pesos(datos, dinero, fijar=analisis.FILAS[config["filas"]])
-    st.dataframe(vista, hide_index=True, width="stretch", height=min(38 + 35 * len(datos), 640),
+    st.dataframe(formato.pintar(vista), hide_index=True, width="stretch", height=min(38 + 35 * len(datos), 640),
                  column_config=columnas_vista)
 
     elegidas = {lib.cuenta(c).nombre for c in config["cuentas"]}
