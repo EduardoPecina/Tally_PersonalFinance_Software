@@ -27,14 +27,16 @@ AYUDA = {
     TipoOperacion.REEMBOLSO: "Te devolvieron dinero de una compra: resta del gasto de esa subcategoría.",
 }
 CON_CATEGORIA = (TipoOperacion.GASTO, TipoOperacion.INGRESO, TipoOperacion.REEMBOLSO)
+CONFIRMAR = "Sí, está bien así"
 
 
 def _indice(opciones: list, recordado) -> int | None:
     return opciones.index(recordado) if recordado in opciones else (0 if opciones else None)
 
 
-def _reparto(clave: str, etiquetas: dict[str, str]) -> list[tuple[str, float]]:
-    """Tabla para repartir un movimiento entre varias subcategorías (súper: despensa + limpieza…)."""
+def _reparto(clave: str, etiquetas: dict[str, str]) -> tuple[list[tuple[str, float]], int]:
+    """Tabla para repartir un movimiento entre varias subcategorías (súper: despensa + limpieza…). Devuelve los
+    renglones completos y cuántos quedaron a medias (subcategoría sin importe o importe sin subcategoría)."""
     por_etiqueta = {v: k for k, v in etiquetas.items()}
     tabla = st.data_editor(
         pd.DataFrame({"Subcategoría": pd.Series([None, None], dtype="object"),
@@ -45,8 +47,16 @@ def _reparto(clave: str, etiquetas: dict[str, str]) -> list[tuple[str, float]]:
             "Importe": st.column_config.NumberColumn(min_value=0.01, format=formato.columna_dinero(), required=True),
         },
     )
-    return [(por_etiqueta[f["Subcategoría"]], f["Importe"]) for f in tabla.to_dict("records")
-            if f["Subcategoría"] in por_etiqueta and f["Importe"]]
+    return _renglones(tabla.to_dict("records"), por_etiqueta)
+
+
+def _renglones(filas: list[dict], por_etiqueta: dict[str, str]) -> tuple[list[tuple[str, float]], int]:
+    """Los renglones completos de la tabla de repartir y cuántos quedaron a medias. Los vacíos no cuentan."""
+    marcados = [(f["Subcategoría"] in por_etiqueta, pd.notna(f["Importe"]) and f["Importe"] > 0, f)
+                for f in filas]                                      # una celda de importe vacía llega como NaN
+    completos = [(por_etiqueta[f["Subcategoría"]], f["Importe"]) for con_sub, con_importe, f in marcados
+                 if con_sub and con_importe]
+    return completos, sum(con_sub != con_importe for con_sub, con_importe, _ in marcados)
 
 
 def formulario(clave: str = "registrar", cuenta_fija: str | None = None) -> bool:
@@ -100,6 +110,7 @@ def formulario(clave: str = "registrar", cuenta_fija: str | None = None) -> bool
         izquierda, derecha = st.columns(2)
         destino = categoria_id = None
         reparto: list[tuple[str, float]] = []
+        a_medias = 0
         msi = 0
         if tipo in (TipoOperacion.TRANSFERENCIA, TipoOperacion.PAGO_TARJETA):
             if tipo is TipoOperacion.PAGO_TARJETA:
@@ -121,7 +132,7 @@ def formulario(clave: str = "registrar", cuenta_fija: str | None = None) -> bool
         else:
             if repartir:
                 with izquierda:
-                    reparto = _reparto(f"{clave}_{tipo.value}_{vuelta}", etiquetas)
+                    reparto, a_medias = _reparto(f"{clave}_{tipo.value}_{vuelta}", etiquetas)
             else:
                 cat_ids = list(etiquetas)
                 categoria_id = izquierda.selectbox(
@@ -145,32 +156,45 @@ def formulario(clave: str = "registrar", cuenta_fija: str | None = None) -> bool
                                     if temporal else "Ej. Pizza, Uber, Nómina…")
         notas = st.text_input("Notas (opcional)", max_chars=300)
         # Con lo que enviaste: si algo parece un error de dedo, se avisa aquí y hay que confirmarlo para guardar.
+        # Solo cuando ya está todo lo necesario: lo que falta se pide primero (abajo).
         total = monto if not repartir else sum(m for _, m in reparto)
-        pendientes = _avisos(tipo, temporal, origen, destino, total, fecha)
-        confirmado = False
+        falta_subcategoria = tipo in CON_CATEGORIA and not temporal and not repartir and categoria_id is None
+        completo = not falta_subcategoria and not a_medias
+        pendientes = _avisos(tipo, temporal, origen, destino, total, fecha) if completo else []
+        confirmado = ya_avisado = False
         if pendientes:
-            st.warning("**Antes de guardar, revisa:**\n" + "\n".join(f"- {formato.md(a)}" for a in pendientes),
-                       icon="⚠️")
-            huella = zlib.crc32("|".join(pendientes).encode())       # otros avisos piden confirmar otra vez
-            confirmado = st.checkbox("Sí, está bien: guárdalo así", key=f"{forma}_confirmo_{huella}")
+            lista = "\n".join(f"- {formato.md(a)}" for a in pendientes)
+            st.warning(f"**Todavía no se guardó.** Revisa esto:\n{lista}\n\nSi todo está bien, marca la casilla y da "
+                       "**Guardar** otra vez.", icon="⚠️")
+            casilla = f"{forma}_confirmo_{zlib.crc32('|'.join(pendientes).encode())}"   # otros avisos: otra casilla
+            ya_avisado = casilla in st.session_state                  # ya lo habías visto y volviste a dar Guardar
+            confirmado = st.checkbox(CONFIRMAR, key=casilla)
         guardar = st.form_submit_button("Guardar", type="primary")
 
     if tipo is TipoOperacion.PAGO_TARJETA and destino:
         _ayuda_pago(destino)
     if not guardar:
         return False
+    if repartir and a_medias:
+        st.error("Cada renglón necesita su subcategoría y su importe. Complétalo o bórralo.")
+        return False
     if repartir and not reparto:
         st.error("Agrega al menos una subcategoría con su importe.")
         return False
-    if not repartir and not monto:
-        st.error("Escribe el importe.")
+    faltan = [que for falta, que in ((falta_subcategoria, "elige la subcategoría"),
+                                     (not repartir and not monto, "escribe el importe")) if falta]
+    if faltan:
+        st.error(" y ".join(faltan).capitalize() + ".")
         return False
-    if pendientes and not confirmado:
-        return False                                                  # los avisos ya están en el formulario
+    if pendientes and not confirmado:                                 # los avisos ya están en el formulario
+        if ya_avisado:
+            st.error(f"Todavía no se guardó: corrige los datos, o marca «{CONFIRMAR}» y da **Guardar** otra vez.",
+                     icon="✋")
+        return False
 
     def guardado(hecho: bool) -> bool:
         if hecho:
-            st.session_state[f"_{clave}_vuelta"] = vuelta + 1         # el siguiente formulario, limpio
+            limpiar(clave)                                            # el siguiente formulario, limpio
         return hecho
 
     memoria = st.session_state["_registrar_ultimas"]
@@ -201,10 +225,21 @@ def formulario(clave: str = "registrar", cuenta_fija: str | None = None) -> bool
             if repartir:
                 return registrar(lib, fecha, origen, descripcion=descripcion, notas=notas, reparto=reparto, **extra)
             return registrar(lib, fecha, origen, categoria_id, monto, descripcion, notas, **extra)
-    texto = f"{ETIQUETA_TIPO_OPERACION[tipo]} de {formato.dinero(total)} guardado"
+    texto = (f"{ETIQUETA_TIPO_OPERACION[tipo]} de {formato.dinero(total)} "
+             f"{'guardada' if tipo is TipoOperacion.TRANSFERENCIA else 'guardado'}")
     if msi:
         texto += f" a {int(msi)} meses sin intereses"
     return guardado(ejecutar(accion, exito=texto))
+
+
+def limpiar(clave: str = "registrar", todo: bool = False) -> None:
+    """El formulario vuelve a empezar vacío: al guardar, y al abrir la ventanita de Cuentas → Agregar movimiento
+    (cerrarla con la X no descarta lo que se había enviado). Con ``todo`` también vuelve a Gasto y apaga los
+    interruptores; al guardar se quedan, para registrar varios del mismo tipo seguidos."""
+    st.session_state[f"_{clave}_vuelta"] = st.session_state.get(f"_{clave}_vuelta", 0) + 1
+    if todo:
+        for control in ("tipo", "temporal", "repartir", "fijo", "fecha_fijo"):
+            st.session_state.pop(f"{clave}_{control}", None)
 
 
 def _avisos(tipo: TipoOperacion, temporal: bool, origen: str, destino: str | None, total, fecha) -> list[str]:

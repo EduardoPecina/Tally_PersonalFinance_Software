@@ -8,7 +8,7 @@ import streamlit as st
 from motor import bienes, categorias, consultas, cuentas, movimientos, tarjetas
 from motor.consultas import ETIQUETA_TIPO_CUENTA
 from motor.modelo import TIPOS_DISPONIBLES_POR_DEFECTO, Cuenta, TipoCuenta
-from portal.componentes import exportar, formato
+from portal.componentes import candado, exportar, formato
 from portal.componentes import tarjeta as estado_tarjeta
 from portal.componentes.sesion import aplicar, avisar, ejecutar, libro
 from portal.paginas import estado_cuenta
@@ -297,6 +297,7 @@ def eliminar(cuenta: Cuenta, clave: str) -> None:
 
 @st.dialog("Eliminar cuenta")
 def _dialogo_eliminar(cuenta_id: str) -> None:
+    candado.en_ventana()
     eliminar(libro().cuenta(cuenta_id), f"dialogo_eliminar_{cuenta_id}")
 
 

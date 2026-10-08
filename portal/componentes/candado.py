@@ -26,6 +26,7 @@ class _Estado:
     intentos: cifrado.Intentos = field(default_factory=cifrado.Intentos)
     config: cifrado.Config | None = None
     config_leida: bool = False
+    por_tiempo: bool = False           # el último bloqueo fue el automático (para explicarlo al pedir la contraseña)
 
 
 @st.cache_resource(show_spinner=False)
@@ -71,8 +72,14 @@ def abierto() -> bool:
     minutos = actual.bloqueo_minutos
     if minutos and time.monotonic() - estado.ultimo_uso > minutos * 60:
         bloquear()
+        estado.por_tiempo = True
         return False
     return True
+
+
+def se_bloqueo_solo() -> bool:
+    """True si TALLY se bloqueó solo por no usarlo (no con «Bloquear ahora»)."""
+    return _estado().por_tiempo
 
 
 def tocar() -> None:
@@ -84,11 +91,11 @@ REVISAR_CADA = 15             # segundos: cada cuánto se revisa, sin que hagas 
 
 
 def vigilar() -> None:
-    """Con contraseña y bloqueo automático: al pasar el tiempo sin usar TALLY, la pantalla vuelve sola a pedir la
-    contraseña. Revisar no cuenta como usarlo (solo tus clics reinician la cuenta)."""
-    actual = config()
-    if actual is not None and actual.bloqueo_minutos:
-        _vigia()
+    """Al pasar el tiempo sin usar TALLY, la pantalla vuelve sola a pedir la contraseña. Revisar no cuenta como usarlo
+    (solo tus clics reinician la cuenta). Corre en todas las pestañas, aunque cuando se abrieron no hubiera
+    contraseña o bloqueo automático: así también vuelven a la entrada si otra pestaña lo prende o pulsa «Bloquear
+    ahora». Sin contraseña no hace nada (``abierto()`` es True)."""
+    _vigia()
 
 
 @st.fragment(run_every=REVISAR_CADA)
@@ -97,10 +104,20 @@ def _vigia() -> None:
         st.rerun(scope="app")
 
 
+def en_ventana() -> None:
+    """Al principio de cada ventanita (``st.dialog``): sus clics no pasan por el inicio del portal, así que aquí
+    cuentan como uso; y si ya pasó el tiempo (o se bloqueó en otra pestaña), vuelve a la pantalla de entrada en vez
+    de seguir mostrando datos."""
+    if not abierto():
+        st.rerun(scope="app")
+    tocar()
+
+
 def entrar(llave_maestra: bytes) -> None:
     estado = _estado()
     estado.llave = llave_maestra
     estado.ultimo_uso = time.monotonic()
+    estado.por_tiempo = False
     estado.intentos.acierto()
     sesion_portal.olvidar_sesion()
 
@@ -108,6 +125,7 @@ def entrar(llave_maestra: bytes) -> None:
 def bloquear() -> None:
     """Olvida la llave y los datos en memoria: hay que volver a escribir la contraseña."""
     _estado().llave = None
+    _estado().por_tiempo = False
     sesion_portal.olvidar_sesion()
 
 

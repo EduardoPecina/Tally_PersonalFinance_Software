@@ -96,9 +96,11 @@ Viene apagado. Al activarlo (`motor/seguridad.py`):
 - La llave vive solo en la memoria del portal (`portal/componentes/candado.py`).
   Se olvida al bloquear o tras el tiempo de bloqueo automático (`bloqueo_minutos`
   en `meta.cifrado`: 5, 10, 15, 25, 30, 45 o 60 minutos, o 0 = apagado). Un
-  fragmento del portal revisa cada 15 s, sin que el usuario haga nada, si ya
-  pasó el tiempo: así la pantalla vuelve sola a pedir la contraseña. Después de
-  3 intentos fallidos, la espera crece (2, 4, 8… hasta 60 s).
+  fragmento del portal revisa cada 15 s en cada pestaña, sin que el usuario
+  haga nada, si ya pasó el tiempo (o si otra pestaña bloqueó): así la pantalla
+  vuelve sola a pedir la contraseña. Cualquier clic, también dentro de una
+  ventanita, reinicia la cuenta; la revisión no. Después de 3 intentos
+  fallidos, la espera crece (2, 4, 8… hasta 60 s).
 - **Cambiar la contraseña** solo vuelve a envolver la llave maestra: el Kit
   y los respaldos viejos siguen sirviendo.
 - **Quitar la contraseña** descifra todo, incluidos los respaldos de la

@@ -10,7 +10,7 @@ import streamlit as st
 from motor import consultas, cuentas, tarjetas
 from motor.consultas import ETIQUETA_TIPO_CUENTA
 from motor.modelo import TipoCuenta
-from portal.componentes import exportar, formato, portafolio
+from portal.componentes import candado, exportar, formato, portafolio
 from portal.componentes import tarjeta as estado_tarjeta
 from portal.componentes.sesion import libro
 from portal.paginas import historial, registrar
@@ -34,6 +34,7 @@ def abierta() -> str | None:
 
 @st.dialog("Agregar movimiento", width="large")
 def _agregar(cuenta_id: str) -> None:
+    candado.en_ventana()
     st.caption(f"En **{formato.md(libro().cuenta(cuenta_id).nombre)}**")
     if registrar.formulario(f"dialogo_{cuenta_id}", cuenta_fija=cuenta_id):
         st.rerun()
@@ -84,6 +85,7 @@ def mostrar(cuenta_id: str) -> None:
         st.info("Esta cuenta está eliminada: aquí ves su historial guardado. Para volver a usarla, restáurala en "
                 "Cuentas → «Mostrar eliminadas».", icon="🗄️")
     elif izquierda.button("Agregar movimiento", type="primary", icon=":material/add:", key="cuenta_agregar"):
+        registrar.limpiar(f"dialogo_{cuenta.id}", todo=True)
         _agregar(cuenta.id)
     rango = derecha.segmented_control("Periodo", list(RANGOS), format_func=RANGOS.get, default="todo",
                                       required=True, key="cuenta_rango", label_visibility="collapsed")

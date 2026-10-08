@@ -6,7 +6,7 @@ import streamlit as st
 
 from motor import categorias, cuentas, temporales
 from motor.modelo import TipoOperacion
-from portal.componentes import formato
+from portal.componentes import candado, formato
 from portal.componentes.sesion import ejecutar, libro
 
 ABIERTA = "_por_recuperar_ventana"
@@ -65,6 +65,7 @@ def _cargo(cargo_id: str) -> temporales.CargoTemporal | None:
 
 @st.dialog("Ya me lo devolvieron", on_dismiss=cerrar)
 def _dialogo_devolver(cargo_id: str) -> None:
+    candado.en_ventana()
     lib, cargo = libro(), _cargo(cargo_id)
     if cargo is None:
         cerrar()
@@ -84,6 +85,7 @@ def _dialogo_devolver(cargo_id: str) -> None:
 
 @st.dialog("No me lo devolvieron", on_dismiss=cerrar)
 def _dialogo_gasto(cargo_id: str) -> None:
+    candado.en_ventana()
     lib, cargo = libro(), _cargo(cargo_id)
     if cargo is None:
         cerrar()
