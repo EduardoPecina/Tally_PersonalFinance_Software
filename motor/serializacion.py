@@ -322,14 +322,49 @@ Instantanea = dict[str, dict[str, dict]]
 """``{tipo_de_entidad: {id: datos}}``: el estado completo de un libro."""
 
 
-def instantanea(libro: Libro) -> Instantanea:
+class Memoria:
+    """Recuerda la versión en diccionario de cada movimiento, por identidad del objeto (los movimientos son
+    inmutables: si cambian, el libro guarda un objeto nuevo). Así guardar un cambio no vuelve a convertir los
+    miles de movimientos que no cambiaron, y deshacer reutiliza los mismos objetos."""
+
+    def __init__(self) -> None:
+        self._ops: dict[str, tuple[Operacion, dict]] = {}
+
+    def a_dict(self, op: Operacion) -> dict:
+        previo = self._ops.get(op.id)
+        if previo is not None and previo[0] is op:
+            return previo[1]
+        datos = operacion_a_dict(op)
+        self._ops[op.id] = (op, datos)
+        return datos
+
+    def desde_dict(self, datos: dict) -> Operacion:
+        previo = self._ops.get(datos.get("id"))
+        if previo is not None and previo[1] is datos:
+            return previo[0]
+        op = operacion_desde_dict(datos)
+        self._ops[op.id] = (op, datos)
+        return op
+
+    def olvidar_otros(self, ids) -> None:
+        """Deja solo los movimientos que siguen existiendo."""
+        if len(self._ops) > len(ids):
+            self._ops = {i: v for i, v in self._ops.items() if i in ids}
+
+
+def instantanea(libro: Libro, memoria: Memoria | None = None) -> Instantanea:
+    if memoria is not None:
+        operaciones = {op.id: memoria.a_dict(op) for op in libro.operaciones()}
+        memoria.olvidar_otros(operaciones)
+    else:
+        operaciones = {op.id: operacion_a_dict(op) for op in libro.operaciones()}
     return {
         "perfil": {ID_PERFIL: perfil_a_dict(libro.perfil)} if libro.perfil else {},
         "grupo": {g.id: grupo_a_dict(g) for g in libro.grupos()},
         "rubro": {r.id: rubro_a_dict(r) for r in libro.rubros()},
         "categoria": {c.id: categoria_a_dict(c) for c in libro.categorias()},
         "cuenta": {c.id: cuenta_a_dict(c) for c in libro.cuentas()},
-        "operacion": {op.id: operacion_a_dict(op) for op in libro.operaciones()},
+        "operacion": operaciones,
         "valor": {v.id: valor_a_dict(v) for v in libro.valores()},
         "plazo": {p.id: plazo_a_dict(p) for p in libro.plazos()},
         "bien": {b.id: bien_a_dict(b) for b in libro.bienes()},
@@ -342,7 +377,8 @@ def instantanea(libro: Libro) -> Instantanea:
 
 
 def libro_desde_instantanea(
-    datos: Instantanea, secuencia: int = 0, *, reloj: Callable[[], datetime] | None = None
+    datos: Instantanea, secuencia: int = 0, *, reloj: Callable[[], datetime] | None = None,
+    memoria: Memoria | None = None,
 ) -> Libro:
     """Reconstruye un libro y verifica que esté íntegro; si no, ``ErrorDatos``."""
     try:
@@ -353,7 +389,8 @@ def libro_desde_instantanea(
             categorias=[categoria_desde_dict(d) for d in datos.get("categoria", {}).values()],
             rubros=[rubro_desde_dict(d) for d in datos.get("rubro", {}).values()],
             cuentas=[cuenta_desde_dict(d) for d in datos.get("cuenta", {}).values()],
-            operaciones=[operacion_desde_dict(d) for d in datos.get("operacion", {}).values()],
+            operaciones=[(memoria.desde_dict if memoria else operacion_desde_dict)(d)
+                         for d in datos.get("operacion", {}).values()],
             valores=[valor_desde_dict(d) for d in datos.get("valor", {}).values()],
             plazos=[plazo_desde_dict(d) for d in datos.get("plazo", {}).values()],
             bienes=[bien_desde_dict(d) for d in datos.get("bien", {}).values()],

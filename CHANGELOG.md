@@ -2,6 +2,30 @@
 
 Todos los cambios relevantes de TALLY se documentan aquí.
 
+## [0.20.0] — Sin publicar
+
+**Rápido aunque tengas muchos años de datos.** Medido con un libro ficticio de 10 años (unos 22,700 movimientos):
+
+| Qué | Antes | Ahora |
+|---|---|---|
+| Primera vez que abres TALLY en el día (con su respaldo automático) | 6.5 s | 2.4 s |
+| Respaldo automático del día | 8.5 s | 1 s |
+| Guardar cada cambio (registrar, editar, borrar…) | 0.17–0.3 s | 0.03 s |
+| Deshacer tras un error (un dato mal escrito) | 0.35 s | 0.04 s |
+| Tablas dinámicas | 3.1 s | 0.13 s |
+| Cuentas | 0.8 s | 0.03 s |
+| Resumen | 0.5 s | 0.16 s |
+| Registrar | 0.2 s | 0.01 s |
+| Calendario, Deudas, Ingresos, Cierre de mes, Presupuestos | 0.1–0.2 s | 0.02–0.06 s |
+
+- **Movimientos y saldos con índice:** TALLY guarda tus movimientos en orden y el saldo acumulado de cada cuenta, y
+  los rehace solo cuando algo cambia. Pedir los de un mes o el saldo a una fecha ya no recorre todo tu historial.
+- **Guardar solo lo que cambió:** al guardar ya no se vuelven a convertir los miles de movimientos que no cambiaron.
+- **Respaldos compactos:** el archivo de respaldo se escribe sin espacios de sobra (más rápido y más chico). Los
+  respaldos de antes se siguen restaurando igual.
+- **Excel y CSV solo cuando los descargas:** las páginas ya no arman el archivo en cada clic; se genera al presionar
+  «Descargar».
+
 ## [0.19.0] — Sin publicar
 
 - **Tu moneda, la de tu país.** En la bienvenida y en Configuración → Tu perfil eliges tu moneda: peso mexicano,

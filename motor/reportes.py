@@ -439,16 +439,16 @@ class Sobrante:
     sobrante: Decimal  # saldo de la cuenta justo antes de recibirlo
 
 
-def sobrantes_de_quincena(libro: Libro, cuenta_id: str) -> list[Sobrante]:
-    """Lo que quedaba en la cuenta antes de cada ingreso principal (nómina).
+def sobrantes_de_quincena(libro: Libro, cuenta_id: str, desde: date | None = None) -> list[Sobrante]:
+    """Lo que quedaba en la cuenta antes de cada ingreso principal (nómina), desde ``desde`` (o de siempre).
 
     Sustituye a las filas «HISTORICO» del Excel. Respeta el orden de captura
     dentro de un mismo día.
     """
     libro.cuenta(cuenta_id)
     resultado = []
-    saldo = 0
-    for op in libro.operaciones():
+    saldo = libro.saldo_centavos(cuenta_id, desde - timedelta(days=1)) if desde is not None else 0
+    for op in libro.operaciones(desde):
         cambio = sum(p.importe for p in op.partidas if p.cuenta_id == cuenta_id)
         if cambio and _es_ingreso_principal(libro, op):
             resultado.append(Sobrante(op.fecha, op.id, a_pesos(saldo)))

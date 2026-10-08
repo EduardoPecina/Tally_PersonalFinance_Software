@@ -299,7 +299,7 @@ def _descargar(r: Reporte) -> None:
                                     "Qué falta": [p.texto for p in r.pendientes]}),
         "Movimientos": _movimientos(r),
     }
-    st.download_button("Descargar el cierre en Excel", exportar.excel(hojas, columnas_dinero={"Importe"}),
+    st.download_button("Descargar el cierre en Excel", lambda: exportar.excel(hojas, columnas_dinero={"Importe"}),
                        file_name=f"TALLY_cierre_{cierre.clave(r.anio, r.mes)}.xlsx", icon=":material/download:",
                        on_click="ignore", key="cierre_excel")
 

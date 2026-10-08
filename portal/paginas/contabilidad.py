@@ -84,7 +84,7 @@ def mostrar() -> None:
 
     st.download_button(
         "Descargar los 4 reportes en Excel", on_click="ignore", icon=":material/table_view:",
-        data=exportar.excel({"Situación financiera": _exportable(_filas_situacion(situacion),
+        data=lambda: exportar.excel({"Situación financiera": _exportable(_filas_situacion(situacion),
                                                                  _columnas_fecha(situacion.fechas)),
                              "Resultados": _exportable(_filas_resultados(resultados, detalle=True),
                                                        _columnas_periodo(resultados.periodos)),

@@ -156,6 +156,11 @@ def buscar(
     return filas
 
 
+def ultimos(libro: Libro, n: int = 5) -> list[FilaMovimiento]:
+    """Los ``n`` movimientos más recientes (sin armar la lista de todos)."""
+    return [fila(libro, op) for op in reversed(libro.operaciones()[-n:])]
+
+
 def total(filas: Iterable[FilaMovimiento]) -> dict[str, Decimal]:
     """Suma de lo listado por sentido: entradas, salidas y movimientos entre cuentas."""
     resultado = {"+": Decimal(0), "-": Decimal(0), "↔": Decimal(0)}

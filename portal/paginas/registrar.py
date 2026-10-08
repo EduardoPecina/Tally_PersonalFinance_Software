@@ -233,7 +233,7 @@ def _ayuda_pago(tarjeta_id: str) -> None:
 
 
 def _ultimos() -> None:
-    filas = consultas.buscar(libro())[:5]
+    filas = consultas.ultimos(libro(), 5)
     if not filas:
         return
     st.subheader("Últimos movimientos")

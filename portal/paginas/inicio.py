@@ -107,7 +107,7 @@ def _tarjetas() -> None:
 def _quincenas() -> None:
     lib = libro()
     for cuenta in cuentas.listar(lib):
-        sobrantes = reportes.sobrantes_de_quincena(lib, cuenta.id)[-6:]
+        sobrantes = reportes.sobrantes_de_quincena(lib, cuenta.id, lib.hoy() - timedelta(days=200))[-6:]
         if len(sobrantes) < 2:
             continue
         st.subheader(f"Lo que te sobró antes de cada nómina · {cuenta.nombre}")

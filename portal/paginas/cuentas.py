@@ -274,13 +274,15 @@ def eliminar(cuenta: Cuenta, clave: str) -> None:
             help="Registra un ajuste de saldo con fecha de hoy. Un ajuste no cuenta como ingreso ni como gasto. "
                  "Si todavía debes ese dinero, no lo marques.")
     if cuentas.tiene_movimientos(lib, cuenta.id):
-        filas = consultas.movimientos_de_cuenta(lib, cuenta.id)
-        st.download_button(
-            "Descargar su historial a Excel (opcional)", on_click="ignore", key=f"{clave}_excel",
-            data=exportar.excel({cuenta.nombre: pd.DataFrame({
+        def historial() -> bytes:                         # solo al descargar
+            filas = consultas.movimientos_de_cuenta(lib, cuenta.id)
+            return exportar.excel({cuenta.nombre: pd.DataFrame({
                 "Fecha": [f.fecha for f in filas], "Descripción": [f.descripcion for f in filas],
                 "Subcategoría o cuenta": [f.detalle for f in filas], "Entrada": [float(f.abono) for f in filas],
-                "Salida": [float(f.cargo) for f in filas], "Saldo": [float(f.saldo) for f in filas]})}),
+                "Salida": [float(f.cargo) for f in filas], "Saldo": [float(f.saldo) for f in filas]})})
+
+        st.download_button(
+            "Descargar su historial a Excel (opcional)", on_click="ignore", key=f"{clave}_excel", data=historial,
             file_name=f"TALLY_{cuenta.nombre}_historial.xlsx", icon=":material/table_view:",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
     confirmar = st.checkbox(f"Sí, quiero eliminar «{cuenta.nombre}»", key=f"{clave}_confirmar")
