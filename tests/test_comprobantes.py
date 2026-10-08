@@ -313,3 +313,17 @@ def test_deducibles_con_y_sin_comprobante_y_su_zip(sesion):
         indice = list(csv.reader(io.StringIO(zz.read("indice.csv").decode("utf-8-sig"))))
     assert indice[0][0] == "Concepto" and indice[-1][-1] == "SIN COMPROBANTE"
     assert comprobantes.anios_con_deducibles(sesion.libro) == [2026]
+
+
+def test_si_al_poner_la_contrasena_un_comprobante_no_cuadra_se_deshace(sesion, ruta, tmp_path, monkeypatch):
+    _adjuntar(sesion)
+    original = cifrado.Cifrador.cifrar_bytes
+
+    def defectuoso(self, datos, contexto):                 # simula un error al cifrar un archivo
+        return original(self, datos + b"!", contexto)
+
+    monkeypatch.setattr(cifrado.Cifrador, "cifrar_bytes", defectuoso)
+    with pytest.raises(ErrorDatos, match="comprobantes no coincidió"):
+        _activar(sesion, tmp_path)
+    monkeypatch.undo()
+    assert seguridad.config(ruta) is None                  # tus datos siguen sin contraseña

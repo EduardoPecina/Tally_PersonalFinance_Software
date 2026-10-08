@@ -44,6 +44,9 @@ Excel.
     internet es una referencia.
 - Importar movimientos del banco (Excel, CSV o PDF) pasa en tu PC: TALLY no se
   conecta a tu banco ni manda el archivo a ningún lado.
+- Los **comprobantes** (fotos de tickets, PDF y XML de facturas) se guardan
+  dentro de tu archivo de datos, cifrados si tienes contraseña, y viajan en tus
+  respaldos. No se suben a ningún lado.
 - Los datos financieros nunca forman parte de este repositorio (ver `.gitignore`).
 
 ## Qué resuelve
@@ -88,20 +91,22 @@ el acceso directo **Mis datos de TALLY**, dentro de `Escritorio\TALLY`.
 
 | Página | Responde a |
 |---|---|
-| Resumen | ¿Cuánto dinero tengo? ¿Cuánto gasté y en qué? ¿Tengo pagos de tarjeta por vencer? ¿Cómo voy con mis presupuestos? ¿Qué cargos temporales me deben devolver? |
-| Registrar | Anotar un gasto (también a meses sin intereses, repartido o como cargo temporal que te van a devolver), ingreso (tu nómina con el importe de esa quincena ya lleno), transferencia, pago de tarjeta o reembolso. Antes de guardar te avisa si una cuenta quedaría en negativo, una tarjeta pasaría su límite o la fecha parece mal escrita |
-| Historial | Buscar, filtrar, editar, repetir o eliminar movimientos |
+| Resumen | ¿Cuánto dinero tengo? ¿Cuánto gasté y en qué? ¿Tengo pagos de tarjeta por vencer? ¿Cómo voy con mis presupuestos? ¿Qué cargos temporales me deben devolver? ¿Cuánto pago a cada deuda según mi plan? ¿Hay algo raro en mis datos? Y, al empezar, tus **primeros pasos** |
+| Registrar | Anotar un gasto (también a meses sin intereses, repartido o como cargo temporal que te van a devolver), ingreso (tu nómina con el importe de esa quincena ya lleno), transferencia, pago de tarjeta o reembolso, con su **comprobante** si quieres. Sin subcategoría, la pone tu **regla automática**. Antes de guardar te avisa si una cuenta quedaría en negativo, una tarjeta pasaría su límite o la fecha parece mal escrita |
+| Historial | Buscar, filtrar, editar, repetir o eliminar movimientos, y sus **📎 comprobantes** (foto del ticket, PDF o XML de la factura) |
 | Cuentas | Saldo de cada cuenta, estado de cuenta con saldo corrido, estado de cada tarjeta (línea, disponible, pago) y, en las de inversión, tus títulos (acciones, ETFs, cripto) y CETES o pagarés con su valor aproximado, y «Cuadrar con tu estado de cuenta» para registrar la ganancia con el valor oficial |
 | Ingresos 💰 | Tu ingreso principal (cada cuánto te pagan, la 1.ª y la 2.ª quincena, qué pasa si cae en fin de semana) y tus otros ingresos fijos; cuánto tiene que durarte cada pago, cuánto puedes gastar al día hasta el próximo y tu ingreso esperado al mes |
-| Deudas | Tarjetas y préstamos: cuánto de tu ingreso se va en deudas, pago mínimo estimado y lo que cuesta pagar solo el mínimo; préstamos con pagos separados en capital, intereses, IVA y cargos, tabla de amortización y simulador para salir antes |
+| Deudas | Tarjetas y préstamos: cuánto de tu ingreso se va en deudas, pago mínimo estimado y lo que cuesta pagar solo el mínimo; préstamos con pagos separados en capital, intereses, IVA y cargos, tabla de amortización y simulador para salir antes. **Plan para salir de deudas**: con lo que puedes pagar al mes, cuánto a cada una, en qué orden (avalancha o bola de nieve) y cuándo terminas |
 | Presupuestos | Cuánto puedes gastar, presupuestos sugeridos, proyección del mes y el tope mensual por categoría |
 | Cierre de mes 📆 | La boleta de cada mes: cuánto entró, salió y ahorraste contra tu meta y tu promedio; categorías que subieron, gastos hormiga, suscripciones, presupuestos, ingresos, deudas, metas y patrimonio; lo que falta registrar y 3 recomendaciones. Cerrarlo no lo bloquea: lo que cambies después aparece como ajuste posterior. Descarga en Excel |
 | Tablas dinámicas | Pivots por categoría, mes, cuenta… exportables a Excel |
 | Gráficas | Dona, barras, tendencias, ingresos vs. gastos y patrimonio; clic en una rebanada o barra para ver de qué movimientos se compone |
 | Contabilidad Técnica | Estado de Situación Financiera, Estado de Resultados, Flujo de Efectivo y Balanza de Comprobación, comparativos por periodo, armados solos con tus movimientos y explicados sin tecnicismos; clic en un renglón para ver sus movimientos. **Bienes** (casa, auto, laptop) con depreciación, mejoras, avalúos y venta |
 | Inversiones | ¿Cuánto ganaron mis inversiones este mes, este año o en 5 años? Valor en el tiempo, lo que metiste y la ganancia por mes o año, filtrando por cuentas (CETES, GBM…) y por títulos (IVV, VT…); estimado con precios de mercado u oficial con tus valores registrados |
-| Impuestos 🧾 | Para cualquier país: tus gastos deducibles del año (con topes) y calcular o revisar un recibo o factura con tus tasas (IVA, retenciones…); todo lo configuras tú, con ejemplos por país, y todo se edita o se borra |
-| Categorías | Categorías (SALUD, TECNOLOGIA…) con sus subcategorías y clasificaciones, a tu manera |
+| Impuestos 🧾 | Para cualquier país: tus gastos deducibles del año (con topes) y calcular o revisar un recibo o factura con tus tasas (IVA, retenciones…); todo lo configuras tú, con ejemplos por país, y todo se edita o se borra. Qué deducibles no tienen comprobante y todos los del año en un `.zip` (una carpeta por concepto e índice para Excel) |
+| Categorías | Categorías (SALUD, TECNOLOGIA…) con sus subcategorías y clasificaciones, a tu manera. **⚡ Reglas automáticas**: «todo lo que diga OXXO va a SNACKS», con prueba, sugerencias y corrección de tu historial |
+| Salud de tus datos 🩺 | Movimientos que parecen duplicados, cuentas en negativo, tarjetas pasadas de su límite, fechas de otro año, tarjetas o préstamos sin sus datos, deducibles sin comprobante… cada cosa dice dónde se arregla |
+| Guía y ayuda ❓ | Tus primeros pasos (se marcan solos), «¿Cómo hago…?» con buscador y las palabras que usa TALLY |
 | Cargar datos | Importar los movimientos de tu banco (Excel, CSV o PDF) con la subcategoría sugerida, o subir tu historial de Excel con una plantilla `.txt` |
 | Respaldos y bitácora | Descargar o restaurar respaldos, ver qué cambió o empezar de cero |
 | Metas de ahorro 🏆 | Tu fondo de emergencia (cuántos meses te cubre) y tus metas: cuánto apartar al mes y cuándo llegas |
@@ -168,13 +173,16 @@ En **Cargar datos → Desde tu banco**:
    faltan los intereses o el IVA que solo venían en el resumen, los agrega
    marcados con 📋.
 4. Revisa la tabla:
-   - **Subcategoría sugerida (✨):** lo que elegiste antes para esa
-     descripción (TALLY aprende de tu historial) o, si es nuevo, por el
-     nombre de comercios conocidos (OXXO, Walmart, Netflix, CFE, Uber…).
+   - **Subcategoría sugerida (✨):** primero tus **reglas automáticas**
+     (Categorías › ⚡ Reglas automáticas); si ninguna aplica, lo que elegiste
+     antes para esa descripción (TALLY aprende de tu historial) o, si es
+     nuevo, por el nombre de comercios conocidos (OXXO, Walmart, Netflix,
+     CFE, Uber…).
    - **Ya está en TALLY (⏭️):** misma cuenta, mismo importe y a pocos días.
      No se carga, salvo que lo marques.
    - **Lo que TALLY no reconoce (❓)** aparece arriba, agrupado: eliges una vez
-     y se aplica a todos los iguales.
+     y se aplica a todos los iguales. Con **⚡** lo conviertes en una regla para
+     la próxima vez.
    - Si el dinero fue a otra de tus cuentas, elígela: es una transferencia y
      no cuenta como gasto.
 5. **Importar.** Antes se hace un respaldo, y si algo falla no se carga nada.
@@ -193,7 +201,8 @@ contraseña (muchos bancos usan tu RFC), TALLY te la pide y no la guarda.
    nombre que TALLY no reconozca: una subcategoría nueva, una que ya existe o
    una de tus cuentas.
 
-Si en SUBCATEGORIA escribes el nombre de otra de tus cuentas, el movimiento
+Si dejas SUBCATEGORIA vacía y la descripción coincide con una de tus reglas
+automáticas, se usa la de la regla. Si en SUBCATEGORIA escribes el nombre de otra de tus cuentas, el movimiento
 es una transferencia y no cuenta como gasto. Si la misma transferencia viene
 en las dos cuentas, se carga una sola vez. Subir dos veces el mismo archivo
 no duplica nada.

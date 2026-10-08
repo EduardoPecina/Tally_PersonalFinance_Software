@@ -2,6 +2,47 @@
 
 Todos los cambios relevantes de TALLY se documentan aquí.
 
+## [0.23.0] — Sin publicar
+
+Cinco mejoras, integradas con lo que ya había:
+
+- **⚡ Reglas automáticas de categorías** (Categorías › ⚡ Reglas automáticas). «Si la descripción dice OXXO, va a
+  SNACKS Y ANTOJOS», en todas tus cuentas o solo en una.
+  - Se usan al **importar del banco** (antes que lo aprendido de tu historial y que los comercios conocidos), al
+    **registrar** sin elegir subcategoría y en la **plantilla de Excel** con la subcategoría vacía.
+  - Da igual mayúsculas, acentos y signos; el texto debe empezar una palabra («UBER» encuentra «UBER EATS», no
+    «SUBERO»). Si varias coinciden, gana la más precisa (el texto más largo) y la de esa cuenta.
+  - **Probar** una descripción, **sugerencias** con lo que más se repite en tu historial (se crean con un clic) y
+    **corregir tu historial**: los movimientos que ya tienes y que tus reglas mandarían a otra subcategoría, con vista
+    previa antes de cambiarlos.
+  - Al importar del banco, el botón **⚡** junto a cada grupo que TALLY no reconoce crea la regla al momento.
+  - Borrar una subcategoría pasa sus reglas a la otra (o las borra); borrar una cuenta borra las suyas.
+- **🎯 Plan para salir de deudas** (Deudas). Pones cuánto puedes pagar al mes entre todas tus tarjetas y préstamos:
+  - cada mes se paga el mínimo de cada una (las mensualidades a meses sin intereses aparte, sin intereses) y lo que
+    sobra va a una sola; al terminarla, lo que le pagabas pasa a la siguiente;
+  - **avalancha** (la tasa más alta primero) o **bola de nieve** (la que debes menos primero), con cuál te conviene,
+    cuándo terminas, cuánto pagas de intereses y cuánto te ahorras contra pagar solo los mínimos, y la gráfica;
+  - el orden de ataque y **cuánto pagar a cada una este mes**. Guárdalo y el Resumen te lo recuerda.
+- **📎 Comprobantes adjuntos.** La foto del ticket, el PDF o el XML de la factura en cada movimiento (Historial →
+  📎 Comprobantes, o al registrar).
+  - Se guardan **dentro de tu archivo de datos**, en la misma transacción que el movimiento, cifrados si tienes
+    contraseña (también al ponerla o quitarla), y **van en tus respaldos** con su huella para comprobarlos al
+    restaurar. Borrar el movimiento borra sus comprobantes.
+  - Se revisa que el archivo sea de verdad lo que dice (JPG, PNG, WEBP, HEIC, PDF, XML), hasta 10 MB; avisa si el
+    mismo archivo está en otro movimiento (¿un gasto registrado dos veces?).
+  - En **Impuestos**: cuáles de tus deducibles no tienen comprobante y **todos los del año en un `.zip`** (una carpeta
+    por concepto e `indice.csv` para Excel), para tu contador o tu declaración.
+- **🩺 Salud de tus datos** (Ajustes). Revisa lo que suele ser un error o algo incompleto: movimientos que parecen
+  **duplicados** (se borra el que sobra desde ahí), cuentas de débito o ahorro **en negativo**, tarjetas **pasadas de
+  su límite**, **fechas** de otro año, cargos temporales sin devolver, movimientos en OTROS GASTOS o sin descripción,
+  tarjetas y préstamos **sin sus datos**, cuentas sin movimientos, lo que tus reglas acomodarían distinto y deducibles
+  sin comprobante. Cada cosa dice dónde se arregla; «Está bien así» la oculta. El Resumen avisa solo lo importante.
+- **❓ Guía y ayuda.** Tus **primeros pasos** (cuentas, movimientos, ingreso, pagos fijos, tarjetas, presupuestos,
+  metas… y opcionales) se marcan **solos** con tus datos; el Resumen muestra el siguiente mientras falte algo (se
+  puede ocultar). «¿Cómo hago…?» con buscador y las palabras que usa TALLY.
+- Datos: esquema 7 y respaldos de formato 7 (reglas, comprobantes y la tabla de archivos). Los respaldos anteriores
+  se siguen restaurando.
+
 ## [0.22.0] — Sin publicar
 
 - **Lo que sale, en rojo.** Los importes negativos (gastos, salidas, ahorro en contra, saldos y diferencias que
