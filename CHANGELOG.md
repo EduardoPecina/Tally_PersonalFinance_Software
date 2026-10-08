@@ -2,6 +2,16 @@
 
 Todos los cambios relevantes de TALLY se documentan aquí.
 
+## [0.23.2] — Sin publicar
+
+- **«Transferencia entre mis cuentas».** Así se llama ahora la opción de Registrar para mover dinero de una de tus
+  cuentas a otra (de tu nómina al ahorro, sacar efectivo…): no es gasto ni ingreso.
+- **Pasar a transferencia lo que guardaste como gasto o ingreso.** En el Historial, al elegir un gasto o un ingreso,
+  la pestaña **↔ Entre mis cuentas**: eliges a qué cuenta fue el dinero (o de cuál vino) y se convierte en
+  transferencia —o en pago de tarjeta si fue a una de crédito—, con la misma fecha, importe, descripción, notas y
+  comprobantes. Deja de contar como gasto o ingreso y el dinero aparece en la otra cuenta. Las compras a meses sin
+  intereses y los cargos temporales no se pueden pasar.
+
 ## [0.23.1] — Sin publicar
 
 - **Sacar efectivo ya llega a tu cuenta de Efectivo.** Un retiro de efectivo registrado como gasto en «EFECTIVO ›
@@ -16,13 +26,6 @@ Todos los cambios relevantes de TALLY se documentan aquí.
     fecha, el importe, la descripción y sus comprobantes. Los de antes no se tocan: ya están dentro del saldo inicial.
   - Sin cuenta de efectivo, RETIROS DE EFECTIVO sigue contando como gasto.
   - Guía y ayuda: «Sacar efectivo del cajero».
-- **«Transferencia entre mis cuentas».** Así se llama ahora la opción de Registrar para mover dinero de una de tus
-  cuentas a otra (de tu nómina al ahorro, sacar efectivo…): no es gasto ni ingreso.
-- **Pasar a transferencia lo que guardaste como gasto o ingreso.** En el Historial, al elegir un gasto o un ingreso,
-  la pestaña **↔ Entre mis cuentas**: eliges a qué cuenta fue el dinero (o de cuál vino) y se convierte en
-  transferencia —o en pago de tarjeta si fue a una de crédito—, con la misma fecha, importe, descripción, notas y
-  comprobantes. Deja de contar como gasto o ingreso y el dinero aparece en la otra cuenta. Las compras a meses sin
-  intereses y los cargos temporales no se pueden pasar.
 
 ## [0.23.0] — Sin publicar
 
