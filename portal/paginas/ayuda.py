@@ -21,6 +21,11 @@ COMO_HAGO = (
     ("Una compra a meses sin intereses",
      "Regístrala como gasto con tu tarjeta y escribe los **meses sin intereses**. Cuenta completa como gasto el día "
      "que compraste; tu tarjeta solo te pide una mensualidad en cada corte.", "registrar", "Ir a Registrar"),
+    ("Sacar efectivo del cajero",
+     "Es una **transferencia** de tu banco a tu cuenta **Efectivo** (Registrar → Transferencia): no es gasto; el gasto "
+     "es lo que pagas después con ese efectivo, «Pagado con» Efectivo. Si lo registras como gasto en RETIROS DE "
+     "EFECTIVO y tienes cuenta de efectivo, TALLY lo pasa solo a esa cuenta. Si no llevas tu efectivo en TALLY, "
+     "RETIROS DE EFECTIVO cuenta como gasto.", "registrar", "Ir a Registrar"),
     ("Un cargo que me van a devolver (verificación de Amazon, depósito de un hotel…)",
      "Registrar → Gasto → **Cargo temporal**. No cuenta como gasto: queda en «Te deben» hasta que lo marques como "
      "devuelto en el Resumen.", "registrar", "Ir a Registrar"),

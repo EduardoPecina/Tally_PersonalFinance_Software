@@ -4,7 +4,7 @@ Recorren cada página con datos ficticios y verifican que no haya errores y que
 las acciones lleguen al motor. Se omiten si Streamlit no está instalado.
 """
 
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
 from pathlib import Path
 
@@ -1925,3 +1925,54 @@ def test_guia_de_primeros_pasos_y_ayuda(raiz, con_datos):
     assert sesion_en(raiz).libro.perfil.guia_oculta
     at.switch_page(_pagina("inicio")).run()
     assert not any(m.value.startswith("**🚀 Primeros pasos**") for m in at.markdown)
+
+
+# ------------------------------------------------------------ sacar efectivo
+
+
+def test_retiro_de_efectivo_va_a_la_cuenta_de_efectivo(raiz, con_datos):
+    from motor import efectivo
+
+    s = sesion_en(raiz)
+    with s.cambio() as lib:
+        cartera = cuentas.crear(lib, "Efectivo Ficticio", "efectivo", fecha_creacion=lib.hoy() - timedelta(days=30)).id
+        retiro = efectivo.subcategoria(lib)
+        viejo = movimientos.registrar_gasto(lib, lib.hoy(), con_datos["debito"], retiro, 300, "Cajero de antes").id
+
+    # Al registrar: gasto en RETIROS DE EFECTIVO → pasa a la cuenta de efectivo.
+    at = abrir(_pagina("registrar"))
+    _gasto_en_registrar(at, con_datos["debito"], 500.0, retiro)
+    next(t for t in at.text_input if t.label == "Descripción").input("Cajero ficticio")
+    boton(at, "Guardar").click().run()
+    sin_errores(at)
+    assert any("Retiro de efectivo de $500.00 guardado" in str(t.value) for t in at.toast)
+    lib = sesion_en(raiz).libro
+    nuevo = next(op for op in lib.operaciones() if op.descripcion == "Cajero ficticio")
+    assert nuevo.tipo.value == "transferencia" and cuentas.saldo(lib, cartera) == 500
+
+    # El que ya estaba como gasto: Salud de tus datos lo pasa con un clic.
+    at.switch_page(_pagina("salud")).run()
+    sin_errores(at)
+    at.button(key="salud_efectivo_efectivo:1").click().run()
+    sin_errores(at)
+    lib = sesion_en(raiz).libro
+    assert lib.operacion(viejo).tipo.value == "transferencia" and cuentas.saldo(lib, cartera) == 800
+
+
+def test_historial_ofrece_pasar_un_retiro_a_efectivo(raiz, con_datos):
+    from motor import efectivo
+
+    s = sesion_en(raiz)
+    with s.cambio() as lib:
+        cartera = cuentas.crear(lib, "Efectivo Ficticio", "efectivo", fecha_creacion=lib.hoy() - timedelta(days=30)).id
+        retiro = movimientos.registrar_gasto(lib, lib.hoy(), con_datos["debito"], efectivo.subcategoria(lib), 250,
+                                             "Cajero ficticio").id
+    at = abrir(_pagina("historial"))
+    fila = list(at.dataframe[0].value["Descripción"]).index("Cajero ficticio")
+    seleccionar(at, "historial_tabla", fila)
+    assert any("sacar efectivo" in i.value for i in at.info)
+    at.button(key=f"a_efectivo_{retiro}").click()
+    seleccionar(at, "historial_tabla", fila)
+    sin_errores(at)
+    lib = sesion_en(raiz).libro
+    assert lib.operacion(retiro).tipo.value == "transferencia" and cuentas.saldo(lib, cartera) == 250

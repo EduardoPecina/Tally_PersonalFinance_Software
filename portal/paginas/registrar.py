@@ -7,8 +7,8 @@ import zlib
 import pandas as pd
 import streamlit as st
 
-from motor import (avisos, categorias, consultas, cuentas, ingresos, movimientos, recurrentes, reglas_categorias,
-                   tarjetas, temporales)
+from motor import (avisos, categorias, consultas, cuentas, efectivo, ingresos, movimientos, recurrentes,
+                   reglas_categorias, tarjetas, temporales)
 from motor.consultas import ETIQUETA_TIPO_OPERACION
 from motor.dinero import a_centavos, a_pesos
 from motor.errores import ErrorTally
@@ -24,7 +24,8 @@ TIPOS = [TipoOperacion.GASTO, TipoOperacion.INGRESO, TipoOperacion.TRANSFERENCIA
 AYUDA = {
     TipoOperacion.GASTO: "Dinero que gastaste, con cualquier cuenta o tarjeta (también la de crédito).",
     TipoOperacion.INGRESO: "Dinero que recibiste: nómina, ventas, freelance…",
-    TipoOperacion.TRANSFERENCIA: "Mover dinero entre tus cuentas (p. ej. al ahorro). No es gasto.",
+    TipoOperacion.TRANSFERENCIA: "Mover dinero entre tus cuentas (al ahorro, o sacar efectivo del cajero a tu cuenta "
+                                 "de efectivo). No es gasto.",
     TipoOperacion.PAGO_TARJETA: "Pagar tu tarjeta de crédito. No es otro gasto: el gasto se contó al comprar.",
     TipoOperacion.REEMBOLSO: "Te devolvieron dinero de una compra: resta del gasto de esa subcategoría.",
 }
@@ -168,6 +169,11 @@ def formulario(clave: str = "registrar", cuenta_fija: str | None = None) -> bool
                 st.caption(f"⚡ Va a **{formato.md(etiquetas[categoria_id])}** por tu regla «{formato.md(regla.texto)}».")
             else:
                 regla = None
+        retiro = (efectivo.destino_para(lib, origen, categoria_id)
+                  if tipo is TipoOperacion.GASTO and not temporal and not repartir else None)
+        if retiro is not None:
+            st.caption(f"💵 Sacar efectivo no es un gasto: se guarda como paso de dinero a tu cuenta "
+                       f"**{formato.md(retiro.nombre)}**.")
         # Con lo que enviaste: si algo parece un error de dedo, se avisa aquí y hay que confirmarlo para guardar.
         # Solo cuando ya está todo lo necesario: lo que falta se pide primero (abajo).
         total = monto if not repartir else sum(m for _, m in reparto)
@@ -236,6 +242,14 @@ def formulario(clave: str = "registrar", cuenta_fija: str | None = None) -> bool
 
         def accion(lib):
             return registrar_pago_tarjeta(lib, fecha, origen, destino, monto, descripcion, notas)
+    elif retiro is not None:
+        memoria.update(cuenta=origen)
+
+        def accion(lib):
+            return efectivo.registrar(lib, fecha, origen, monto, descripcion, notas, destino_id=retiro.id)
+        return guardado(ejecutar(con_comprobantes(accion), exito=(
+            f"Retiro de efectivo de {formato.dinero(monto)} guardado: pasó de {nombre[origen]} a {retiro.nombre} "
+            f"(no es gasto){adjuntos}")))
     else:
         memoria.update(cuenta=origen)
         registrar = {

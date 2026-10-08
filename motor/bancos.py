@@ -39,7 +39,7 @@ from datetime import date, datetime, timedelta
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from html.parser import HTMLParser
 
-from motor import categorias, reglas_categorias
+from motor import categorias, efectivo, reglas_categorias
 from motor.errores import ErrorValidacion
 from motor.importacion import Archivo, Bloque, Destino, Linea, clave_destino, decodificar
 from motor.libro import Libro
@@ -1210,6 +1210,15 @@ def _por_regla(reglas: reglas_categorias.Indice, movimiento: Movimiento, cuenta_
     return (destino_subcategoria(regla.categoria_id), reglas_categorias.motivo(regla)) if regla else None
 
 
+def _retiro_a_efectivo(libro: Libro, cuenta_id: str, sugerencia: tuple[str, str]) -> tuple[str, str]:
+    """Con una cuenta de efectivo, un retiro en cajero no es gasto: pasa a esa cuenta (motor/efectivo.py)."""
+    tipo, _, categoria_id = sugerencia[0].partition(":")
+    destino = efectivo.destino_para(libro, cuenta_id, categoria_id) if tipo == "sub" else None
+    if destino is None:
+        return sugerencia
+    return destino_cuenta(destino.id), f"Retiro de efectivo: pasa a tu cuenta «{destino.nombre}» (no es gasto)"
+
+
 def revisar(libro: Libro, cuenta_id: str, movimientos) -> list[Propuesta]:
     """Una propuesta por movimiento, en el mismo orden."""
     cuenta = libro.cuenta(cuenta_id)
@@ -1222,7 +1231,7 @@ def revisar(libro: Libro, cuenta_id: str, movimientos) -> list[Propuesta]:
         sugerencia = (_por_regla(reglas, m, cuenta_id) or (antes[:2] if antes and antes[2] else None)
                       or _por_comercio(libro, m) or (antes and antes[:2]))
         if sugerencia:
-            destino, motivo = sugerencia
+            destino, motivo = _retiro_a_efectivo(libro, cuenta_id, sugerencia)
         elif _TRANSFERENCIA.search(clave(m.descripcion)):
             destino, motivo = "", ("¿Pagaste la tarjeta desde una de tus cuentas? Elígela."
                                    if cuenta.tipo is TipoCuenta.CREDITO and m.centavos > 0
