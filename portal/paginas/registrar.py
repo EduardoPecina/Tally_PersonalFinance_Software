@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import zlib
+
 import pandas as pd
 import streamlit as st
 
-from motor import categorias, consultas, cuentas, ingresos, movimientos, recurrentes, tarjetas, temporales
+from motor import avisos, categorias, consultas, cuentas, ingresos, movimientos, recurrentes, tarjetas, temporales
 from motor.consultas import ETIQUETA_TIPO_OPERACION
-from motor.dinero import a_pesos
+from motor.dinero import a_centavos, a_pesos
+from motor.errores import ErrorTally
 from motor.modelo import Recurrente, TipoCuenta, TipoOperacion
 from motor.transferencias import registrar_pago_tarjeta, registrar_transferencia
 from portal.componentes import formato
@@ -89,8 +92,11 @@ def formulario(clave: str = "registrar", cuenta_fija: str | None = None) -> bool
     if tipo is TipoOperacion.INGRESO and not repartir:
         fijo, fecha_fija = _ingreso_fijo(clave, cuenta_fija)
     sufijo = f"_{fijo.id}_{fecha_fija.isoformat()}" if fijo else ""
+    vuelta = st.session_state.get(f"_{clave}_vuelta", 0)       # sube al guardar: el formulario vuelve a quedar limpio
+    forma = f"{clave}_{tipo.value}{sufijo}_{vuelta}"
 
-    with st.form(f"{clave}_{tipo.value}{sufijo}", clear_on_submit=True):
+    # No se limpia solo: si hay avisos, lo que escribiste se queda para corregirlo o confirmarlo.
+    with st.form(forma, clear_on_submit=False):
         izquierda, derecha = st.columns(2)
         destino = categoria_id = None
         reparto: list[tuple[str, float]] = []
@@ -115,7 +121,7 @@ def formulario(clave: str = "registrar", cuenta_fija: str | None = None) -> bool
         else:
             if repartir:
                 with izquierda:
-                    reparto = _reparto(f"{clave}_{tipo.value}", etiquetas)
+                    reparto = _reparto(f"{clave}_{tipo.value}_{vuelta}", etiquetas)
             else:
                 cat_ids = list(etiquetas)
                 categoria_id = izquierda.selectbox(
@@ -138,6 +144,15 @@ def formulario(clave: str = "registrar", cuenta_fija: str | None = None) -> bool
         descripcion = st.text_input("Descripción", value=fijo.nombre if fijo else "", max_chars=120, placeholder="Ej. Verificación de Amazon"
                                     if temporal else "Ej. Pizza, Uber, Nómina…")
         notas = st.text_input("Notas (opcional)", max_chars=300)
+        # Con lo que enviaste: si algo parece un error de dedo, se avisa aquí y hay que confirmarlo para guardar.
+        total = monto if not repartir else sum(m for _, m in reparto)
+        pendientes = _avisos(tipo, temporal, origen, destino, total, fecha)
+        confirmado = False
+        if pendientes:
+            st.warning("**Antes de guardar, revisa:**\n" + "\n".join(f"- {formato.md(a)}" for a in pendientes),
+                       icon="⚠️")
+            huella = zlib.crc32("|".join(pendientes).encode())       # otros avisos piden confirmar otra vez
+            confirmado = st.checkbox("Sí, está bien: guárdalo así", key=f"{forma}_confirmo_{huella}")
         guardar = st.form_submit_button("Guardar", type="primary")
 
     if tipo is TipoOperacion.PAGO_TARJETA and destino:
@@ -150,12 +165,19 @@ def formulario(clave: str = "registrar", cuenta_fija: str | None = None) -> bool
     if not repartir and not monto:
         st.error("Escribe el importe.")
         return False
+    if pendientes and not confirmado:
+        return False                                                  # los avisos ya están en el formulario
+
+    def guardado(hecho: bool) -> bool:
+        if hecho:
+            st.session_state[f"_{clave}_vuelta"] = vuelta + 1         # el siguiente formulario, limpio
+        return hecho
 
     memoria = st.session_state["_registrar_ultimas"]
     if temporal:
         memoria.update(cuenta=origen)
-        return ejecutar(lambda lib: temporales.registrar(lib, fecha, origen, monto, descripcion, notas),
-                        exito=f"Cargo temporal de {formato.dinero(monto)} guardado: no cuenta como gasto")
+        return guardado(ejecutar(lambda lib: temporales.registrar(lib, fecha, origen, monto, descripcion, notas),
+                                 exito=f"Cargo temporal de {formato.dinero(monto)} guardado: no cuenta como gasto"))
     if tipo is TipoOperacion.TRANSFERENCIA:
         memoria.update(origen=origen, destino=destino)
 
@@ -179,11 +201,28 @@ def formulario(clave: str = "registrar", cuenta_fija: str | None = None) -> bool
             if repartir:
                 return registrar(lib, fecha, origen, descripcion=descripcion, notas=notas, reparto=reparto, **extra)
             return registrar(lib, fecha, origen, categoria_id, monto, descripcion, notas, **extra)
-    total = monto if not repartir else sum(m for _, m in reparto)
     texto = f"{ETIQUETA_TIPO_OPERACION[tipo]} de {formato.dinero(total)} guardado"
     if msi:
         texto += f" a {int(msi)} meses sin intereses"
-    return ejecutar(accion, exito=texto)
+    return guardado(ejecutar(accion, exito=texto))
+
+
+def _avisos(tipo: TipoOperacion, temporal: bool, origen: str, destino: str | None, total, fecha) -> list[str]:
+    """Lo que conviene revisar antes de guardar (motor/avisos.py): una cuenta en negativo, una tarjeta que pasa su
+    límite o una fecha muy lejana. Sin importe (o mal escrito), no hay avisos: el motor dirá qué falta al guardar."""
+    if not total:
+        return []
+    try:
+        centavos = a_centavos(total)
+        if temporal or tipo is TipoOperacion.GASTO:
+            cambios = [(origen, -centavos)]
+        elif tipo in (TipoOperacion.TRANSFERENCIA, TipoOperacion.PAGO_TARJETA):
+            cambios = [(origen, -centavos), (destino, centavos)]
+        else:                                                         # ingreso o reembolso: entra dinero
+            cambios = [(origen, centavos)]
+        return [a.mensaje for a in avisos.antes_de_registrar(libro(), fecha, cambios)]
+    except ErrorTally:
+        return []
 
 
 def _ingreso_fijo(clave: str, cuenta_fija: str | None) -> tuple[Recurrente | None, object]:

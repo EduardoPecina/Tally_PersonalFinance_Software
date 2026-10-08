@@ -119,9 +119,10 @@ def comprobar_kit(sesion: Sesion, kit: str) -> bool:
 
 
 def ajustar_bloqueo(sesion: Sesion, minutos: int) -> cifrado.Config:
-    """Tras cuántos minutos sin usar TALLY se vuelve a pedir la contraseña (0 = nunca)."""
-    if isinstance(minutos, bool) or not 0 <= int(minutos) <= 240:
-        raise ErrorValidacion("El bloqueo automático va de 0 (nunca) a 240 minutos.")
+    """Tras cuántos minutos sin usar TALLY se vuelve a pedir la contraseña: uno de ``cifrado.OPCIONES_BLOQUEO``, o 0
+    para apagar el bloqueo automático. Solo con contraseña: sin ella no hay pantalla a donde volver a entrar."""
+    if isinstance(minutos, bool) or not isinstance(minutos, int) or minutos not in (0, *cifrado.OPCIONES_BLOQUEO):
+        raise ErrorValidacion("El bloqueo automático es de 5, 10, 15, 25, 30 o 45 minutos, o de 1 hora (o apagado).")
     nueva = replace(_requiere(sesion), bloqueo_minutos=int(minutos))
     sesion.almacen.guardar_config(nueva)
     return nueva

@@ -3,6 +3,9 @@ quien intenta adivinar la contraseña.
 
 La llave vive solo en la memoria de TALLY (nunca en el disco ni en el navegador). Al bloquear (con el botón o por
 no usar TALLY un rato) se olvida, junto con tus datos en memoria, y hay que volver a escribir la contraseña.
+
+El bloqueo automático no espera a tu siguiente clic: :func:`vigilar` revisa cada pocos segundos y, al pasar el
+tiempo, la pantalla vuelve sola a pedir la contraseña (si no, tus datos seguirían a la vista en la pestaña abierta).
 """
 
 from __future__ import annotations
@@ -75,6 +78,23 @@ def abierto() -> bool:
 def tocar() -> None:
     """Cada vez que usas TALLY se reinicia la cuenta del bloqueo automático."""
     _estado().ultimo_uso = time.monotonic()
+
+
+REVISAR_CADA = 15             # segundos: cada cuánto se revisa, sin que hagas nada, si ya toca bloquear
+
+
+def vigilar() -> None:
+    """Con contraseña y bloqueo automático: al pasar el tiempo sin usar TALLY, la pantalla vuelve sola a pedir la
+    contraseña. Revisar no cuenta como usarlo (solo tus clics reinician la cuenta)."""
+    actual = config()
+    if actual is not None and actual.bloqueo_minutos:
+        _vigia()
+
+
+@st.fragment(run_every=REVISAR_CADA)
+def _vigia() -> None:
+    if not abierto():                  # ya pasó el tiempo (o se bloqueó en otra pestaña): a la pantalla de entrada
+        st.rerun(scope="app")
 
 
 def entrar(llave_maestra: bytes) -> None:

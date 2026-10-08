@@ -89,7 +89,7 @@ el acceso directo **Mis datos de TALLY**, dentro de `Escritorio\TALLY`.
 | Página | Responde a |
 |---|---|
 | Resumen | ¿Cuánto dinero tengo? ¿Cuánto gasté y en qué? ¿Tengo pagos de tarjeta por vencer? ¿Cómo voy con mis presupuestos? ¿Qué cargos temporales me deben devolver? |
-| Registrar | Anotar un gasto (también a meses sin intereses, repartido o como cargo temporal que te van a devolver), ingreso (tu nómina con el importe de esa quincena ya lleno), transferencia, pago de tarjeta o reembolso |
+| Registrar | Anotar un gasto (también a meses sin intereses, repartido o como cargo temporal que te van a devolver), ingreso (tu nómina con el importe de esa quincena ya lleno), transferencia, pago de tarjeta o reembolso. Antes de guardar te avisa si una cuenta quedaría en negativo, una tarjeta pasaría su límite o la fecha parece mal escrita |
 | Historial | Buscar, filtrar, editar, repetir o eliminar movimientos |
 | Cuentas | Saldo de cada cuenta, estado de cuenta con saldo corrido, estado de cada tarjeta (línea, disponible, pago) y, en las de inversión, tus títulos (acciones, ETFs, cripto) y CETES o pagarés con su valor aproximado, y «Cuadrar con tu estado de cuenta» para registrar la ganancia con el valor oficial |
 | Ingresos 💰 | Tu ingreso principal (cada cuánto te pagan, la 1.ª y la 2.ª quincena, qué pasa si cae en fin de semana) y tus otros ingresos fijos; cuánto tiene que durarte cada pago, cuánto puedes gastar al día hasta el próximo y tu ingreso esperado al mes |
@@ -136,7 +136,10 @@ Establecer una contraseña para TALLY** le pones una en 4 pasos:
 Desde entonces:
 
 - TALLY pide la contraseña al abrir, y **se bloquea solo** si no lo usas un
-  rato (10 minutos, ajustable). También hay un botón **Bloquear ahora**.
+  rato: en **Configuración → Seguridad** lo prendes o lo apagas y eliges
+  tras cuánto tiempo (5, 10, 15, 25, 30 o 45 minutos, o 1 hora; viene en 10).
+  Al pasar ese tiempo, la pantalla vuelve sola a pedir tu contraseña aunque
+  no toques nada. También hay un botón **Bloquear ahora**.
 - Tus datos y respaldos se guardan **cifrados** (AES-256): quien copie el
   archivo solo ve letras sin sentido.
 - Los respaldos se abren en **cualquier PC** con la contraseña de ese día o

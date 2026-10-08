@@ -468,6 +468,69 @@ def test_estado_de_cuenta_desde_cuentas(raiz, con_datos):
     assert at.title[0].value == "Cuentas"
 
 
+def _gasto_en_registrar(at: AppTest, cuenta: str, importe: float, subcategoria: str) -> None:
+    next(s for s in at.selectbox if s.label == "Subcategoría").set_value(subcategoria)
+    next(s for s in at.selectbox if s.label == "Pagado con").set_value(cuenta)
+    next(n for n in at.number_input if n.label == "Importe").set_value(importe)
+
+
+def _avisos_de_registrar(at: AppTest) -> list[str]:
+    return [w.value for w in at.warning if "Antes de guardar" in w.value]
+
+
+def test_registrar_avisa_si_una_cuenta_quedaria_en_negativo(raiz, con_datos):
+    at = abrir(_pagina("registrar"))
+    _gasto_en_registrar(at, con_datos["debito"], 10_000.0, con_datos["cat"]["ALIMENTOS"])
+    next(t for t in at.text_input if t.label == "Descripción").input("Compra grande")
+    boton(at, "Guardar").click().run()
+    sin_errores(at)
+    (aviso,) = _avisos_de_registrar(at)
+    assert "Débito Ficticio» quedaría en -" in aviso and "2,380.00" in aviso       # tenía $7,620.00
+    movimientos_antes = len(sesion_en(raiz).libro.operaciones())
+    boton(at, "Guardar").click().run()                                             # sin confirmar: no se guarda
+    assert len(sesion_en(raiz).libro.operaciones()) == movimientos_antes
+    assert next(n for n in at.number_input if n.label == "Importe").value == 10_000.0   # lo escrito se queda
+    next(c for c in at.checkbox if c.label == "Sí, está bien: guárdalo así").check()
+    boton(at, "Guardar").click().run()
+    sin_errores(at)
+    assert len(sesion_en(raiz).libro.operaciones()) == movimientos_antes + 1
+    assert cuentas.saldo(sesion_en(raiz).libro, con_datos["debito"]) == -2_380
+    assert next(n for n in at.number_input if n.label == "Importe").value is None    # y el formulario, limpio
+    assert not _avisos_de_registrar(at)
+
+
+def test_registrar_corregir_quita_el_aviso(raiz, con_datos):
+    at = abrir(_pagina("registrar"))
+    _gasto_en_registrar(at, con_datos["debito"], 76_200.0, con_datos["cat"]["ALIMENTOS"])   # un cero de más
+    boton(at, "Guardar").click().run()
+    assert _avisos_de_registrar(at)
+    next(n for n in at.number_input if n.label == "Importe").set_value(762.0)
+    boton(at, "Guardar").click().run()
+    sin_errores(at)
+    assert not _avisos_de_registrar(at)
+    assert cuentas.saldo(sesion_en(raiz).libro, con_datos["debito"]) == 7_620 - 762
+
+
+def test_registrar_avisa_del_limite_de_la_tarjeta_y_de_una_fecha_lejana(raiz, con_datos):
+    from datetime import timedelta
+
+    at = abrir(_pagina("registrar"))
+    _gasto_en_registrar(at, con_datos["tdc"], 2_500.0, con_datos["cat"]["ALIMENTOS"])
+    next(d for d in at.date_input if d.label == "Fecha").set_value(date.today() + timedelta(days=400))
+    boton(at, "Guardar").click().run()
+    sin_errores(at)
+    (aviso,) = _avisos_de_registrar(at)
+    assert "dentro de 1 año" in aviso
+    assert "TDC Ficticia» pasaría su límite de" in aviso and "2,000.00" in aviso and "2,500.00" in aviso
+    assert not cuentas.saldo(sesion_en(raiz).libro, con_datos["tdc"])               # nada guardado aún
+    at.segmented_control(key="registrar_tipo").set_value("ingreso").run()           # un ingreso no tiene avisos
+    next(n for n in at.number_input if n.label == "Importe").set_value(10.0)
+    next(s for s in at.selectbox if s.label == "Subcategoría").set_value(con_datos["cat"]["NOMINA"])
+    boton(at, "Guardar").click().run()
+    sin_errores(at)
+    assert not _avisos_de_registrar(at)
+
+
 def test_registrar_a_meses_sin_intereses(raiz, con_datos):
     from motor import tarjetas as tdc
 
@@ -1043,6 +1106,49 @@ def test_pantalla_de_entrada(raiz, con_datos, scrypt_rapido):
     candado._estado_de(str(raiz / "Datos" / "tally.db")).ultimo_uso -= 11 * 60
     at.run()
     assert at.title[0].value == "🔒 Tus datos están protegidos"
+
+
+def test_bloqueo_automatico_se_elige_en_configuracion(raiz, con_datos, scrypt_rapido):
+    from motor import seguridad
+    from portal.componentes import candado
+
+    def bloqueo() -> int:
+        return seguridad.config(raiz / "Datos" / "tally.db").bloqueo_minutos
+
+    _con_contrasena(raiz)
+    at = abrir()
+    campo(at, "Contraseña").input("mi perro come tacos")
+    boton(at, "Entrar").click().run()
+    at.switch_page(_pagina("configuracion")).run()
+    sin_errores(at)
+    assert at.toggle(key="seg_bloqueo_activo").value is True and bloqueo() == 10      # viene encendido
+    assert at.selectbox(key="seg_bloqueo").options == ["5 minutos", "10 minutos", "15 minutos", "25 minutos",
+                                                       "30 minutos", "45 minutos", "1 hora"]
+    at.selectbox(key="seg_bloqueo").set_value(25).run()
+    sin_errores(at)
+    assert bloqueo() == 25
+    at.toggle(key="seg_bloqueo_activo").set_value(False).run()
+    sin_errores(at)
+    assert bloqueo() == 0 and not [s for s in at.selectbox if s.key == "seg_bloqueo"]
+    candado._estado_de(str(raiz / "Datos" / "tally.db")).ultimo_uso -= 3 * 60 * 60   # apagado: no se bloquea
+    at.run()
+    assert at.title[0].value != "🔒 Tus datos están protegidos"
+    at.toggle(key="seg_bloqueo_activo").set_value(True).run()
+    assert bloqueo() == 10
+    at.selectbox(key="seg_bloqueo").set_value(60).run()
+    assert bloqueo() == 60
+    candado._estado_de(str(raiz / "Datos" / "tally.db")).ultimo_uso -= 61 * 60       # pasó la hora: pide contraseña
+    at.run()
+    assert at.title[0].value == "🔒 Tus datos están protegidos"
+
+
+def test_sin_contrasena_el_bloqueo_automatico_no_se_puede_activar(con_datos):
+    at = abrir(_pagina("configuracion"))
+    sin_errores(at)
+    interruptor = at.toggle(key="seg_bloqueo_sin_contrasena")
+    assert interruptor.disabled and interruptor.value is False
+    assert not [t for t in at.toggle if t.key == "seg_bloqueo_activo"]
+    assert any("Disponible cuando le pongas una contraseña" in c.value for c in at.caption)
 
 
 def test_entrar_con_varios_intentos_fallidos_pide_esperar(raiz, con_datos, scrypt_rapido):
