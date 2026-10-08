@@ -14,6 +14,7 @@ La llave maestra y el Kit nunca cambian mientras tengas contraseña: el Kit abre
 
 from __future__ import annotations
 
+import hashlib
 from dataclasses import dataclass, replace
 from datetime import datetime
 from pathlib import Path
@@ -50,10 +51,11 @@ def activar(sesion: Sesion, contrasena: str, confirmacion: str, kit: str, kit_es
     seguridad = respaldos.de_seguridad(sesion, "antes_de_poner_contrasena", carpeta)
     antes = sesion.almacen.estado_guardado
     bitacora_antes = len(sesion.almacen.bitacora())
+    archivos_antes = _huellas(sesion.almacen)
     nueva, llave = cifrado.preparar(contrasena, kit, pista=pista, ahora=sesion.libro.ahora())
     sesion.almacen.activar_cifrado(nueva, llave)
     try:
-        _verificar(sesion.almacen.ruta, llave, antes, bitacora_antes)
+        _verificar(sesion.almacen.ruta, llave, antes, bitacora_antes, archivos_antes)
     except BaseException:
         sesion.almacen.desactivar_cifrado()           # se deshace: tus datos quedan como estaban
         raise
@@ -67,8 +69,9 @@ def desactivar(sesion: Sesion, contrasena: str, *, carpeta_respaldos: Path | str
     llave = cifrado.abrir(actual, contrasena)          # con tu contraseña (o tu Kit)
     antes = sesion.almacen.estado_guardado
     bitacora_antes = len(sesion.almacen.bitacora())
+    archivos_antes = _huellas(sesion.almacen)
     sesion.almacen.desactivar_cifrado()
-    _verificar(sesion.almacen.ruta, None, antes, bitacora_antes)
+    _verificar(sesion.almacen.ruta, None, antes, bitacora_antes, archivos_antes)
     convertidos, problemas = respaldos.convertir_carpeta(carpeta_respaldos or rutas.carpeta_respaldos(), llave, None)
     return Resultado(None, convertidos, problemas)
 
@@ -138,11 +141,19 @@ def _requiere(sesion: Sesion) -> cifrado.Config:
     return actual
 
 
-def _verificar(ruta: Path, llave: bytes | None, antes: dict, bitacora_antes: int) -> None:
-    """Vuelve a leer el archivo desde cero y exige que sea idéntico a lo que había."""
+def _huellas(almacen: Almacen) -> dict[str, str]:
+    """La huella de cada comprobante, ya descifrado (para comprobar que la conversión no cambió ninguno)."""
+    return {i: hashlib.sha256(d).hexdigest() for i, d in almacen.archivos_descifrados().items()}
+
+
+def _verificar(ruta: Path, llave: bytes | None, antes: dict, bitacora_antes: int,
+               archivos_antes: dict[str, str] | None = None) -> None:
+    """Vuelve a leer el archivo desde cero y exige que sea idéntico a lo que había (también los comprobantes)."""
     almacen = Almacen(ruta)
     if llave is not None:
         almacen.desbloquear(llave)
     almacen.cargar()
     if almacen.estado_guardado != antes or len(almacen.bitacora()) != bitacora_antes:
         raise ErrorDatos("La verificación de tus datos no coincidió. No se cambió nada.")
+    if archivos_antes is not None and _huellas(almacen) != archivos_antes:
+        raise ErrorDatos("La verificación de tus comprobantes no coincidió. No se cambió nada.")

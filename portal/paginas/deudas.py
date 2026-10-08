@@ -7,7 +7,7 @@ from decimal import Decimal
 import pandas as pd
 import streamlit as st
 
-from motor import categorias, cuentas, planeacion, prestamos, tarjetas
+from motor import categorias, cuentas, plan_deudas, planeacion, prestamos, tarjetas
 from motor.modelo import ClaseCategoria, TipoCuenta
 from portal import navegacion
 from portal.componentes import formato, graficas
@@ -25,6 +25,8 @@ def mostrar() -> None:
     st.caption("Tus tarjetas y préstamos: cuánto debes, cuánto pagar, cuánto te cuestan en intereses y cómo terminar "
                "antes. Los cálculos son **estimaciones**; lo oficial es tu estado de cuenta.")
     _capacidad()
+    st.divider()
+    _plan()
     st.divider()
     _tarjetas()
     st.divider()
@@ -56,6 +58,129 @@ def _capacidad() -> None:
     if cap.para_no_generar_intereses > cap.minimos_tarjetas:
         st.caption(f"De tus tarjetas, para **no pagar intereses** necesitas pagar "
                    f"{formato.dinero_md(cap.para_no_generar_intereses)}, no solo el mínimo.")
+
+
+# ------------------------------------------------------------------ plan para salir de deudas
+
+ICONOS_ESTRATEGIA = {plan_deudas.AVALANCHA: "🏔️ Avalancha", plan_deudas.BOLA_DE_NIEVE: "⛄ Bola de nieve"}
+
+
+def _plan() -> None:
+    lib = libro()
+    st.subheader("🎯 Plan para salir de deudas")
+    base = plan_deudas.calcular(lib)
+    if not base.deudas:
+        st.success("No debes nada en tarjetas ni préstamos. 🎉 Si contratas alguno, aquí armas tu plan para "
+                   "liquidarlo.", icon="✅")
+        return
+    st.caption("Pon cuánto puedes pagar **al mes entre todas tus deudas**. Cada mes pagas lo mínimo de cada una y "
+               "**todo lo que sobra va a una sola**; al terminarla, lo que le pagabas pasa a la siguiente. Supone que "
+               "no compras más con tus tarjetas: es una estimación.")
+    guardado = plan_deudas.guardado_de(lib)
+    izquierda, derecha = st.columns(2)
+    presupuesto = izquierda.number_input(
+        "¿Cuánto puedes pagar al mes entre todas?", min_value=0.0, step=100.0, format="%.2f",
+        value=float(guardado[0] if guardado else plan_deudas.sugerido(base)), key="plan_deudas_monto",
+        help=f"Lo mínimo que piden todas este mes es {formato.dinero(base.minimo)}. Mientras más pongas, antes "
+             "terminas y menos intereses pagas.")
+    calculado = plan_deudas.calcular(lib, presupuesto)
+    elegida = derecha.segmented_control(
+        "¿Cómo las atacas?", list(ICONOS_ESTRATEGIA), format_func=ICONOS_ESTRATEGIA.get, required=True,
+        default=guardado[1] if guardado else calculado.recomendada, key="plan_deudas_estrategia",
+        help="Avalancha: primero la de tasa más alta (pagas menos intereses). Bola de nieve: primero la que debes "
+             "menos (terminas una pronto y eso motiva).")
+    if not calculado.alcanza:
+        st.error(f"Con {formato.dinero_md(calculado.presupuesto)} no alcanzas ni lo mínimo que piden tus deudas "
+                 f"este mes: {formato.dinero_md(calculado.minimo)}. Sube el monto para armar un plan.", icon="🛑")
+        return
+    for deuda in calculado.sin_tasa:
+        st.caption(f"⚠️ «{formato.md(deuda.nombre)}» no tiene tasa registrada: se calcula sin intereses. Regístrala "
+                   "abajo para que el plan sea exacto.")
+    resultado = calculado.de(elegida)
+    if not resultado.termina:
+        st.warning("Con ese monto tus deudas casi no bajan: los intereses se comen lo que pagas. Sube el monto.",
+                   icon="🛑")
+        return
+    otra = calculado.de(plan_deudas.BOLA_DE_NIEVE if elegida == plan_deudas.AVALANCHA else plan_deudas.AVALANCHA)
+    _resumen_del_plan(calculado, resultado, otra, elegida)
+    _orden_del_plan(calculado, resultado)
+    with st.expander("📈 Cómo baja lo que debes"):
+        _grafica_del_plan(calculado)
+    if guardado == (calculado.presupuesto, elegida):
+        izquierda, derecha = st.columns([3, 1], vertical_alignment="center")
+        izquierda.caption("✅ Este es tu plan guardado: el Resumen te dice cada mes a qué deuda va lo extra.")
+        if derecha.button("Quitar mi plan", key="plan_deudas_quitar"):
+            if ejecutar(plan_deudas.quitar, exito="Plan de deudas quitado"):
+                st.rerun()
+    elif st.button("Guardar este plan", type="primary", key="plan_deudas_guardar", icon=":material/flag:",
+                   help="El Resumen te recordará cada mes cuánto pagar a cada deuda y a cuál va lo extra."):
+        if ejecutar(lambda lib_: plan_deudas.guardar(lib_, presupuesto, elegida),
+                    exito="Plan guardado: lo verás en el Resumen"):
+            st.rerun()
+
+
+def _resumen_del_plan(calculado, resultado, otra, elegida: str) -> None:
+    minimos = calculado.solo_minimos
+    a, b, c = st.columns(3)
+    a.metric("Terminas", f"{formato.MESES[resultado.fin.month - 1].capitalize()} {resultado.fin.year}",
+             help=f"En {_tiempo(resultado.meses)}, si no compras más con tus tarjetas.")
+    b.metric("Intereses que pagarías", formato.dinero_metrica(resultado.intereses))
+    if minimos.termina:
+        ahorro = minimos.intereses - resultado.intereses
+        c.metric("Te ahorras vs. pagar solo mínimos", formato.dinero_metrica(ahorro),
+                 delta=f"{_tiempo(minimos.meses - resultado.meses)} antes" if minimos.meses > resultado.meses else None)
+    else:
+        c.metric("Pagando solo los mínimos", "No terminas",
+                 help="Con lo mínimo, al menos una deuda casi no baja: los intereses se comen el pago.")
+    if otra is not None and otra.termina:
+        diferencia = otra.intereses - resultado.intereses
+        nombre = ICONOS_ESTRATEGIA[otra.estrategia]
+        if diferencia > 0:
+            st.caption(f"Con {nombre} pagarías {formato.dinero_md(diferencia)} más de intereses.")
+        elif diferencia < 0:
+            st.caption(f"Con {nombre} pagarías {formato.dinero_md(-diferencia)} menos de intereses"
+                       + (" y terminarías antes." if otra.meses < resultado.meses else "."))
+        else:
+            st.caption(f"Con {nombre} pagarías lo mismo de intereses.")
+    if calculado.recomendada != elegida:
+        st.caption(f"💡 Para tus deudas te conviene más {ICONOS_ESTRATEGIA[calculado.recomendada]}.")
+
+
+def _orden_del_plan(calculado, resultado) -> None:
+    por_id = {d.cuenta_id: d for d in calculado.deudas}
+    liquidada = {x.cuenta_id: x for x in resultado.liquidadas}
+    este_mes = resultado.tabla[0].pagos if resultado.tabla else {}
+    objetivo = next((i for i in resultado.orden if por_id[i].saldo > 0), None)
+    st.markdown("**Orden de ataque y cuánto pagar este mes**")
+    tabla = pd.DataFrame({
+        "#": list(range(1, len(resultado.orden) + 1)),
+        "Deuda": [("🎯 " if i == objetivo else "") + por_id[i].nombre for i in resultado.orden],
+        "Debes hoy": [formato.dinero(por_id[i].total) for i in resultado.orden],
+        "Tasa anual": ["sin registrar" if por_id[i].sin_tasa else f"{por_id[i].tasa_anual.normalize():f} %"
+                       for i in resultado.orden],
+        "Pagar este mes": [formato.dinero(este_mes.get(i, Decimal(0))) for i in resultado.orden],
+        "La terminas": [f"{formato.MESES_CORTOS[liquidada[i].fecha.month - 1]} {liquidada[i].fecha.year}"
+                        if i in liquidada else "—" for i in resultado.orden],
+        "Intereses": [formato.dinero(liquidada[i].intereses) if i in liquidada else "—" for i in resultado.orden],
+    })
+    st.dataframe(tabla, hide_index=True, width="stretch")
+    if objetivo is not None:
+        st.caption(f"🎯 Este mes lo extra va a **{formato.md(por_id[objetivo].nombre)}**; a las demás, solo su mínimo. "
+                   "Registra cada pago como siempre (Registrar → Pago de tarjeta o en Deudas → Registrar pago): el "
+                   "plan se recalcula solo con lo que debes.")
+
+
+def _grafica_del_plan(calculado) -> None:
+    hoy = libro().hoy()
+    total = sum((d.total for d in calculado.deudas), Decimal(0))
+    horizonte = max(r.meses for r in (calculado.avalancha, calculado.bola_de_nieve)) * 3 // 2 + 1
+    series = {}
+    for nombre, r in (("Avalancha", calculado.avalancha), ("Bola de nieve", calculado.bola_de_nieve),
+                      ("Solo mínimos", calculado.solo_minimos)):
+        series[nombre] = [(hoy, total)] + [(m.fecha, m.saldo) for m in r.tabla[:horizonte]]
+    graficas.valor_por_serie(series)
+    if not calculado.solo_minimos.termina or calculado.solo_minimos.meses > horizonte:
+        st.caption("Pagando solo los mínimos tardarías mucho más de lo que cabe en la gráfica.")
 
 
 # ------------------------------------------------------------------ tarjetas
@@ -124,8 +249,8 @@ def _tasa_de_tarjeta(tarjeta) -> None:
 def _tiempo(meses: int) -> str:
     anios, resto = divmod(meses, 12)
     if not anios:
-        return f"{meses} meses"
-    return f"{anios} año{'s' if anios > 1 else ''}" + (f" y {resto} meses" if resto else "")
+        return f"{meses} mes{'es' if meses != 1 else ''}"
+    return f"{anios} año{'s' if anios > 1 else ''}" + (f" y {resto} mes{'es' if resto != 1 else ''}" if resto else "")
 
 
 # ------------------------------------------------------------------ préstamos

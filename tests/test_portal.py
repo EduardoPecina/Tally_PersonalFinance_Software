@@ -1672,3 +1672,256 @@ def test_cierre_de_mes_cerrar_avisar_y_volver_a_cerrar(raiz, con_datos):
     next(b for b in at.button if b.key == "cierre_reabrir").click().run()
     sin_errores(at)
     assert sesion_en(raiz).libro.cierres() == []
+
+
+# ------------------------------------------------------------ reglas automáticas de categorías
+
+
+def test_reglas_automaticas_desde_categorias(raiz, con_datos):
+    from motor import reglas_categorias
+
+    at = abrir(_pagina("categorias"))
+    assert "⚡ Reglas automáticas" in [t.label for t in at.tabs]
+    assert any("Todavía no tienes reglas" in i.value for i in at.info)
+    next(t for t in at.text_input if t.label == "Si la descripción dice…").input("pizza")
+    next(s for s in at.selectbox if s.label == "…va a la subcategoría").set_value(con_datos["cat"]["RESTAURANTES"])
+    next(b for b in at.button if b.label == "Agregar regla").click().run()
+    sin_errores(at)
+    assert any("Regla agregada: «PIZZA»" in str(t.value) and "1 movimiento" in str(t.value) for t in at.toast)
+    (regla,) = sesion_en(raiz).libro.reglas()
+    assert (regla.texto, regla.categoria_id, regla.cuenta_id) == ("PIZZA", con_datos["cat"]["RESTAURANTES"], None)
+
+    # Probar una descripción.
+    at.text_input(key="regla_probar").input("PIZZA FICTICIA 123").run()
+    assert any("por tu regla «PIZZA»" in m.value and "Si es un gasto" in m.value for m in at.markdown)
+
+    # Corregir el historial: la «Pizza» que ya estaba en ALIMENTOS pasa a RESTAURANTES.
+    at.checkbox(key="regla_historial_confirmar").check().run()
+    at.button(key="regla_historial_aplicar").click().run()
+    sin_errores(at)
+    lib = sesion_en(raiz).libro
+    pizza = next(op for op in lib.operaciones() if op.descripcion == "Pizza")
+    assert movimientos.describir(pizza).categoria_id == con_datos["cat"]["RESTAURANTES"]
+    assert reglas_categorias.pendientes(lib) == []
+
+    # Pausarla y borrarla.
+    at.selectbox(key="regla_elegida").set_value(regla.id).run()
+    next(c for c in at.checkbox if c.label == "Activa").uncheck()
+    next(b for b in at.button if b.label == "Guardar cambios" and regla.id in str(b.form_id)).click().run()
+    sin_errores(at)
+    assert not sesion_en(raiz).libro.regla(regla.id).activa
+    at.checkbox(key=f"regla_confirmar_{regla.id}").check().run()
+    at.button(key=f"regla_borrar_{regla.id}").click().run()
+    sin_errores(at)
+    assert sesion_en(raiz).libro.reglas() == []
+
+
+def test_reglas_sugeridas_y_al_registrar(raiz, con_datos):
+    s = sesion_en(raiz)
+    with s.cambio() as lib:
+        for i in range(3):
+            movimientos.registrar_gasto(lib, lib.hoy(), con_datos["debito"], con_datos["cat"]["TRANSPORTE"], 50,
+                                        f"UBER FICTICIO {i}")
+    at = abrir(_pagina("categorias"))
+    assert any(e.label.startswith("💡 Sugerencias de reglas") for e in at.expander)
+    at.button(key="regla_sugerida_0").click().run()
+    sin_errores(at)
+    (regla,) = sesion_en(raiz).libro.reglas()
+    assert (regla.texto, regla.categoria_id) == ("UBER", con_datos["cat"]["TRANSPORTE"])
+
+    # Al registrar sin elegir subcategoría, la regla la decide.
+    at.switch_page(_pagina("registrar")).run()
+    next(s for s in at.selectbox if s.label == "Pagado con").set_value(con_datos["debito"])
+    next(n for n in at.number_input if n.label == "Importe").set_value(75.0)
+    next(t for t in at.text_input if t.label == "Descripción").input("Uber al aeropuerto")
+    boton(at, "Guardar").click().run()
+    sin_errores(at)
+    assert any("por tu regla «UBER»" in str(t.value) for t in at.toast)
+    nuevo = next(op for op in sesion_en(raiz).libro.operaciones() if op.descripcion == "Uber al aeropuerto")
+    assert movimientos.describir(nuevo).categoria_id == con_datos["cat"]["TRANSPORTE"]
+
+
+def test_importar_del_banco_crea_una_regla_con_un_clic(raiz, con_datos):
+    at = _banco(raiz)
+    clave = at.session_state["_banco_clave"]
+    grupo = next(s for s in at.selectbox if s.key and s.key.startswith(f"banco_grupo_{clave}_")
+                 and "SPEI" in s.label)
+    assert at.button(key=grupo.key.replace("banco_grupo_", "banco_regla_")).disabled     # falta elegir
+    etiqueta = next(o for o in grupo.options if o.endswith("› TRANSPORTE"))
+    grupo.set_value(etiqueta).run()
+    at.button(key=grupo.key.replace("banco_grupo_", "banco_regla_")).click().run()
+    sin_errores(at)
+    assert any("Regla creada: «FICTICIO»" in str(t.value) for t in at.toast)
+    # Ya no hace falta elegir: la regla lo reconoce.
+    assert not any(s.key and s.key.startswith("banco_grupo_") and "SPEI" in s.label for s in at.selectbox)
+    assert not any("Te falta elegir" in w.value for w in at.warning)
+
+
+def test_plan_para_salir_de_deudas(raiz, con_datos):
+    from motor import plan_deudas
+
+    s = sesion_en(raiz)
+    with s.cambio() as lib:
+        cuentas.editar(lib, con_datos["tdc"], tasa_anual=60)
+        movimientos.registrar_gasto(lib, lib.hoy(), con_datos["tdc"], con_datos["cat"]["ALIMENTOS"], 1500, "Súper")
+        otra = cuentas.crear(lib, "TDC Ficticia Dos", "credito", deuda_inicial=800, limite_credito=3000, dia_corte=10,
+                             dia_pago=30, fecha_creacion=lib.hoy())
+        cuentas.editar(lib, otra.id, tasa_anual=40)
+    at = abrir(_pagina("deudas"))
+    sin_errores(at)
+    assert any(s.value == "🎯 Plan para salir de deudas" for s in at.subheader)
+    at.number_input(key="plan_deudas_monto").set_value(10.0).run()
+    assert any("no alcanzas ni lo mínimo" in e.value for e in at.error)
+    at.number_input(key="plan_deudas_monto").set_value(1000.0).run()
+    sin_errores(at)
+    tabla = next(d.value for d in at.dataframe if "Pagar este mes" in d.value.columns)
+    assert tabla["Deuda"].tolist()[0] == "🎯 TDC Ficticia"                      # avalancha: la de 60 % primero
+    at.segmented_control(key="plan_deudas_estrategia").set_value(plan_deudas.BOLA_DE_NIEVE).run()
+    tabla = next(d.value for d in at.dataframe if "Pagar este mes" in d.value.columns)
+    assert tabla["Deuda"].tolist()[0] == "🎯 TDC Ficticia Dos"                  # bola de nieve: la que debes menos
+    at.button(key="plan_deudas_guardar").click().run()
+    sin_errores(at)
+    assert plan_deudas.guardado_de(sesion_en(raiz).libro) == (Decimal(1000), plan_deudas.BOLA_DE_NIEVE)
+
+    # El Resumen te dice cuánto pagar a cada una.
+    at.switch_page(_pagina("inicio")).run()
+    sin_errores(at)
+    assert any(s.value == "🎯 Tu plan para salir de deudas" for s in at.subheader)
+    assert any("aquí va lo extra" in m.value and "TDC Ficticia Dos" in m.value for m in at.markdown)
+
+    at.switch_page(_pagina("deudas")).run()
+    at.button(key="plan_deudas_quitar").click().run()
+    sin_errores(at)
+    assert plan_deudas.guardado_de(sesion_en(raiz).libro) is None
+
+
+# ------------------------------------------------------------ comprobantes adjuntos
+
+FOTO_FICTICIA = b"\xff\xd8\xff\xe0" + b"ticket ficticio" * 4
+PDF_FICTICIO = b"%PDF-1.4\n" + b"factura ficticia" * 4
+
+
+def test_comprobantes_desde_el_historial(raiz, con_datos):
+    from motor import comprobantes
+
+    at = abrir(_pagina("historial"))
+    fila = list(at.dataframe[0].value["Descripción"]).index("Pizza")
+
+    def elegida() -> AppTest:                     # la tabla conserva el renglón elegido en cada vuelta
+        return seleccionar(at, "historial_tabla", fila)
+
+    elegida()
+    assert "📎 Comprobantes" in [t.label for t in at.tabs]
+    pizza = next(op for op in sesion_en(raiz).libro.operaciones() if op.descripcion == "Pizza")
+    at.file_uploader(key=f"comp_subir_{pizza.id}_0").set_value(
+        [("ticket.jpg", FOTO_FICTICIA, "image/jpeg"), ("factura.pdf", PDF_FICTICIO, "application/pdf")])
+    elegida()
+    at.button(key=f"comp_adjuntar_{pizza.id}").click()
+    elegida()
+    sin_errores(at)
+    s = sesion_en(raiz)
+    assert sorted(c.nombre for c in s.libro.comprobantes(pizza.id)) == ["factura.pdf", "ticket.jpg"]
+    assert {comprobantes.contenido(s, c.id) for c in s.libro.comprobantes()} == {FOTO_FICTICIA, PDF_FICTICIO}
+    assert "📎 Comprobantes (2)" in [t.label for t in at.tabs]
+    assert at.dataframe[0].value["📎"].tolist().count("2") == 1                # la columna del Historial
+
+    # Un archivo que no es lo que dice: no se adjunta nada.
+    at.file_uploader(key=f"comp_subir_{pizza.id}_1").set_value(("falso.pdf", b"hola", "application/pdf"))
+    elegida()
+    at.button(key=f"comp_adjuntar_{pizza.id}").click()
+    elegida()
+    assert any("no parece ser un archivo PDF" in e.value for e in at.error)
+    assert len(sesion_en(raiz).libro.comprobantes()) == 2
+
+    ticket = next(c for c in sesion_en(raiz).libro.comprobantes() if c.nombre == "ticket.jpg")
+    at.button(key=f"comp_quitar_{ticket.id}").click()
+    elegida()
+    sin_errores(at)
+    assert [c.nombre for c in sesion_en(raiz).libro.comprobantes()] == ["factura.pdf"]
+
+
+def test_registrar_con_comprobante(raiz, con_datos):
+    at = abrir(_pagina("registrar"))
+    _gasto_en_registrar(at, con_datos["debito"], 250.0, con_datos["cat"]["ALIMENTOS"])
+    next(t for t in at.text_input if t.label == "Descripción").input("Súper con ticket")
+    next(f for f in at.file_uploader if f.label.startswith("📎")).set_value(
+        ("ticket.jpg", FOTO_FICTICIA, "image/jpeg"))
+    boton(at, "Guardar").click().run()
+    sin_errores(at)
+    assert any("con 1 comprobante(s)" in str(t.value) for t in at.toast)
+    lib = sesion_en(raiz).libro
+    op = next(op for op in lib.operaciones() if op.descripcion == "Súper con ticket")
+    assert [c.nombre for c in lib.comprobantes(op.id)] == ["ticket.jpg"]
+
+
+def test_comprobantes_de_deducibles_en_impuestos(raiz, con_datos):
+    from motor import comprobantes, impuestos
+
+    s = sesion_en(raiz)
+    with s.cambio() as lib:
+        impuestos.guardar_concepto(lib, "Comida ficticia deducible", [con_datos["cat"]["ALIMENTOS"]])
+        pizza = next(op for op in lib.operaciones() if op.descripcion == "Pizza")
+        comprobantes.adjuntar(lib, pizza.id, "factura.pdf", PDF_FICTICIO)
+        movimientos.registrar_gasto(lib, lib.hoy(), con_datos["debito"], con_datos["cat"]["ALIMENTOS"], 90,
+                                    "Sin factura")
+    at = abrir(_pagina("impuestos"))
+    sin_errores(at)
+    assert any("1 de 2 pago(s) deducibles" in m.value for m in at.markdown)
+    assert any(e.label == "Ver los 1 sin comprobante" for e in at.expander)
+    assert any(b.label == "Descargar los comprobantes del año (.zip)" for b in at.get("download_button"))
+
+
+# ------------------------------------------------------------ salud de los datos
+
+
+def test_salud_de_los_datos_y_aviso_en_el_resumen(raiz, con_datos):
+    s = sesion_en(raiz)
+    with s.cambio() as lib:
+        for _ in range(2):                                             # el mismo gasto, dos veces
+            movimientos.registrar_gasto(lib, lib.hoy(), con_datos["debito"], con_datos["cat"]["ALIMENTOS"], 77,
+                                        "Tacos ficticios")
+    at = abrir()
+    sin_errores(at)
+    assert any("Revisa tus datos" in w.value and "duplicados" in w.value for w in at.warning)
+
+    at.switch_page(_pagina("salud")).run()
+    sin_errores(at)
+    assert {m.label: m.value for m in at.metric}["🟠 Por revisar"] == "1"
+    assert any(e.label.startswith("**Movimientos que parecen duplicados**") for e in at.expander)
+    boton_borrar = next(b for b in at.button if b.key and b.key.startswith("salud_borrar_duplicado:"))
+    boton_borrar.click().run()
+    sin_errores(at)
+    assert sum(op.descripcion == "Tacos ficticios" for op in sesion_en(raiz).libro.operaciones()) == 1
+    assert {m.label: m.value for m in at.metric}["🟠 Por revisar"] == "0"
+
+    # «Está bien así» con otro hallazgo: a la tarjeta le falta su tasa.
+    clave = next(b.key for b in at.button if b.key and b.key.startswith("salud_ignorar_tarjeta:"))
+    at.button(key=clave).click().run()
+    sin_errores(at)
+    assert not any(b.key == clave for b in at.button)
+    assert sesion_en(raiz).libro.perfil.salud_ignorados[-1] == clave.removeprefix("salud_ignorar_")
+    at.button(key="salud_mostrar_todo").click().run()
+    assert any(b.key == clave for b in at.button)
+
+
+# ------------------------------------------------------------ guía y ayuda
+
+
+def test_guia_de_primeros_pasos_y_ayuda(raiz, con_datos):
+    at = abrir()
+    sin_errores(at)
+    assert any(m.value.startswith("**🚀 Primeros pasos**") for m in at.markdown)
+
+    at.switch_page(_pagina("ayuda")).run()
+    sin_errores(at)
+    assert at.title[0].value == "Guía y ayuda"
+    assert any(e.label == "Pagar mi tarjeta de crédito" for e in at.expander)
+    at.text_input(key="ayuda_buscar").input("tícket").run()
+    assert [e.label for e in at.expander] == ["Guardar el ticket o la factura de un gasto"]
+    at.text_input(key="ayuda_buscar").input("").run()
+
+    at.toggle(key="guia_en_resumen").set_value(False).run()
+    sin_errores(at)
+    assert sesion_en(raiz).libro.perfil.guia_oculta
+    at.switch_page(_pagina("inicio")).run()
+    assert not any(m.value.startswith("**🚀 Primeros pasos**") for m in at.markdown)

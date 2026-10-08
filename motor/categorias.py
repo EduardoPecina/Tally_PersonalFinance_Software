@@ -205,7 +205,8 @@ def eliminar(libro: Libro, categoria_id: str, *, reasignar_a: str | None = None)
 
     Si tiene movimientos, hay que indicar a qué subcategoría (del mismo tipo)
     pasan; en la práctica es juntarlas. Los pagos recurrentes y los gastos
-    deducibles que la usaban pasan a esa otra (o se quedan sin ella).
+    deducibles que la usaban pasan a esa otra (o se quedan sin ella). Sus reglas automáticas también pasan a
+    la otra (o se borran).
     """
     categoria = _editable(libro, categoria_id)
     if reasignar_a is not None:
@@ -225,6 +226,12 @@ def eliminar(libro: Libro, categoria_id: str, *, reasignar_a: str | None = None)
     for r in libro.recurrentes():                     # los pagos recurrentes pasan a la otra (o quedan sin elegir)
         if r.categoria_id == categoria_id:
             libro.guardar_recurrente(replace(r, categoria_id=reasignar_a, activa=r.activa and reasignar_a is not None))
+    for regla in libro.reglas():                      # las reglas automáticas, igual (o se borran)
+        if regla.categoria_id == categoria_id:
+            if reasignar_a is None:
+                libro.quitar_regla(regla.id)
+            else:
+                libro.guardar_regla(replace(regla, categoria_id=reasignar_a))
     if any(categoria_id in c.subcategorias for c in libro.fiscal.conceptos):   # los gastos deducibles, igual
         libro.fiscal = replace(libro.fiscal, conceptos=tuple(
             replace(c, subcategorias=_sustituir(c.subcategorias, categoria_id, reasignar_a))

@@ -42,7 +42,7 @@ from dataclasses import dataclass, field
 from datetime import date
 from decimal import Decimal, InvalidOperation
 
-from motor import categorias, cuentas, monedas, temporales
+from motor import categorias, cuentas, monedas, reglas_categorias, temporales
 from motor.dinero import a_centavos, a_pesos
 from motor.errores import ErrorTally, ErrorValidacion
 from motor.libro import Libro
@@ -52,6 +52,7 @@ from motor.modelo import (
     ClaseCategoria,
     Cuenta,
     Operacion,
+    Regla,
     TipoCuenta,
     TipoOperacion,
 )
@@ -309,12 +310,18 @@ def desconocidos(libro: Libro, archivo: Archivo) -> list[Desconocido]:
     """Nombres que hay que resolver (mapear) antes de cargar, del más usado al menos usado."""
     conocidos = set(_cuentas_por_clave(libro, archivo)) | {clave(c.nombre) for c in libro.categorias()}
     conocidos.add(clave(temporales.NOMBRE_CUENTA))      # se crea sola al cargar
+    reglas = reglas_categorias.Indice(libro)
+    ids = {clave(c.nombre): c.id for c in libro.cuentas()}
     cuenta: dict[str, list[Linea]] = defaultdict(list)
     for bloque in archivo.bloques:
         for linea in bloque.lineas:
             k = clave_destino(linea)
-            if k not in conocidos:
-                cuenta[k].append(linea)
+            if k in conocidos:
+                continue
+            if not clave(linea.destino) and reglas and reglas.para_importe(linea.descripcion, linea.centavos,
+                                                                           ids.get(clave(bloque.cuenta))):
+                continue                                # sin subcategoría, pero una de tus reglas la decide
+            cuenta[k].append(linea)
     resultado = [
         Desconocido(k, lineas[0].destino.upper() if lineas[0].destino else SIN_SUBCATEGORIA[
             1 if lineas[0].centavos > 0 else -1], len(lineas), sum(ln.centavos < 0 for ln in lineas),
@@ -388,15 +395,18 @@ def _cargar_en(libro: Libro, archivo: Archivo, mapeo: dict[str, Destino]) -> Res
     nombres = {d.clave: d.nombre for d in sin_reconocer}
     destinos = _preparar_destinos(libro, {k: v for k, v in mapeo.items() if k in nombres}, nombres, resultado)
 
+    reglas = reglas_categorias.Indice(libro)
     lineas = sorted(((b, ln) for b in archivo.bloques for ln in b.lineas), key=lambda bl: (bl[1].fecha, bl[1].numero))
-    propuestas: list[tuple[Bloque, Linea, Operacion | None, str]] = []
+    propuestas: list[tuple[Bloque, Linea, Operacion | None, str]] = []   # (…, la operación, el error o una nota)
     for bloque, linea in lineas:
         cuenta = cuentas_por_nombre.get(clave(bloque.cuenta))
         if cuenta is None:
             continue                                   # el error de la cuenta ya quedó anotado
         try:
-            op = _operacion(libro, cuenta, linea, cuentas_por_nombre, destinos)
-            propuestas.append((bloque, linea, op, ""))
+            regla = (reglas.para_importe(linea.descripcion, linea.centavos, cuenta.id)
+                     if reglas and not clave(linea.destino) else None)
+            op = _operacion(libro, cuenta, linea, cuentas_por_nombre, destinos, regla)
+            propuestas.append((bloque, linea, op, reglas_categorias.motivo(regla) if regla else ""))
         except _Pendiente:
             propuestas.append((bloque, linea, None, PENDIENTE))
         except ErrorTally as error:
@@ -435,7 +445,7 @@ def _cargar_en(libro: Libro, archivo: Archivo, mapeo: dict[str, Destino]) -> Res
             continue
         try:
             libro.agregar_operacion(op)
-            resultado.filas.append(Fila(**fila, tipo=op.tipo, destino=destino, estado=NUEVO))
+            resultado.filas.append(Fila(**fila, tipo=op.tipo, destino=destino, estado=NUEVO, detalle=error))
         except ErrorTally as error:
             resultado.filas.append(Fila(**fila, tipo=op.tipo, destino=destino, estado=ERROR, detalle=str(error)))
     resultado.filas.sort(key=lambda f: f.numero)
@@ -547,7 +557,7 @@ def _preparar_destinos(libro: Libro, mapeo: dict[str, Destino], nombres: dict[st
 
 
 def _operacion(libro: Libro, cuenta: Cuenta, linea: Linea, cuentas_por_nombre: dict[str, Cuenta],
-               destinos: dict[str, Destino]) -> Operacion:
+               destinos: dict[str, Destino], regla: Regla | None = None) -> Operacion:
     k = clave_destino(linea)
     otra = cuentas_por_nombre.get(k) if clave(linea.destino) else None
     if otra is None and (encontrada := next((c for c in libro.cuentas() if clave(c.nombre) == k), None)):
@@ -555,6 +565,8 @@ def _operacion(libro: Libro, cuenta: Cuenta, linea: Linea, cuentas_por_nombre: d
     categoria = None
     if otra is None:
         categoria = next((c for c in libro.categorias() if clave(c.nombre) == k), None) if clave(linea.destino) else None
+        if categoria is None and regla is not None:
+            categoria = libro.categoria(regla.categoria_id)     # sin subcategoría: la decide tu regla
         if categoria is None:
             destino = destinos.get(k)
             if destino is None:

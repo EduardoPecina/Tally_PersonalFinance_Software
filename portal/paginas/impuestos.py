@@ -8,11 +8,11 @@ from decimal import Decimal
 import pandas as pd
 import streamlit as st
 
-from motor import categorias, impuestos
+from motor import categorias, comprobantes, impuestos
 from motor.dinero import a_pesos
 from motor.modelo import ClaseCategoria, ConceptoDeducible, PerfilImpuestos
 from portal.componentes import exportar, formato
-from portal.componentes.sesion import ejecutar, libro
+from portal.componentes.sesion import ejecutar, libro, sesion
 
 SUBTOTAL = "(el subtotal)"
 EFECTO = {False: "Se suma", True: "Se retiene (se resta)"}
@@ -76,6 +76,7 @@ def _deducibles() -> None:
     if any(r.en_efectivo for r in reporte.renglones):
         st.warning("Algunos pagos fueron **en efectivo** y no cuentan en los conceptos que lo piden. Para la próxima, "
                    "paga con tarjeta o transferencia.", icon="💵")
+    adjuntos = comprobantes.por_movimiento(lib)
     for r in reporte.renglones:
         if not r.pagos:
             continue
@@ -86,6 +87,7 @@ def _deducibles() -> None:
                 "Fecha": [p.fecha for p in r.pagos], "Descripción": [p.descripcion for p in r.pagos],
                 "Subcategoría": [p.subcategoria for p in r.pagos], "Cuenta": [p.cuenta for p in r.pagos],
                 "Importe": [formato.dinero(p.importe) for p in r.pagos],
+                "📎": [str(adjuntos.get(p.operacion_id, "")) for p in r.pagos],
                 "": ["💵 en efectivo" if p.en_efectivo and r.concepto.sin_efectivo else "" for p in r.pagos],
             })), hide_index=True, width="stretch",
                 column_config={"Fecha": st.column_config.DateColumn(format="DD/MM/YYYY")})
@@ -96,8 +98,38 @@ def _deducibles() -> None:
         st.download_button("Descargar en Excel (para tu declaración)", lambda: exportar.excel({"Deducibles": pd.DataFrame(filas)}, columnas_dinero={"Importe"}),
                            file_name=f"TALLY_deducibles_{anio}.xlsx", icon=":material/download:", on_click="ignore",
                            key="imp_excel")
+    _comprobantes_del_anio(anio)
     if lib.fiscal.notas:
         st.caption(f"📌 {lib.fiscal.notas}")
+
+
+def _comprobantes_del_anio(anio: int) -> None:
+    """Cuántos de tus pagos deducibles tienen su comprobante, cuáles no, y todos en un .zip."""
+    lib = libro()
+    lista = comprobantes.deducibles(lib, anio)
+    if not lista:
+        return
+    faltan = [d for d in lista if not d.comprobantes]
+    with st.container(border=True):
+        st.markdown(f"**📎 Comprobantes de {anio}** · {len(lista) - len(faltan)} de {len(lista)} pago(s) deducibles "
+                    "tienen su comprobante.")
+        if faltan:
+            st.caption("Sin comprobante, tu autoridad fiscal puede no aceptar el deducible. Adjúntalo desde "
+                       "**Historial** (elige el movimiento → 📎 Comprobantes).")
+            with st.expander(f"Ver los {len(faltan)} sin comprobante"):
+                st.dataframe(formato.pintar(pd.DataFrame({
+                    "Concepto": [d.concepto for d in faltan], "Fecha": [d.pago.fecha for d in faltan],
+                    "Descripción": [d.pago.descripcion for d in faltan], "Cuenta": [d.pago.cuenta for d in faltan],
+                    "Importe": [formato.dinero(d.pago.importe) for d in faltan],
+                })), hide_index=True, width="stretch",
+                    column_config={"Fecha": st.column_config.DateColumn(format="DD/MM/YYYY")})
+        if len(faltan) < len(lista):
+            st.download_button(
+                "Descargar los comprobantes del año (.zip)", lambda: comprobantes.zip_de_deducibles(sesion(), anio),
+                file_name=f"TALLY_comprobantes_deducibles_{anio}.zip", mime="application/zip", on_click="ignore",
+                icon=":material/folder_zip:", key="imp_zip_comprobantes",
+                help="Una carpeta por concepto y un índice (indice.csv, se abre en Excel) con cada pago y su archivo. "
+                     "Para tu contador o tu declaración.")
 
 
 def _explicar_tope(lib, ingreso: Decimal) -> str:

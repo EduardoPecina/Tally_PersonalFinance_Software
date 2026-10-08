@@ -287,6 +287,33 @@ class Cifrador:
             raise
         return json.loads(datos)
 
+    def cifrar_bytes(self, datos: bytes, contexto: str) -> bytes:
+        """Un archivo (un comprobante): ``PREFIJO_ARCHIVO`` + nonce + datos cifrados (AES-256-GCM)."""
+        nonce = os.urandom(12)
+        return PREFIJO_ARCHIVO + nonce + _aes(self.llave).encrypt(nonce, bytes(datos), contexto.encode("utf-8"))
+
+    def descifrar_bytes(self, datos: bytes, contexto: str) -> bytes:
+        if not es_archivo_cifrado(datos):
+            raise ErrorDatos("Hay un archivo sin cifrar en tus datos cifrados. Restaura un respaldo.")
+        crudo = bytes(datos[len(PREFIJO_ARCHIVO):])
+        try:
+            return _aes(self.llave).decrypt(crudo[:12], crudo[12:], contexto.encode("utf-8"))
+        except Exception as error:
+            if type(error).__name__ == "InvalidTag":
+                raise ErrorDatos("Un comprobante cifrado fue modificado por fuera o está dañado.") from None
+            raise ErrorDatos(f"Un comprobante cifrado está dañado ({error}).") from error
+
+
+PREFIJO_ARCHIVO = f"TALLYC{VERSION}".encode("ascii") + b"\x00"
+
+
+def es_archivo_cifrado(datos) -> bool:
+    return isinstance(datos, (bytes, bytearray, memoryview)) and bytes(datos[:len(PREFIJO_ARCHIVO)]) == PREFIJO_ARCHIVO
+
+
+def contexto_archivo(archivo_id: str) -> str:
+    return f"archivo:{archivo_id}"
+
 
 def es_cifrado(texto) -> bool:
     return isinstance(texto, str) and texto.startswith(PREFIJO)

@@ -6,13 +6,13 @@ from datetime import date, timedelta
 
 import streamlit as st
 
-from motor import cierre, cuentas, reportes, tarjetas
+from motor import cierre, cuentas, plan_deudas, reportes, tarjetas
 from motor.modelo import TipoCuenta
 from portal.componentes import estado, formato, graficas, por_recuperar
 from portal.componentes import tarjeta as estado_tarjeta
 from portal.componentes.sesion import libro
 from portal.navegacion import enlace
-from portal.paginas import calendario, presupuestos
+from portal.paginas import ayuda, calendario, presupuestos, salud
 
 PERSONALIZADO = "personalizado"
 PERIODOS = {**reportes.PERIODOS, PERSONALIZADO: "Elegir fechas"}
@@ -104,6 +104,28 @@ def _tarjetas() -> None:
             estado_tarjeta.mostrar(tarjeta)
 
 
+def _plan_de_deudas() -> None:
+    """Tu plan para salir de deudas (Deudas › Plan), si lo guardaste: cuánto pagar a cada una y a cuál va lo extra."""
+    lib = libro()
+    av = plan_deudas.avance(lib)
+    if av is None:
+        return
+    st.subheader("🎯 Tu plan para salir de deudas")
+    with st.container(border=True):
+        if not av.alcanza:
+            st.warning(f"Con los {formato.dinero_md(av.presupuesto)} al mes de tu plan ya no alcanzas lo mínimo que "
+                       "piden tus deudas. Revisa tu plan.", icon="🛑")
+        else:
+            nombres = {c.id: c.nombre for c in lib.cuentas()}
+            lineas = [f"- **{formato.md(nombres[i])}**: {formato.dinero_md(monto)}"
+                      + (" 🎯 *(aquí va lo extra)*" if av.objetivo and i == av.objetivo.cuenta_id else "")
+                      for i, monto in sorted(av.pagos.items(), key=lambda x: -x[1])]
+            fin = f"{formato.MESES[av.fin.month - 1]} de {av.fin.year}" if av.fin else ""
+            st.markdown(f"Tus próximos pagos ({formato.dinero_md(av.presupuesto)} en total):\n" + "\n".join(lineas)
+                        + (f"\n\nAsí terminas de pagar en **{fin}**." if fin else ""))
+        enlace("deudas", "Ver mi plan de deudas", "🎯")
+
+
 def _quincenas() -> None:
     lib = libro()
     for cuenta in cuentas.listar(lib):
@@ -126,6 +148,8 @@ def mostrar() -> None:
 
     _avisos()
     _recordar_cierre()
+    salud.aviso_en_el_resumen()
+    ayuda.tarjeta_en_el_resumen()
     calendario.proximos_avisos()
     por_recuperar.avisos()
     st.subheader("Tu situación hoy")
@@ -158,6 +182,7 @@ def mostrar() -> None:
 
     presupuestos.avance(*reportes.rango_periodo(libro(), "mes_actual"))
     _tarjetas()
+    _plan_de_deudas()
     _quincenas()
     st.divider()
     enlace("registrar", "Registrar un movimiento", "➕")

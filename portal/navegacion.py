@@ -30,8 +30,10 @@ def paginas() -> dict[str, st.Page]:
             categorias=st.Page("vistas/categorias.py", title="Categorías", icon="🏷️", url_path="categorias"),
             cargar=st.Page("vistas/cargar.py", title="Cargar datos", icon="📥", url_path="cargar"),
             respaldos=st.Page("vistas/respaldos.py", title="Respaldos y bitácora", icon="💾", url_path="respaldos"),
+            salud=st.Page("vistas/salud.py", title="Salud de tus datos", icon="🩺", url_path="salud"),
             configuracion=st.Page("vistas/configuracion.py", title="Configuración", icon="⚙️",
                                   url_path="configuracion"),
+            ayuda=st.Page("vistas/ayuda.py", title="Guía y ayuda", icon="❓", url_path="ayuda"),
         )
     return _PAGINAS
 
@@ -39,7 +41,7 @@ def paginas() -> dict[str, st.Page]:
 SECCIONES = {
     "Tu dinero": ("inicio", "registrar", "historial", "cuentas", "ingresos", "deudas", "calendario", "presupuestos", "metas"),
     "Análisis": ("cierre", "pivots", "graficas", "inversiones", "contabilidad", "impuestos"),
-    "Ajustes": ("categorias", "cargar", "respaldos", "configuracion"),
+    "Ajustes": ("categorias", "cargar", "salud", "respaldos", "configuracion", "ayuda"),
 }
 
 

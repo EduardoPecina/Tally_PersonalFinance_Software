@@ -14,6 +14,8 @@ errores de Streamlit:
 - Con contraseña (opcional, motor/cifrado.py), cada registro y la bitácora se guardan cifrados; lo único sin
   cifrar son las «cajas» que abren la llave (meta ``cifrado``) y los contadores. Sin la llave, ``cargar`` lanza
   ``ErrorBloqueado``.
+- Los archivos de los comprobantes (fotos, PDF, XML) van en la tabla ``archivos``, cifrados igual si hay
+  contraseña, y se escriben y borran en la misma transacción que sus datos.
 """
 
 from __future__ import annotations
@@ -31,12 +33,13 @@ from motor.errores import ErrorBloqueado, ErrorDatos
 from motor.libro import Libro
 from motor.serializacion import Instantanea, Memoria, instantanea, libro_desde_instantanea
 
-VERSION_ESQUEMA = 6
+VERSION_ESQUEMA = 7
 # 1: TALLY 0.1–0.3. 2: categorías con subcategorías (entidad «rubro»). Las tablas no cambian; el contenido lo
 #    pone al día ``Sesion`` (motor/catalogo.py) la primera vez que se abre. 3: títulos e inversiones a plazo
 #    (entidades «valor» y «plazo», TALLY 0.7): una versión anterior ya no abre los datos, para no perderlos.
 #    4: bienes (cuentas de tipo «bien» y entidad «bien», TALLY 0.10). 5: préstamos (TALLY 0.11). 6: contraseña
 #    opcional (datos cifrados, motor/cifrado.py, TALLY 0.12): una versión anterior no sabría leerlos.
+#    7: reglas de categorías y comprobantes con sus archivos (tabla ``archivos``, TALLY 0.23).
 NOMBRE_ARCHIVO = "tally.db"
 
 _ESQUEMA = """
@@ -60,6 +63,10 @@ CREATE TABLE IF NOT EXISTS bitacora (
     despues    TEXT
 );
 CREATE INDEX IF NOT EXISTS bitacora_entidad ON bitacora (entidad, entidad_id);
+CREATE TABLE IF NOT EXISTS archivos (
+    id    TEXT PRIMARY KEY,
+    datos BLOB NOT NULL
+);
 """
 
 
@@ -142,6 +149,11 @@ class Almacen:
         return cifrado.Config.de_json(texto) if texto else None
 
     @property
+    def revision(self) -> int:
+        """Sube con cada guardado: sirve para saber si un cálculo hecho antes sigue al día."""
+        return self._revision
+
+    @property
     def desbloqueado(self) -> bool:
         return self._cifrador is not None
 
@@ -188,6 +200,42 @@ class Almacen:
             raise ErrorBloqueado("Tus datos tienen contraseña.")
         return json.loads(texto)
 
+    def _guardar_archivo(self, archivo_id: str, datos: bytes) -> bytes:
+        return self._cifrador.cifrar_bytes(datos, cifrado.contexto_archivo(archivo_id)) if self._cifrador else datos
+
+    def leer_archivo(self, archivo_id: str) -> bytes:
+        """El archivo de un comprobante, ya descifrado."""
+        try:
+            with closing(self._conectar()) as conexion:
+                fila = conexion.execute("SELECT datos FROM archivos WHERE id = ?", (archivo_id,)).fetchone()
+        except sqlite3.DatabaseError as error:
+            raise ErrorDatos(f"No se pudo leer el comprobante ({error}).") from error
+        if fila is None:
+            raise ErrorDatos("No se encontró el archivo de ese comprobante. Restaura un respaldo.")
+        datos = bytes(fila[0])
+        if self._cifrador is not None:
+            return self._cifrador.descifrar_bytes(datos, cifrado.contexto_archivo(archivo_id))
+        if cifrado.es_archivo_cifrado(datos):
+            raise ErrorBloqueado("Tus datos tienen contraseña.")
+        return datos
+
+    def archivos_descifrados(self) -> dict[str, bytes]:
+        """Todos los archivos, ya descifrados (hace falta la llave si hay contraseña)."""
+        crudos = self.archivos_crudos()
+        if self._cifrador is None:
+            if any(cifrado.es_archivo_cifrado(d) for d in crudos.values()):
+                raise ErrorBloqueado("Tus datos tienen contraseña.")
+            return crudos
+        return {i: self._cifrador.descifrar_bytes(d, cifrado.contexto_archivo(i)) for i, d in crudos.items()}
+
+    def archivos_crudos(self) -> dict[str, bytes]:
+        """Los archivos tal como están en el disco (cifrados o no): para respaldos y copias."""
+        try:
+            with closing(self._conectar()) as conexion:
+                return {i: bytes(d) for i, d in conexion.execute("SELECT id, datos FROM archivos ORDER BY id")}
+        except sqlite3.DatabaseError as error:
+            raise ErrorDatos(f"No se pudieron leer los comprobantes ({error}).") from error
+
     def activar_cifrado(self, config: cifrado.Config, llave: bytes) -> None:
         """Cifra todos los registros y la bitácora en **una sola transacción** (todo o nada) y borra del disco
         los restos sin cifrar (``secure_delete``, checkpoint del WAL y ``VACUUM``)."""
@@ -195,6 +243,7 @@ class Almacen:
             raise ErrorDatos("Tus datos ya tienen contraseña.")
         cifrador = cifrado.Cifrador(llave)
         self._transformar(lambda texto, contexto: cifrador.cifrar(json.loads(texto), contexto),
+                          convertir_archivo=lambda datos, contexto: cifrador.cifrar_bytes(datos, contexto),
                           poner=config.a_json())
         self._cifrador = cifrador
 
@@ -203,10 +252,12 @@ class Almacen:
         if self._cifrador is None:
             raise ErrorBloqueado("Primero abre tus datos con tu contraseña.")
         cifrador = self._cifrador
-        self._transformar(lambda texto, contexto: _json(cifrador.descifrar(texto, contexto)), poner=None)
+        self._transformar(lambda texto, contexto: _json(cifrador.descifrar(texto, contexto)),
+                          convertir_archivo=lambda datos, contexto: cifrador.descifrar_bytes(datos, contexto),
+                          poner=None)
         self._cifrador = None
 
-    def _transformar(self, convertir, *, poner: str | None) -> None:
+    def _transformar(self, convertir, *, convertir_archivo, poner: str | None) -> None:
         try:
             with closing(self._conectar()) as conexion:
                 conexion.execute("PRAGMA secure_delete=ON")
@@ -225,6 +276,10 @@ class Almacen:
                                                                                        ("despues", despues))]
                         cambios.append((*nuevos, rid))
                     conexion.executemany("UPDATE bitacora SET antes = ?, despues = ? WHERE id = ?", cambios)
+                    archivos = conexion.execute("SELECT id, datos FROM archivos").fetchall()
+                    conexion.executemany("UPDATE archivos SET datos = ? WHERE id = ?",
+                                         [(convertir_archivo(bytes(d), cifrado.contexto_archivo(i)), i)
+                                          for i, d in archivos])
                     if poner is None:
                         conexion.execute("DELETE FROM meta WHERE clave = 'cifrado'")
                     else:
@@ -261,9 +316,10 @@ class Almacen:
                     for f, e, i, a, antes, despues in conexion.execute(
                         "SELECT fecha_hora, entidad, entidad_id, accion, antes, despues FROM bitacora ORDER BY id")
                 ]
+                archivos = {i: bytes(d) for i, d in conexion.execute("SELECT id, datos FROM archivos ORDER BY id")}
                 return {"entidades": entidades, "bitacora": bitacora,
                         "secuencia": int(self._meta(conexion, "secuencia") or 0),
-                        "cifrado": self._meta(conexion, "cifrado")}
+                        "cifrado": self._meta(conexion, "cifrado"), "archivos": archivos}
         except sqlite3.DatabaseError as error:
             raise ErrorDatos(f"No se pudo leer el archivo de datos ({error}).") from error
 
@@ -382,6 +438,7 @@ class Almacen:
                         [self._fila_bitacora(momento, c.entidad, c.entidad_id, c.accion, c.antes, c.despues)
                          for c in cambios],
                     )
+                    self._escribir_archivos(conexion, libro, nuevo, cambios, reemplazar_todo)
                     if poner_cifrado is not None:
                         self._poner_meta(conexion, "cifrado", poner_cifrado)
                     self._poner_meta(conexion, "secuencia", libro.secuencia)
@@ -396,6 +453,20 @@ class Almacen:
         self._guardado = nuevo
         self._secuencia = libro.secuencia
         self._revision = revision + 1
+        libro.archivos_guardados()
+
+    def _escribir_archivos(self, conexion: sqlite3.Connection, libro: Libro, nuevo: Instantanea,
+                           cambios: list[auditoria.Cambio], reemplazar_todo: bool) -> None:
+        """Los archivos de los comprobantes: los nuevos se escriben y los de comprobantes borrados se borran."""
+        if reemplazar_todo:
+            conexion.execute("DELETE FROM archivos")
+        else:
+            conexion.executemany("DELETE FROM archivos WHERE id = ?",
+                                 [(c.entidad_id,) for c in cambios if c.entidad == "comprobante" and c.despues is None])
+        vigentes = nuevo.get("comprobante", {})
+        conexion.executemany("INSERT OR REPLACE INTO archivos (id, datos) VALUES (?, ?)",
+                             [(i, self._guardar_archivo(i, datos)) for i, datos in libro.archivos_nuevos().items()
+                              if i in vigentes])
 
     def _fila_bitacora(self, fecha_hora, entidad, entidad_id, accion, antes, despues) -> tuple:
         return (fecha_hora, entidad, entidad_id, accion,

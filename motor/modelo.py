@@ -78,6 +78,10 @@ class Perfil:
     iva: Decimal = Decimal(16)         # % de IVA/VAT de tu país: se cobra sobre los intereses (tarjetas, préstamos)
     ingreso_esperado: int | None = None  # centavos al mes; None = el promedio de tus ingresos fijos (planeacion.py)
     meta_ahorro: int = 10              # % del ingreso que quieres ahorrar (presupuestos sugeridos)
+    plan_deudas: int | None = None     # centavos al mes para todas tus deudas (motor/plan_deudas.py); None = sin plan
+    estrategia_deudas: str = ""        # avalancha o bola_de_nieve
+    salud_ignorados: tuple[str, ...] = ()   # hallazgos de la revisión de salud marcados «Está bien así» (salud.py)
+    guia_oculta: bool = False          # la guía de primeros pasos ya no sale en el Resumen (guia.py)
 
 
 @dataclass(frozen=True, slots=True)
@@ -304,6 +308,35 @@ class Prestamo:
     @property
     def id(self) -> str:
         return self.cuenta_id
+
+
+@dataclass(frozen=True, slots=True)
+class Comprobante:
+    """Un archivo (foto del ticket, PDF o XML de la factura) adjunto a un movimiento (motor/comprobantes.py).
+
+    Aquí solo van sus datos; el archivo se guarda aparte, en la tabla ``archivos`` del mismo ``tally.db``
+    (cifrado si tienes contraseña) y viaja en los respaldos."""
+
+    id: str
+    operacion_id: str
+    nombre: str                      # el nombre del archivo («ticket_super.jpg»)
+    tipo: str                        # image/jpeg, image/png, image/webp, application/pdf o application/xml
+    tamano: int                      # bytes
+    huella: str                      # SHA-256 del archivo: para saber si ya lo habías adjuntado
+    agregado: datetime | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class Regla:
+    """Una regla automática de categoría (motor/reglas_categorias.py): si la descripción de un movimiento contiene
+    ``texto``, va a ``categoria_id``. Opcionalmente, solo en una cuenta."""
+
+    id: str
+    texto: str                     # como se compara: MAYÚSCULAS, sin acentos ni signos («OXXO GAS»)
+    categoria_id: str              # una subcategoría de gasto o de ingreso
+    cuenta_id: str | None = None   # solo en los movimientos de esta cuenta (None = en todas)
+    activa: bool = True
+    creada: date | None = None
 
 
 @dataclass(frozen=True, slots=True)

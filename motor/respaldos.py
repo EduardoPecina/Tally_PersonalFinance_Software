@@ -1,18 +1,20 @@
 """Crear y restaurar respaldos.
 
-Un respaldo es un ``.zip`` con dos archivos:
+Un respaldo es un ``.zip`` con:
 
-- ``manifiesto.json``: formato, versión, fecha, resumen y huella SHA-256.
+- ``manifiesto.json``: formato, versión, fecha, resumen y huellas SHA-256.
 - ``datos.json``: todo el libro y la bitácora, en el mismo formato estable que
   usa la base de datos.
+- ``archivos/<id>``: el archivo de cada comprobante (foto, PDF o XML), con su
+  huella en el manifiesto.
 
 Con él se reconstruye el historial completo en cualquier PC. Restaurar nunca
 sobrescribe en silencio: primero se valida el archivo, luego se crea un
 respaldo de seguridad de lo actual y al final se reemplaza todo en una sola
 transacción.
 
-Con contraseña (motor/cifrado.py), cada registro de ``datos.json`` va cifrado
-y el manifiesto lleva las «cajas» que abren la llave (con la contraseña de ese
+Con contraseña (motor/cifrado.py), cada registro de ``datos.json`` y cada
+comprobante van cifrados y el manifiesto lleva las «cajas» que abren la llave (con la contraseña de ese
 día o con el Kit de emergencia), sin nombre ni montos. Se crea copiando lo
 cifrado tal cual (no hace falta la llave) y se abre en cualquier PC.
 """
@@ -39,12 +41,15 @@ from motor.serializacion import libro_desde_instantanea
 from motor.sesion import Sesion
 
 FORMATO = "tally-respaldo"
-VERSION_FORMATO = 6  # 2: categorías con subcategorías (TALLY 0.4). 3: títulos e inversiones a plazo (TALLY 0.7).
+VERSION_FORMATO = 7  # 2: categorías con subcategorías (TALLY 0.4). 3: títulos e inversiones a plazo (TALLY 0.7).
 # 4: bienes y su depreciación (TALLY 0.10). 5: préstamos (TALLY 0.11). 6: respaldos cifrados (TALLY 0.12).
+# 7: reglas de categorías y comprobantes con sus archivos (TALLY 0.23).
 #                      Los anteriores se ponen al día al restaurar
 MANIFIESTO = "manifiesto.json"
 DATOS = "datos.json"
+ARCHIVOS = "archivos/"
 TAMANO_MAXIMO = 512 * 1024 * 1024  # bytes descomprimidos de datos.json
+TAMANO_MAXIMO_ARCHIVO = 32 * 1024 * 1024  # bytes de cada comprobante dentro del respaldo
 
 
 @dataclass(frozen=True, slots=True)
@@ -220,7 +225,7 @@ def _crear_desde(almacen: Almacen, momento: datetime, destino: Path | str | None
     if config is not None and not sin_contrasena:
         crudo = almacen.leer_crudo()
         contenido = {"secuencia": crudo["secuencia"], "entidades": crudo["entidades"], "bitacora": crudo["bitacora"]}
-        return _escribir_zip(ruta, contenido, momento, None, config)
+        return _escribir_zip(ruta, contenido, momento, None, config, archivos=crudo["archivos"])
     libro = almacen.libro_guardado()
     contenido = {
         "secuencia": libro.secuencia,
@@ -231,12 +236,12 @@ def _crear_desde(almacen: Almacen, momento: datetime, destino: Path | str | None
             for r in almacen.bitacora(mas_recientes_primero=False)
         ],
     }
-    return _escribir_zip(ruta, contenido, momento, _resumen(libro), None)
+    return _escribir_zip(ruta, contenido, momento, _resumen(libro), None, archivos=almacen.archivos_descifrados())
 
 
 def _escribir_zip(ruta: Path, contenido: dict, momento: datetime | str, resumen: dict | None,
-                  config: cifrado.Config | None, *, version_formato: int = VERSION_FORMATO,
-                  version_app: str = VERSION) -> Path:
+                  config: cifrado.Config | None, *, archivos: dict[str, bytes] | None = None,
+                  version_formato: int = VERSION_FORMATO, version_app: str = VERSION) -> Path:
     # Sin sangría: así Python usa su codificador en C (con sangría es diez veces más lento con años de datos).
     datos = json.dumps(contenido, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
     manifiesto = {
@@ -246,6 +251,8 @@ def _escribir_zip(ruta: Path, contenido: dict, momento: datetime | str, resumen:
         "creado_en": momento if isinstance(momento, str) else momento.isoformat(timespec="seconds"),
         "sha256": hashlib.sha256(datos).hexdigest(),
     }
+    if archivos:
+        manifiesto["archivos"] = {i: hashlib.sha256(d).hexdigest() for i, d in sorted(archivos.items())}
     if config is None:
         manifiesto["resumen"] = resumen
     else:                       # sin nombre ni montos: solo lo necesario para abrirlo con la contraseña o el Kit
@@ -257,6 +264,8 @@ def _escribir_zip(ruta: Path, contenido: dict, momento: datetime | str, resumen:
             with zipfile.ZipFile(archivo, "w", compression=zipfile.ZIP_DEFLATED) as zz:
                 zz.writestr(MANIFIESTO, json.dumps(manifiesto, ensure_ascii=False, indent=2))
                 zz.writestr(DATOS, datos)
+                for i, d in sorted((archivos or {}).items()):
+                    zz.writestr(ARCHIVOS + i, d)
             archivo.flush()
             os.fsync(archivo.fileno())
         os.replace(temporal, ruta)
@@ -345,6 +354,29 @@ def _llave_para(config: cifrado.Config, llave: bytes | None, secreto: str | None
         return cifrado.abrir_con_kit(config, secreto), True
 
 
+def _archivos_del_zip(ruta: Path, manifiesto: dict) -> dict[str, bytes]:
+    """Los comprobantes del respaldo, tal como vienen (cifrados o no), comprobando su huella."""
+    huellas = manifiesto.get("archivos") or {}
+    if not isinstance(huellas, dict):
+        raise ErrorDatos("El respaldo está dañado (la lista de comprobantes no es válida).")
+    archivos = {}
+    try:
+        with zipfile.ZipFile(ruta) as zz:
+            for i, huella in huellas.items():
+                nombre = ARCHIVOS + str(i)
+                if zz.getinfo(nombre).file_size > TAMANO_MAXIMO_ARCHIVO:
+                    raise ErrorDatos("Un comprobante del respaldo es demasiado grande para ser de TALLY.")
+                datos = zz.read(nombre)
+                if hashlib.sha256(datos).hexdigest() != huella:
+                    raise ErrorDatos("Un comprobante del respaldo está dañado o fue modificado (la huella no coincide).")
+                archivos[str(i)] = datos
+    except KeyError as error:
+        raise ErrorDatos(f"Al respaldo le falta un comprobante ({error}).") from error
+    except (zipfile.BadZipFile, OSError) as error:
+        raise ErrorDatos(f"El archivo de respaldo está dañado ({error}).") from error
+    return archivos
+
+
 def _abrir_zip(ruta: Path) -> tuple[dict, bytes]:
     try:
         with zipfile.ZipFile(ruta) as zz:
@@ -382,6 +414,11 @@ def _leer(ruta: Path, reloj=None, *, llave: bytes | None = None, secreto: str | 
             entidades, bitacora_cruda = _descifrar_contenido(entidades, bitacora_cruda,
                                                              cifrado.Cifrador(llave_respaldo))
         libro = libro_desde_instantanea(entidades, contenido.get("secuencia", 0), reloj=reloj)
+        archivos = _archivos_del_zip(ruta, manifiesto)
+        if config is not None:
+            cifrador = cifrado.Cifrador(llave_respaldo)
+            archivos = {i: cifrador.descifrar_bytes(d, cifrado.contexto_archivo(i)) for i, d in archivos.items()}
+        _poner_archivos(libro, archivos)
         bitacora = [
             auditoria.Registro(id=0, **{k: r[k] for k in ("fecha_hora", "entidad", "entidad_id", "accion")},
                                antes=r.get("antes"), despues=r.get("despues"))
@@ -403,6 +440,16 @@ def _leer(ruta: Path, reloj=None, *, llave: bytes | None = None, secreto: str | 
         cifrado=config is not None,
     )
     return _Leido(info, libro, bitacora, config, llave_respaldo, con_kit)
+
+
+def _poner_archivos(libro: Libro, archivos: dict[str, bytes]) -> None:
+    """Le da al libro los archivos de sus comprobantes (se escriben al restaurar), comprobando que sean los mismos
+    que se adjuntaron."""
+    libro.poner_archivos(archivos)
+    for c in libro.comprobantes():
+        if hashlib.sha256(archivos[c.id]).hexdigest() != c.huella:
+            raise ErrorDatos(f"El comprobante «{c.nombre}» del respaldo no es el que se adjuntó (la huella no "
+                             "coincide).")
 
 
 def _descifrar_contenido(entidades: dict, bitacora: list[dict], cifrador: cifrado.Cifrador) -> tuple[dict, list]:
@@ -444,6 +491,7 @@ def _leer_archivo_de_datos(ruta: Path, reloj=None, *, llave: bytes | None = None
             almacen.desbloquear(llave_datos)
         libro = almacen.cargar(reloj=reloj)
         bitacora = almacen.bitacora(mas_recientes_primero=False)
+        _poner_archivos(libro, almacen.archivos_descifrados())
     resumen = _resumen(libro)
     info = InfoRespaldo(
         ruta=ruta, creado_en=datetime.fromtimestamp(ruta.stat().st_mtime).isoformat(timespec="seconds"),
@@ -464,9 +512,11 @@ def cifrar_respaldo(ruta: Path | str, config: cifrado.Config, llave: bytes) -> b
     if _config_de(manifiesto) is not None:
         return False
     contenido = json.loads(datos)
-    entidades, bitacora = _cifrar_contenido(contenido["entidades"], contenido.get("bitacora", []),
-                                            cifrado.Cifrador(llave))
-    _reescribir(ruta, {**contenido, "entidades": entidades, "bitacora": bitacora}, manifiesto, config)
+    cifrador = cifrado.Cifrador(llave)
+    entidades, bitacora = _cifrar_contenido(contenido["entidades"], contenido.get("bitacora", []), cifrador)
+    archivos = {i: cifrador.cifrar_bytes(d, cifrado.contexto_archivo(i))
+                for i, d in _archivos_del_zip(ruta, manifiesto).items()}
+    _reescribir(ruta, {**contenido, "entidades": entidades, "bitacora": bitacora}, manifiesto, config, archivos)
     return True
 
 
@@ -478,17 +528,21 @@ def descifrar_respaldo(ruta: Path | str, llave: bytes) -> bool:
     if config is None or config.llave_id != cifrado.huella(llave):
         return False
     contenido = json.loads(datos)
-    entidades, bitacora = _descifrar_contenido(contenido["entidades"], contenido.get("bitacora", []),
-                                               cifrado.Cifrador(llave))
+    cifrador = cifrado.Cifrador(llave)
+    entidades, bitacora = _descifrar_contenido(contenido["entidades"], contenido.get("bitacora", []), cifrador)
+    archivos = {i: cifrador.descifrar_bytes(d, cifrado.contexto_archivo(i))
+                for i, d in _archivos_del_zip(ruta, manifiesto).items()}
     plano = {**contenido, "entidades": entidades, "bitacora": bitacora}
     libro = libro_desde_instantanea(entidades, contenido.get("secuencia", 0))
-    _reescribir(ruta, plano, {**manifiesto, "resumen": _resumen(libro)}, None)
+    _reescribir(ruta, plano, {**manifiesto, "resumen": _resumen(libro)}, None, archivos)
     return True
 
 
-def _reescribir(ruta: Path, contenido: dict, manifiesto: dict, config: cifrado.Config | None) -> None:
+def _reescribir(ruta: Path, contenido: dict, manifiesto: dict, config: cifrado.Config | None,
+                archivos: dict[str, bytes]) -> None:
     fechas = ruta.stat()
     _escribir_zip(ruta, contenido, str(manifiesto.get("creado_en", "")), manifiesto.get("resumen"), config,
+                  archivos=archivos,
                   version_formato=max(int(manifiesto.get("version_formato", 1)), VERSION_FORMATO if config else 1),
                   version_app=str(manifiesto.get("version_app", "")))
     os.utime(ruta, ns=(fechas.st_atime_ns, fechas.st_mtime_ns))       # conserva su orden en la carpeta

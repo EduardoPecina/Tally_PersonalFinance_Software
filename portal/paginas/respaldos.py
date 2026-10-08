@@ -7,7 +7,7 @@ from pathlib import Path
 import pandas as pd
 import streamlit as st
 
-from motor import auditoria, respaldos, rutas
+from motor import auditoria, comprobantes, respaldos, rutas
 from motor.errores import ErrorTally
 from portal.componentes import respaldo
 from portal.componentes.sesion import avisar, sesion
@@ -19,6 +19,9 @@ def _crear() -> None:
                "memoria USB o donde quieras: si cambias de PC, "
                "formateas o empiezas de cero, con él recuperas todo, aquí en **Restaurar** o en la bienvenida "
                "(«Ya usaba TALLY»).")
+    adjuntos = comprobantes.resumen(sesion().libro)
+    if adjuntos.cuantos:
+        st.caption(f"📎 Incluye tus {adjuntos.cuantos} comprobante(s) ({comprobantes.tamano(adjuntos.bytes)}).")
     respaldo.boton_descargar("respaldos")
     st.caption(f"¿Solo quieres guardar una copia en la carpeta **{rutas.carpeta_respaldos()}**, sin descargarla? "
                "Ahí también están los automáticos: uno por día (los últimos que elijas en Configuración) y los "

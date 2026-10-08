@@ -55,6 +55,11 @@ que los dos siempre buscan los datos en el mismo lugar.
   los respaldos: si se borra o se daña, TALLY lo ignora y lo rehace en la
   siguiente consulta.
 - Esquema 5 y respaldos de formato 5 desde TALLY 0.11: entidad `prestamo` (cómo se contrató cada préstamo).
+- Esquema 7 y respaldos de formato 7 desde TALLY 0.23: entidades `regla` (reglas automáticas de categorías) y
+  `comprobante` (los datos de cada archivo adjunto a un movimiento: nombre, tipo, tamaño y huella SHA-256). El
+  archivo mismo va en la tabla `archivos` (`id`, `datos` BLOB) del mismo `tally.db`, y se escribe y se borra **en la
+  misma transacción** que su comprobante: si el guardado falla, no queda ni el archivo. Al borrar un movimiento se
+  borran sus comprobantes. La bitácora guarda los datos del comprobante, nunca el archivo.
 - Esquema 4 y respaldos de formato 4 desde TALLY 0.10: entidad `bien` (cómo se deprecia cada cuenta de tipo
   «bien», sus avalúos y su venta). Una versión anterior ya no los abre, para no perder los bienes.
 - `Datos\historial_precios.json` (TALLY 0.8) guarda los cierres diarios
@@ -86,6 +91,9 @@ Viene apagado. Al activarlo (`motor/seguridad.py`):
   aparte con AES-256-GCM. El dato adicional autenticado es su lugar
   (`entidad:{tipo}:{id}`, `bitacora:{campo}:…`): un registro movido o
   modificado no se abre en silencio.
+- Cada comprobante (tabla `archivos`) también: `TALLYC1\0` + nonce + datos
+  cifrados, con `archivo:{id}` como dato autenticado. Al poner o quitar la
+  contraseña se convierten en la misma transacción que todo lo demás.
 - La conversión se hace en **una sola transacción**, con `secure_delete`,
   `wal_checkpoint(TRUNCATE)` y `VACUUM`, para no dejar restos legibles.
   Después se relee y se compara con lo de antes; si no coincide, se deshace.
@@ -134,8 +142,11 @@ de sus propios datos.
 Un respaldo es un `.zip` con:
 
 - `manifiesto.json`: formato `tally-respaldo`, versión del formato, versión de
-  la app, fecha, resumen y huella SHA-256 de los datos.
+  la app, fecha, resumen y huella SHA-256 de los datos y de cada comprobante.
 - `datos.json`: todas las entidades y la bitácora.
+- `archivos/<id>` (formato 7, TALLY 0.23): el archivo de cada comprobante; cifrado si el respaldo tiene contraseña.
+  Al restaurar se comprueba su huella en el manifiesto y contra la del comprobante: uno que falte o no coincida
+  rechaza el respaldo antes de tocar nada.
 
 | Función | Qué hace |
 |---|---|
