@@ -7,9 +7,9 @@ from itertools import groupby
 import pandas as pd
 import streamlit as st
 
-from motor import consultas, movimientos, salud
+from motor import consultas, efectivo, movimientos, salud
 from portal.componentes import formato
-from portal.componentes.sesion import ejecutar, libro, sesion
+from portal.componentes.sesion import aplicar, avisar, ejecutar, libro, sesion
 from portal.navegacion import enlace
 
 DESTINOS = {"historial": ("Ir al Historial", "📋"), "cuentas": ("Ir a Cuentas", "🏦"),
@@ -87,6 +87,12 @@ def _hallazgo(h: salud.Hallazgo) -> None:
         if h.clave.startswith("duplicado:"):
             with columnas[1].popover("Borrar uno", icon=":material/delete:"):
                 _borrar_duplicado(h)
+        if h.clave.startswith("efectivo:") and columnas[1].button(
+                "Pasarlos a mi efectivo", key=f"salud_efectivo_{h.clave}", type="primary", icon=":material/payments:"):
+            hechos = aplicar(efectivo.convertir_todos)
+            if hechos is not None:
+                avisar(f"{hechos} retiro(s) pasaron a tu cuenta de efectivo y ya no cuentan como gasto.", "💵")
+                st.rerun()
         if h.se_puede_ignorar and columnas[2].button("Está bien así", key=f"salud_ignorar_{h.clave}",
                                                      icon=":material/check:"):
             if ejecutar(lambda lib: salud.ignorar(lib, h.clave), exito="Listo: ya no se muestra"):

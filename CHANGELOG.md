@@ -2,6 +2,21 @@
 
 Todos los cambios relevantes de TALLY se documentan aquí.
 
+## [0.23.1] — Sin publicar
+
+- **Sacar efectivo ya llega a tu cuenta de Efectivo.** Un retiro de efectivo registrado como gasto en «EFECTIVO ›
+  RETIROS DE EFECTIVO» se contaba como gasto y el dinero no llegaba a tu cuenta de efectivo. Si tienes una cuenta de
+  efectivo activa, sacar dinero del cajero (o disponer con tu tarjeta) ya no es un gasto, sino un paso de dinero a tu
+  cartera; el gasto es lo que pagas después con ese efectivo.
+  - **Al registrar:** un gasto en RETIROS DE EFECTIVO se guarda como transferencia a tu cuenta de efectivo y te lo
+    dice al guardar.
+  - **Al importar del banco:** los retiros en cajero se sugieren como paso a tu cuenta de efectivo.
+  - **Lo que ya guardaste así**, desde que llevas tu efectivo en TALLY (la fecha de su saldo inicial), se pasa con un
+    clic: en el Historial (al elegir el movimiento) o en Salud de tus datos («Pasarlos a mi efectivo»). Conserva la
+    fecha, el importe, la descripción y sus comprobantes. Los de antes no se tocan: ya están dentro del saldo inicial.
+  - Sin cuenta de efectivo, RETIROS DE EFECTIVO sigue contando como gasto.
+  - Guía y ayuda: «Sacar efectivo del cajero».
+
 ## [0.23.0] — Sin publicar
 
 Cinco mejoras, integradas con lo que ya había:

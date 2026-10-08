@@ -5,7 +5,7 @@ from __future__ import annotations
 import pandas as pd
 import streamlit as st
 
-from motor import bienes, categorias, comprobantes, consultas, cuentas, metas, movimientos
+from motor import bienes, categorias, comprobantes, consultas, cuentas, efectivo, metas, movimientos
 from motor.consultas import ETIQUETA_TIPO_OPERACION, ORDENES
 from motor.modelo import TipoCuenta, TipoOperacion
 from portal.componentes import comprobantes as panel_comprobantes
@@ -128,6 +128,7 @@ def detalle_movimiento(operacion_id: str, tabla: str = TABLA) -> None:
     if detalle.tipo is TipoOperacion.SALDO_INICIAL:
         st.info("El saldo inicial se cambia desde **Cuentas → Saldo inicial**.")
         return
+    _retiro_de_efectivo(op, tabla)
 
     es_gasto = detalle.tipo is TipoOperacion.GASTO
     adjuntos = len(lib.comprobantes(operacion_id))
@@ -163,6 +164,21 @@ def detalle_movimiento(operacion_id: str, tabla: str = TABLA) -> None:
             if ejecutar(lambda lib: movimientos.eliminar(lib, operacion_id), exito="Movimiento eliminado"):
                 st.session_state.pop(tabla, None)
                 st.rerun()
+
+
+def _retiro_de_efectivo(op, tabla: str) -> None:
+    """Un retiro de efectivo guardado como gasto: con cuenta de efectivo, ese dinero pasó a tu cartera."""
+    destino = efectivo.convertible(libro(), op)
+    if destino is None:
+        return
+    izquierda, derecha = st.columns([3, 1], vertical_alignment="center")
+    izquierda.info(f"💵 Esto fue **sacar efectivo**: no es un gasto. Pásalo a tu cuenta **{formato.md(destino.nombre)}** "
+                   "y su saldo subirá (el gasto será lo que pagues con ese efectivo).", icon="💵")
+    if derecha.button(f"Pasarlo a {destino.nombre}", key=f"a_efectivo_{op.id}", type="primary"):
+        if ejecutar(lambda lib: efectivo.convertir(lib, op.id),
+                    exito=f"Listo: el retiro pasó a {destino.nombre} y ya no cuenta como gasto"):
+            st.session_state.pop(tabla, None)
+            st.rerun()
 
 
 def _convertir_en_bien(operacion_id: str, tabla: str) -> None:

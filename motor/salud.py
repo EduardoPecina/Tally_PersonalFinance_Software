@@ -69,7 +69,7 @@ def revisar(libro: Libro, hoy: date | None = None, *, incluir_ignorados: bool = 
     hoy = hoy or libro.hoy()
     hallazgos = [
         *_integridad(libro), *_duplicados(libro), *_negativos(libro, hoy), *_limites(libro, hoy),
-        *_fechas(libro, hoy), *_temporales(libro, hoy), *_genericas(libro), *_sin_descripcion(libro),
+        *_fechas(libro, hoy), *_temporales(libro, hoy), *_retiros(libro), *_genericas(libro), *_sin_descripcion(libro),
         *_tarjetas_incompletas(libro), *_prestamos_sin_datos(libro), *_sin_uso(libro, hoy), *_reglas(libro),
         *_deducibles(libro, hoy),
     ]
@@ -206,6 +206,21 @@ def _temporales(libro: Libro, hoy: date) -> list[Hallazgo]:
     return [Hallazgo(f"temporales:{hoy:%Y-%m}", REVISAR, "Cargos temporales que no te han devuelto",
                      f"{len(vencidos)} cargo(s) por {formatear(total)} llevan más de lo normal sin regresar. Reclámalos "
                      "o pásalos a gasto (en el Resumen).", "inicio", cuantos=len(vencidos))]
+
+
+def _retiros(libro: Libro) -> list[Hallazgo]:
+    from motor import efectivo
+
+    ops = efectivo.pendientes(libro)
+    if not ops:
+        return []
+    destino = efectivo.convertible(libro, ops[0])
+    total = sum((abs(op.partidas_de_cuenta()[0].importe) for op in ops), 0)
+    return [Hallazgo(f"efectivo:{len(ops)}", REVISAR, "Retiros de efectivo guardados como gasto",
+                     f"{len(ops)} retiro(s) de efectivo por {formatear(a_pesos(total))} cuentan como gasto, pero tienes "
+                     f"tu cuenta «{destino.nombre}»: ese dinero pasó a tu cartera y lo gastas después. Pásalos a tu "
+                     "cuenta de efectivo y tus gastos y tu saldo quedan bien.", "historial",
+                     tuple(op.id for op in ops[:50]), len(ops))]
 
 
 def _genericas(libro: Libro) -> list[Hallazgo]:
