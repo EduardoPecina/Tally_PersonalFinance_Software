@@ -80,6 +80,7 @@ class Perfil:
     meta_ahorro: int = 10              # % del ingreso que quieres ahorrar (presupuestos sugeridos)
     plan_deudas: int | None = None     # centavos al mes para todas tus deudas (motor/plan_deudas.py); None = sin plan
     estrategia_deudas: str = ""        # avalancha o bola_de_nieve
+    salud_ignorados: tuple[str, ...] = ()   # hallazgos de la revisión de salud marcados «Está bien así» (salud.py)
 
 
 @dataclass(frozen=True, slots=True)

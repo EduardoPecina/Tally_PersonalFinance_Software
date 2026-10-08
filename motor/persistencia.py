@@ -149,6 +149,11 @@ class Almacen:
         return cifrado.Config.de_json(texto) if texto else None
 
     @property
+    def revision(self) -> int:
+        """Sube con cada guardado: sirve para saber si un cálculo hecho antes sigue al día."""
+        return self._revision
+
+    @property
     def desbloqueado(self) -> bool:
         return self._cifrador is not None
 

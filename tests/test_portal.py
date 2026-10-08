@@ -1869,3 +1869,36 @@ def test_comprobantes_de_deducibles_en_impuestos(raiz, con_datos):
     assert any("1 de 2 pago(s) deducibles" in m.value for m in at.markdown)
     assert any(e.label == "Ver los 1 sin comprobante" for e in at.expander)
     assert any(b.label == "Descargar los comprobantes del año (.zip)" for b in at.get("download_button"))
+
+
+# ------------------------------------------------------------ salud de los datos
+
+
+def test_salud_de_los_datos_y_aviso_en_el_resumen(raiz, con_datos):
+    s = sesion_en(raiz)
+    with s.cambio() as lib:
+        for _ in range(2):                                             # el mismo gasto, dos veces
+            movimientos.registrar_gasto(lib, lib.hoy(), con_datos["debito"], con_datos["cat"]["ALIMENTOS"], 77,
+                                        "Tacos ficticios")
+    at = abrir()
+    sin_errores(at)
+    assert any("Revisa tus datos" in w.value and "duplicados" in w.value for w in at.warning)
+
+    at.switch_page(_pagina("salud")).run()
+    sin_errores(at)
+    assert {m.label: m.value for m in at.metric}["🟠 Por revisar"] == "1"
+    assert any(e.label.startswith("**Movimientos que parecen duplicados**") for e in at.expander)
+    boton_borrar = next(b for b in at.button if b.key and b.key.startswith("salud_borrar_duplicado:"))
+    boton_borrar.click().run()
+    sin_errores(at)
+    assert sum(op.descripcion == "Tacos ficticios" for op in sesion_en(raiz).libro.operaciones()) == 1
+    assert {m.label: m.value for m in at.metric}["🟠 Por revisar"] == "0"
+
+    # «Está bien así» con otro hallazgo: a la tarjeta le falta su tasa.
+    clave = next(b.key for b in at.button if b.key and b.key.startswith("salud_ignorar_tarjeta:"))
+    at.button(key=clave).click().run()
+    sin_errores(at)
+    assert not any(b.key == clave for b in at.button)
+    assert sesion_en(raiz).libro.perfil.salud_ignorados[-1] == clave.removeprefix("salud_ignorar_")
+    at.button(key="salud_mostrar_todo").click().run()
+    assert any(b.key == clave for b in at.button)
