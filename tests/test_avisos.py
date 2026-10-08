@@ -61,6 +61,19 @@ def test_solo_avisa_si_este_movimiento_cruza_la_linea(libro, ctas, cat):
     movimientos.registrar_gasto(libro, date(2026, 7, 2), ctas.credito, cat("ALIMENTOS"), 1_200)
     assert avisos.antes_de_registrar(libro, HOY, [(ctas.credito, -5_000)]) == []
 
+    # Pero un día así más adelante no apaga el aviso de hoy: $10 el 30/07 y un cero de más en el súper.
+    cuentas.cambiar_saldo_inicial(libro, ctas.ahorro, 10_000, date(2026, 1, 1))
+    movimientos.registrar_gasto(libro, date(2026, 7, 30), ctas.ahorro, cat("ALIMENTOS"), 10_010)
+    (aviso,) = avisos.antes_de_registrar(libro, HOY, [(ctas.ahorro, -5_000_000)])
+    assert aviso.mensaje.startswith("«Ahorro Ficticio» quedaría en -$40,000.00. ")
+    assert avisos.antes_de_registrar(libro, HOY, [(ctas.ahorro, -5_000)]) == []          # solo el 30/07, ya negativo
+    otra = cuentas.crear(libro, "Otra Tarjeta Ficticia", "credito", limite_credito=2_000,
+                         fecha_creacion=date(2026, 1, 1)).id
+    movimientos.registrar_gasto(libro, date(2026, 7, 25), otra, cat("ALIMENTOS"), 2_100)   # ese día ya lo pasa
+    (aviso,) = avisos.antes_de_registrar(libro, HOY, [(otra, -250_000)])
+    assert aviso.clave == LIMITE and "tu deuda quedaría en $2,500.00." in aviso.mensaje
+    assert avisos.antes_de_registrar(libro, HOY, [(otra, -1_000)]) == []
+
 
 def test_una_tarjeta_pasaria_su_limite(libro, ctas, cat):
     movimientos.registrar_gasto(libro, date(2026, 7, 5), ctas.credito, cat("ALIMENTOS"), 800)

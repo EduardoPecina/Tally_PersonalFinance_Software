@@ -9,7 +9,8 @@ Correcciones de los avisos y del bloqueo automático, probadas en un navegador r
 - **Los avisos ven lo que ya registraste a futuro.** Si la renta de la otra semana ya está registrada, un gasto de hoy
   que no deja para pagarla avisa, con el día en que la cuenta quedaría en negativo (o la tarjeta pasaría su límite).
 - **Solo avisa cuando ese movimiento cruza la línea.** Si la cuenta ya estaba en negativo (o la tarjeta ya pasaba su
-  límite), no pide confirmar cada gasto.
+  límite), no pide confirmar cada gasto. Se revisa día por día: si solo un día de más adelante ya queda en negativo,
+  un cero de más en el gasto de hoy sigue avisando.
 - **Más claro qué hacer:** el aviso dice «**Todavía no se guardó**» y que hay que marcar «Sí, está bien así» y dar
   Guardar otra vez; si das Guardar sin marcarla, te lo recuerda. Pregunta si están bien la cuenta (o la tarjeta) **y
   el importe**, y el de la tarjeta dice «tu deuda quedaría en…».
@@ -17,7 +18,8 @@ Correcciones de los avisos y del bloqueo automático, probadas en un navegador r
   y el importe los pide juntos.
 - **Repartir:** un renglón con subcategoría y sin importe (o al revés) ya no tumba la página: pide completarlo o
   borrarlo.
-- **La ventanita de Cuentas → Agregar movimiento** se abre limpia cada vez, aunque antes la hayas cerrado con la X.
+- **La ventanita de Cuentas → Agregar movimiento** se abre limpia cada vez (en Gasto y con los interruptores
+  apagados), aunque antes la hayas cerrado con la X.
 - «Transferencia de $100.00 guarda**da**».
 - **Bloqueo automático:**
   - lo que haces dentro de una ventanita (Agregar movimiento, Ya me lo devolvieron, Eliminar cuenta…) cuenta como
@@ -26,7 +28,8 @@ Correcciones de los avisos y del bloqueo automático, probadas en un navegador r
     contraseña o de prender el bloqueo;
   - la pantalla de entrada explica cuando TALLY se bloqueó solo;
   - en Configuración, el ajuste se guarda solo cuando tú lo cambias (otra pestaña abierta ya no lo regresa a su valor
-    viejo) y abajo dice cuál quedó (antes, un mensaje podía quedarse con el valor anterior);
+    viejo), abajo dice cuál quedó (antes, un mensaje podía quedarse con el valor anterior) y al volver de otra página
+    el interruptor muestra cómo está de verdad;
   - textos más claros: qué cuenta como usarlo, que lo escrito sin guardar se pierde y que al poner contraseña queda
     prendido en 10 minutos.
 

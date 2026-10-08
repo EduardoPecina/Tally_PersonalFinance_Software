@@ -468,6 +468,18 @@ def test_estado_de_cuenta_desde_cuentas(raiz, con_datos):
     assert at.title[0].value == "Cuentas"
 
 
+def test_agregar_movimiento_abre_siempre_en_gasto(raiz, con_datos):
+    from motor.modelo import TipoOperacion
+
+    at = abrir(_pagina("cuentas"))
+    next(b for b in at.button if b.key == f"ver_{con_datos['debito']}").click().run()
+    tipo = f"dialogo_{con_datos['debito']}_tipo"
+    at.session_state[tipo] = TipoOperacion.TRANSFERENCIA          # lo que quedó de la vez anterior (cerrada con la X)
+    boton(at, "Agregar movimiento").click().run()
+    sin_errores(at)
+    assert next(w for w in at.get("button_group") if w.key == tipo).value is TipoOperacion.GASTO
+
+
 def _gasto_en_registrar(at: AppTest, cuenta: str, importe: float, subcategoria: str) -> None:
     next(s for s in at.selectbox if s.label == "Subcategoría").set_value(subcategoria)
     next(s for s in at.selectbox if s.label == "Pagado con").set_value(cuenta)
@@ -1164,6 +1176,9 @@ def test_bloqueo_automatico_se_elige_en_configuracion(raiz, con_datos, scrypt_ra
     sin_errores(at)
     assert bloqueo() == 25
     assert any(c.value == "✅ TALLY se bloquea solo tras 25 minutos sin usarlo." for c in at.caption)
+    at.switch_page(_pagina("inicio")).run()                                  # ir a otra página y volver
+    at.switch_page(_pagina("configuracion")).run()
+    assert at.toggle(key="seg_bloqueo_activo").value is True and at.selectbox(key="seg_bloqueo").value == 25
     at.toggle(key="seg_bloqueo_activo").set_value(False).run()
     sin_errores(at)
     assert bloqueo() == 0 and not [s for s in at.selectbox if s.key == "seg_bloqueo"]

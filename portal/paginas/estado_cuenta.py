@@ -85,7 +85,7 @@ def mostrar(cuenta_id: str) -> None:
         st.info("Esta cuenta está eliminada: aquí ves su historial guardado. Para volver a usarla, restáurala en "
                 "Cuentas → «Mostrar eliminadas».", icon="🗄️")
     elif izquierda.button("Agregar movimiento", type="primary", icon=":material/add:", key="cuenta_agregar"):
-        registrar.limpiar(f"dialogo_{cuenta.id}")
+        registrar.limpiar(f"dialogo_{cuenta.id}", todo=True)
         _agregar(cuenta.id)
     rango = derecha.segmented_control("Periodo", list(RANGOS), format_func=RANGOS.get, default="todo",
                                       required=True, key="cuenta_rango", label_visibility="collapsed")

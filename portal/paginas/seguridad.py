@@ -221,7 +221,9 @@ def _bloqueo(config: cifrado.Config) -> None:
                "que estabas escribiendo sin guardar, sí. También puedes usar «Bloquear ahora» en el menú de la "
                "izquierda.")
     minutos = config.bloqueo_minutos
-    if st.session_state.get(VISTO) != minutos:     # la primera vez, o lo cambiaron en otra pestaña: lo vigente
+    # La primera vez, al volver de otra página (Streamlit olvida los controles que no se dibujaron) o si lo cambiaron
+    # en otra pestaña: lo vigente.
+    if st.session_state.get(VISTO) != minutos or ACTIVO not in st.session_state:
         st.session_state[ACTIVO] = bool(minutos)
         st.session_state[MINUTOS] = minutos or cifrado.BLOQUEO_MINUTOS
         st.session_state[VISTO] = minutos

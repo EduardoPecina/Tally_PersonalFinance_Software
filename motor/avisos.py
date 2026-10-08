@@ -8,10 +8,11 @@ tiempo). El portal los muestra y pide confirmar antes de guardar:
 - una tarjeta de crédito **pasaría su límite**;
 - la **fecha** es de más de un mes adelante o de hace un año o más (¿el año mal escrito?).
 
-El saldo que se revisa, con el movimiento incluido, es el más bajo de hoy en adelante (o desde el día del movimiento,
-si es adelante), contando lo que ya registraste para días futuros: si la renta de la otra semana ya está registrada,
-un gasto de hoy que no deja para pagarla también avisa. Se avisa solo cuando **este** movimiento cruza la línea: si la
-cuenta ya estaba en negativo (o la tarjeta ya pasaba su límite), avisar en cada gasto haría que se ignore el aviso.
+Se revisa el saldo al cierre de cada día de hoy en adelante (o desde el día del movimiento, si es adelante), contando
+lo que ya registraste para días futuros: si la renta de la otra semana ya está registrada, un gasto de hoy que no deja
+para pagarla también avisa. Se avisa solo cuando **este** movimiento cruza la línea en algún día: los días en que la
+cuenta ya estaba en negativo (o la tarjeta ya pasaba su límite) no cuentan, porque avisar en cada gasto haría que se
+ignore el aviso; pero un día así más adelante no apaga el aviso de los demás.
 """
 
 from __future__ import annotations
@@ -56,33 +57,42 @@ def antes_de_registrar(libro: Libro, fecha: date, cambios: Iterable[tuple[str, i
         if cambio >= 0:
             continue                                          # si entra dinero, no hay de qué avisar
         cuenta = libro.cuenta(cuenta_id)
-        antes, dia = _mas_bajo(libro, cuenta_id, al)
+        if cuenta.tipo in SIN_NEGATIVO:
+            piso = 0
+        elif cuenta.tipo is TipoCuenta.CREDITO and cuenta.limite_credito is not None:
+            piso = -cuenta.limite_credito
+        else:
+            continue
+        # El día más justo de los que aún no pasaban la línea: si este movimiento la cruza, la cruza ahí.
+        arriba = [(saldo, dia) for saldo, dia in _saldos(libro, cuenta_id, al) if saldo >= piso]
+        if not arriba:
+            continue
+        antes, dia = min(arriba)
         saldo = antes + cambio
+        if saldo >= piso:
+            continue
         cuando = "" if dia == al else f" el {dia:%d/%m/%Y}, con lo que ya registraste para esos días"
-        if cuenta.tipo in SIN_NEGATIVO and saldo < 0 <= antes:
+        if cuenta.tipo in SIN_NEGATIVO:
             avisos.append(Aviso(NEGATIVO, f"«{cuenta.nombre}» quedaría en {formatear(a_pesos(saldo))}{cuando}. "
                                           "¿Están bien la cuenta y el importe?"))
-        elif cuenta.tipo is TipoCuenta.CREDITO and cuenta.limite_credito is not None \
-                and -antes <= cuenta.limite_credito < -saldo:
+        else:
             avisos.append(Aviso(LIMITE, f"«{cuenta.nombre}» pasaría su límite de "
                                         f"{formatear(a_pesos(cuenta.limite_credito))}{cuando}: tu deuda quedaría en "
                                         f"{formatear(a_pesos(-saldo))}. ¿Están bien la tarjeta y el importe?"))
     return avisos
 
 
-def _mas_bajo(libro: Libro, cuenta_id: str, al: date) -> tuple[int, date]:
-    """El saldo más bajo de la cuenta al cierre de cada día, de ``al`` en adelante (contando lo registrado para días
-    futuros), y el primer día en que llega a él."""
+def _saldos(libro: Libro, cuenta_id: str, al: date) -> list[tuple[int, date]]:
+    """El saldo de la cuenta al cierre de ``al`` y de cada día posterior con movimientos ya registrados."""
     por_dia: dict[date, int] = defaultdict(int)                         # en orden: operaciones() es cronológico
     for op in libro.operaciones(desde=al + timedelta(days=1)):
         por_dia[op.fecha] += sum(p.importe for p in op.partidas if p.cuenta_id == cuenta_id)
-    minimo = saldo = libro.saldo_centavos(cuenta_id, al)
-    dia = al
+    saldo = libro.saldo_centavos(cuenta_id, al)
+    saldos = [(saldo, al)]
     for fecha, cambio in por_dia.items():
         saldo += cambio
-        if saldo < minimo:
-            minimo, dia = saldo, fecha
-    return minimo, dia
+        saldos.append((saldo, fecha))
+    return saldos
 
 
 def _tiempo(dias: int) -> str:

@@ -232,10 +232,14 @@ def formulario(clave: str = "registrar", cuenta_fija: str | None = None) -> bool
     return guardado(ejecutar(accion, exito=texto))
 
 
-def limpiar(clave: str = "registrar") -> None:
+def limpiar(clave: str = "registrar", todo: bool = False) -> None:
     """El formulario vuelve a empezar vacío: al guardar, y al abrir la ventanita de Cuentas → Agregar movimiento
-    (cerrarla con la X no descarta lo que se había enviado)."""
+    (cerrarla con la X no descarta lo que se había enviado). Con ``todo`` también vuelve a Gasto y apaga los
+    interruptores; al guardar se quedan, para registrar varios del mismo tipo seguidos."""
     st.session_state[f"_{clave}_vuelta"] = st.session_state.get(f"_{clave}_vuelta", 0) + 1
+    if todo:
+        for control in ("tipo", "temporal", "repartir", "fijo", "fecha_fijo"):
+            st.session_state.pop(f"{clave}_{control}", None)
 
 
 def _avisos(tipo: TipoOperacion, temporal: bool, origen: str, destino: str | None, total, fecha) -> list[str]:
