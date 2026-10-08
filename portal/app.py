@@ -73,6 +73,7 @@ def _barra_lateral() -> None:
             st.html(pagina_cerrado(), unsafe_allow_javascript=True)
             cerrar_portal()
             st.stop()
+        candado.vigilar()                                   # el bloqueo automático, aunque no toques nada
 
 
 def _preferencias():

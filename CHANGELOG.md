@@ -2,6 +2,24 @@
 
 Todos los cambios relevantes de TALLY se documentan aquí.
 
+## [0.21.0] — Sin publicar
+
+- **Avisos antes de guardar** (Registrar, y Cuentas → Agregar movimiento). Si algo parece un error de dedo, TALLY lo
+  dice dentro del formulario y no guarda hasta que lo corrijas o marques «Sí, está bien: guárdalo así»:
+  - una cuenta de débito, ahorro, efectivo o inversión **quedaría en negativo** (¿la cuenta equivocada?, ¿un cero de
+    más?);
+  - una tarjeta de crédito **pasaría su límite**;
+  - la **fecha** es de más de un mes adelante o de hace un año o más (¿el año mal escrito?).
+
+  Lo que escribiste ya no se borra si algo falta o hay que corregir: el formulario se limpia solo al guardar.
+- **Bloqueo automático a tu manera** (Configuración → Seguridad, solo con contraseña):
+  - un interruptor para prenderlo o apagarlo;
+  - tras cuánto tiempo sin usar TALLY: 5, 10, 15, 25, 30 o 45 minutos, o 1 hora (viene en 10 minutos);
+  - al pasar ese tiempo, **la pantalla vuelve sola a pedir tu contraseña**, aunque no toques nada. Antes se bloqueaba
+    hasta tu siguiente clic, y mientras tanto tus datos seguían a la vista.
+  - Sin contraseña aparece apagado y explica que se activa cuando le pones una: sin contraseña no hay pantalla a
+    dónde volver a entrar.
+
 ## [0.20.0] — Sin publicar
 
 **Rápido aunque tengas muchos años de datos.** Medido con un libro ficticio de 10 años (unos 22,700 movimientos):

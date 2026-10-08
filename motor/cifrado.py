@@ -44,6 +44,7 @@ MINIMO_CONTRASENA = 8
 SCRYPT = {"n": 2 ** 15, "r": 8, "p": 1}
 MEMORIA_SCRYPT = 128 * 1024 * 1024
 BLOQUEO_MINUTOS = 10
+OPCIONES_BLOQUEO = (5, 10, 15, 25, 30, 45, 60)           # minutos sin usar TALLY para que se bloquee solo (0 = nunca)
 DIAS_PARA_COMPROBAR_KIT = 90
 
 

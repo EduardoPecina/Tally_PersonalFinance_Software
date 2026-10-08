@@ -318,6 +318,19 @@ def test_comprobar_kit_y_bloqueo(sesion, raiz):
         seguridad.ajustar_bloqueo(sesion, 999)
 
 
+def test_tiempos_del_bloqueo_automatico(sesion, raiz):
+    with pytest.raises(ErrorValidacion, match="no tienen contraseña"):          # sin contraseña no hay bloqueo
+        seguridad.ajustar_bloqueo(sesion, 10)
+    _activar(sesion, raiz)
+    assert seguridad.config(raiz / "Datos" / "tally.db").bloqueo_minutos == 10           # viene encendido
+    for minutos in (5, 10, 15, 25, 30, 45, 60, 0):                                      # 0 = apagado
+        assert seguridad.ajustar_bloqueo(sesion, minutos).bloqueo_minutos == minutos
+        assert seguridad.config(raiz / "Datos" / "tally.db").bloqueo_minutos == minutos
+    for invalido in (20, 90, 240, -5, True, "10"):
+        with pytest.raises(ErrorValidacion, match="5, 10, 15, 25, 30 o 45 minutos"):
+            seguridad.ajustar_bloqueo(sesion, invalido)
+
+
 # ----------------------------------------------------------------- respaldos
 
 
