@@ -8,7 +8,10 @@ tiempo). El portal los muestra y pide confirmar antes de guardar:
 - una tarjeta de crédito **pasaría su límite**;
 - la **fecha** es de más de un mes adelante o de hace un año o más (¿el año mal escrito?).
 
-El saldo que se revisa es el de hoy (o el del día del movimiento, si es adelante) con el movimiento incluido.
+El saldo que se revisa, con el movimiento incluido, es el más bajo de hoy en adelante (o desde el día del movimiento,
+si es adelante), contando lo que ya registraste para días futuros: si la renta de la otra semana ya está registrada,
+un gasto de hoy que no deja para pagarla también avisa. Se avisa solo cuando **este** movimiento cruza la línea: si la
+cuenta ya estaba en negativo (o la tarjeta ya pasaba su límite), avisar en cada gasto haría que se ignore el aviso.
 """
 
 from __future__ import annotations
@@ -16,7 +19,7 @@ from __future__ import annotations
 from collections import defaultdict
 from collections.abc import Iterable
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, timedelta
 
 from motor.dinero import a_pesos, formatear
 from motor.libro import Libro
@@ -53,16 +56,33 @@ def antes_de_registrar(libro: Libro, fecha: date, cambios: Iterable[tuple[str, i
         if cambio >= 0:
             continue                                          # si entra dinero, no hay de qué avisar
         cuenta = libro.cuenta(cuenta_id)
-        saldo = libro.saldo_centavos(cuenta_id, al) + cambio
-        if cuenta.tipo in SIN_NEGATIVO and saldo < 0:
-            avisos.append(Aviso(NEGATIVO, f"«{cuenta.nombre}» quedaría en {formatear(a_pesos(saldo))}. "
-                                          "¿Es la cuenta correcta?"))
+        antes, dia = _mas_bajo(libro, cuenta_id, al)
+        saldo = antes + cambio
+        cuando = "" if dia == al else f" el {dia:%d/%m/%Y}, con lo que ya registraste para esos días"
+        if cuenta.tipo in SIN_NEGATIVO and saldo < 0 <= antes:
+            avisos.append(Aviso(NEGATIVO, f"«{cuenta.nombre}» quedaría en {formatear(a_pesos(saldo))}{cuando}. "
+                                          "¿Están bien la cuenta y el importe?"))
         elif cuenta.tipo is TipoCuenta.CREDITO and cuenta.limite_credito is not None \
-                and -saldo > cuenta.limite_credito:
+                and -antes <= cuenta.limite_credito < -saldo:
             avisos.append(Aviso(LIMITE, f"«{cuenta.nombre}» pasaría su límite de "
-                                        f"{formatear(a_pesos(cuenta.limite_credito))}: deberías "
-                                        f"{formatear(a_pesos(-saldo))}."))
+                                        f"{formatear(a_pesos(cuenta.limite_credito))}{cuando}: tu deuda quedaría en "
+                                        f"{formatear(a_pesos(-saldo))}. ¿Están bien la tarjeta y el importe?"))
     return avisos
+
+
+def _mas_bajo(libro: Libro, cuenta_id: str, al: date) -> tuple[int, date]:
+    """El saldo más bajo de la cuenta al cierre de cada día, de ``al`` en adelante (contando lo registrado para días
+    futuros), y el primer día en que llega a él."""
+    por_dia: dict[date, int] = defaultdict(int)                         # en orden: operaciones() es cronológico
+    for op in libro.operaciones(desde=al + timedelta(days=1)):
+        por_dia[op.fecha] += sum(p.importe for p in op.partidas if p.cuenta_id == cuenta_id)
+    minimo = saldo = libro.saldo_centavos(cuenta_id, al)
+    dia = al
+    for fecha, cambio in por_dia.items():
+        saldo += cambio
+        if saldo < minimo:
+            minimo, dia = saldo, fecha
+    return minimo, dia
 
 
 def _tiempo(dias: int) -> str:

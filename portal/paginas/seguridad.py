@@ -16,6 +16,8 @@ from portal.componentes import candado, formato
 from portal.componentes.sesion import avisar, sesion
 
 PASO, CONTRASENA, PISTA, KIT = "_seg_paso", "_seg_contrasena", "_seg_pista", "_seg_kit"
+ACTIVO, MINUTOS, VISTO = "seg_bloqueo_activo", "seg_bloqueo", "_seg_bloqueo_visto"   # el bloqueo automático
+INTERRUPTOR = "Bloquear TALLY cuando no lo uso"
 
 
 def mostrar() -> None:
@@ -70,11 +72,11 @@ def _explicacion() -> None:
 
 def _bloqueo_sin_contrasena() -> None:
     st.divider()
-    st.toggle("Bloqueo automático", value=False, disabled=True, key="seg_bloqueo_sin_contrasena",
-              help="Se puede activar cuando TALLY tenga contraseña.")
-    st.caption("🔒 Disponible cuando le pongas una contraseña a TALLY: al pasar el tiempo que elijas sin usarlo, la "
-               "pantalla vuelve sola a pedir tu contraseña. Sin contraseña no habría pantalla a dónde volver a "
-               "entrar.")
+    st.toggle(INTERRUPTOR, value=False, disabled=True, key="seg_bloqueo_sin_contrasena",
+              help="Se puede prender cuando TALLY tenga contraseña.")
+    st.caption("🔒 **Bloqueo automático:** se prende solo cuando le pones contraseña a TALLY. Si lo dejas 10 "
+               "minutos sin usar, la pantalla vuelve sola a pedir tu contraseña. Después puedes cambiar el tiempo o "
+               "apagarlo aquí.")
 
 
 def _paso_contrasena() -> None:
@@ -153,7 +155,8 @@ def _paso_activar() -> None:
                 "1. Hace un **respaldo de seguridad** de tus datos.\n"
                 "2. **Cifra** tus datos y tus respaldos guardados.\n"
                 "3. **Comprueba** que todo quedó idéntico (si no, lo deshace solo).\n\n"
-                "Después, cada vez que abras TALLY te pedirá tu contraseña.")
+                "Después, cada vez que abras TALLY te pedirá tu contraseña, y también si lo dejas 10 minutos sin "
+                "usar (lo cambias o lo apagas en «Bloqueo automático»).")
     with st.expander("Opcional: una copia sin contraseña para tu USB"):
         st.caption("Si quieres una red de seguridad extra, descarga una copia **sin contraseña** y guárdala en una "
                    "USB en tu casa. Ojo: quien tenga esa USB puede ver tus datos.")
@@ -213,32 +216,39 @@ def _con_contrasena(config: cifrado.Config) -> None:
 
 
 def _bloqueo(config: cifrado.Config) -> None:
-    st.caption("Si dejas TALLY abierto sin usarlo ese tiempo, la pantalla vuelve **sola** a pedir tu contraseña, "
-               "aunque no toques nada. Lo que ya guardaste no se pierde. También puedes usar «Bloquear ahora» en el "
-               "menú de la izquierda.")
-    activo = st.toggle("Bloquear TALLY cuando no lo uso", value=bool(config.bloqueo_minutos), key="seg_bloqueo_activo")
-    minutos = config.bloqueo_minutos or cifrado.BLOQUEO_MINUTOS
-    if activo:
-        claves = sorted({*cifrado.OPCIONES_BLOQUEO, minutos})       # el de una versión anterior se respeta
-        minutos = st.selectbox("Después de cuánto tiempo sin usarlo", claves, format_func=_tiempo_de_bloqueo,
-                               index=claves.index(minutos), key="seg_bloqueo")
+    st.caption("Si lo dejas prendido, cuando pase el tiempo que elijas sin que des ningún clic en TALLY (solo leer "
+               "no cuenta), la pantalla vuelve **sola** a pedir tu contraseña. Lo que ya guardaste no se pierde; lo "
+               "que estabas escribiendo sin guardar, sí. También puedes usar «Bloquear ahora» en el menú de la "
+               "izquierda.")
+    minutos = config.bloqueo_minutos
+    if st.session_state.get(VISTO) != minutos:     # la primera vez, o lo cambiaron en otra pestaña: lo vigente
+        st.session_state[ACTIVO] = bool(minutos)
+        st.session_state[MINUTOS] = minutos or cifrado.BLOQUEO_MINUTOS
+        st.session_state[VISTO] = minutos
+    # Solo se guarda cuando tú cambias un control (on_change), nunca por volver a dibujar la página.
+    if st.toggle(INTERRUPTOR, key=ACTIVO, on_change=_guardar_bloqueo):
+        actual = st.session_state.setdefault(MINUTOS, minutos or cifrado.BLOQUEO_MINUTOS)
+        claves = sorted({*cifrado.OPCIONES_BLOQUEO, actual})          # el de una versión anterior se respeta
+        st.selectbox("¿Después de cuánto tiempo sin usarlo?", claves, format_func=_tiempo_de_bloqueo, key=MINUTOS,
+                     on_change=_guardar_bloqueo)
+        if minutos:
+            st.caption(f"✅ TALLY se bloquea solo tras {_tiempo_de_bloqueo(minutos)} sin usarlo.")
     else:
-        st.caption("Apagado: TALLY solo se bloquea con «Bloquear ahora». No lo recomiendo en una PC compartida.")
-    elegido = minutos if activo else 0
-    if elegido != config.bloqueo_minutos:
-        try:
-            seguridad.ajustar_bloqueo(sesion(), elegido)
-        except ErrorTally as error:
-            st.error(str(error))
-            return
-        candado.refrescar()
-        avisar(f"Bloqueo automático: después de {_tiempo_de_bloqueo(elegido)} sin usar TALLY" if elegido
-               else "Bloqueo automático apagado", "🔒")
-        st.rerun()
+        st.caption("Apagado: TALLY solo se bloquea con «Bloquear ahora». Si otras personas usan esta PC, mejor "
+                   "déjalo prendido.")
+
+
+def _guardar_bloqueo() -> None:
+    elegido = (st.session_state.get(MINUTOS) or cifrado.BLOQUEO_MINUTOS) if st.session_state[ACTIVO] else 0
+    try:
+        seguridad.ajustar_bloqueo(sesion(), elegido)
+    except ErrorTally as error:
+        avisar(str(error), "⚠️")
+    candado.refrescar()
 
 
 def _tiempo_de_bloqueo(minutos: int) -> str:
-    return "1 hora" if minutos == 60 else f"{minutos} minutos"
+    return "1 hora" if minutos == 60 else "1 minuto" if minutos == 1 else f"{minutos} minutos"
 
 
 def _comprobar_kit() -> None:

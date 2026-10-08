@@ -34,19 +34,40 @@ def test_una_cuenta_quedaria_en_negativo(libro, ctas, cat):
         == [NEGATIVO]
 
 
-def test_cuenta_ya_en_negativo_y_movimientos_de_otros_dias(libro, ctas, cat):
-    cuentas.cambiar_saldo_inicial(libro, ctas.debito, 1_000, date(2026, 1, 1))
-    movimientos.registrar_gasto(libro, date(2026, 8, 5), ctas.debito, cat("ALIMENTOS"), 900)   # adelante, en agosto
-    assert avisos.antes_de_registrar(libro, HOY, [(ctas.debito, -50_000)]) == []           # hoy aún hay $1,000
-    (aviso,) = avisos.antes_de_registrar(libro, date(2026, 8, 10), [(ctas.debito, -50_000)])
-    assert "-$400.00" in aviso.mensaje                                                      # ese día ya no
+def test_cuenta_con_movimientos_registrados_a_futuro(libro, ctas, cat):
+    cuentas.cambiar_saldo_inicial(libro, ctas.debito, 5_000, date(2026, 1, 1))
+    movimientos.registrar_gasto(libro, date(2026, 7, 30), ctas.debito, cat("RENTA"), 4_500, "Renta")   # en 10 días
+    movimientos.registrar_ingreso(libro, date(2026, 7, 31), ctas.debito, cat("NOMINA"), 9_000)        # y luego entra
+    # Hoy hay $5,000, pero la renta ya registrada deja $500: un gasto de $2,000 hoy no alcanza para pagarla.
+    (aviso,) = avisos.antes_de_registrar(libro, HOY, [(ctas.debito, -200_000)])
+    assert aviso.mensaje == ("«Banco Ficticio Débito» quedaría en -$1,500.00 el 30/07/2026, con lo que ya registraste "
+                             "para esos días. ¿Están bien la cuenta y el importe?")
+    assert avisos.antes_de_registrar(libro, HOY, [(ctas.debito, -50_000)]) == []           # $500 sí alcanzan
+    # Un gasto después de la nómina se revisa desde ese día: ya no le afecta la renta.
+    assert avisos.antes_de_registrar(libro, date(2026, 8, 1), [(ctas.debito, -900_000)]) == []
+    (despues,) = avisos.antes_de_registrar(libro, date(2026, 8, 1), [(ctas.debito, -950_100)])
+    assert "quedaría en -$1.00." in despues.mensaje                                         # ese mismo día
+    # La tarjeta: una compra ya registrada a futuro también cuenta para el límite.
+    movimientos.registrar_gasto(libro, date(2026, 7, 25), ctas.credito, cat("ALIMENTOS"), 800)
+    (limite,) = avisos.antes_de_registrar(libro, HOY, [(ctas.credito, -30_000)])
+    assert limite.clave == LIMITE and "el 25/07/2026" in limite.mensaje and "$1,100.00" in limite.mensaje
+
+
+def test_solo_avisa_si_este_movimiento_cruza_la_linea(libro, ctas, cat):
+    # Ya en negativo (p. ej. aún no registra su nómina): no pide confirmar cada gasto.
+    movimientos.registrar_gasto(libro, date(2026, 7, 1), ctas.debito, cat("ALIMENTOS"), 200)
+    assert avisos.antes_de_registrar(libro, HOY, [(ctas.debito, -5_000)]) == []
+    # Una tarjeta que ya pasaba su límite, tampoco.
+    movimientos.registrar_gasto(libro, date(2026, 7, 2), ctas.credito, cat("ALIMENTOS"), 1_200)
+    assert avisos.antes_de_registrar(libro, HOY, [(ctas.credito, -5_000)]) == []
 
 
 def test_una_tarjeta_pasaria_su_limite(libro, ctas, cat):
     movimientos.registrar_gasto(libro, date(2026, 7, 5), ctas.credito, cat("ALIMENTOS"), 800)
     (aviso,) = avisos.antes_de_registrar(libro, HOY, [(ctas.credito, -30_000)])
     assert aviso.clave == LIMITE
-    assert aviso.mensaje == "«Tarjeta Ficticia» pasaría su límite de $1,000.00: deberías $1,100.00."
+    assert aviso.mensaje == ("«Tarjeta Ficticia» pasaría su límite de $1,000.00: tu deuda quedaría en $1,100.00. "
+                             "¿Están bien la tarjeta y el importe?")
     sin_limite = cuentas.crear(libro, "Tarjeta Sin Límite", "credito", fecha_creacion=date(2026, 1, 1)).id
     assert avisos.antes_de_registrar(libro, HOY, [(sin_limite, -99_999_900)]) == []        # sin límite registrado
     assert avisos.antes_de_registrar(libro, HOY, [(ctas.credito, 80_000)]) == []          # pagarla no avisa

@@ -17,6 +17,9 @@ def mostrar() -> None:
     with centro:
         st.title("🔒 Tus datos están protegidos")
         st.caption("Escribe tu contraseña de TALLY para entrar.")
+        if candado.se_bloqueo_solo():
+            st.info("TALLY se bloqueó solo porque pasó un rato sin usarlo. Lo que guardaste sigue ahí: escribe tu "
+                    "contraseña para seguir.", icon="⏱️")
         espera = candado.intentos().espera()
         with st.form("acceso", clear_on_submit=True):
             contrasena = st.text_input("Contraseña", type="password", key="acceso_contrasena",

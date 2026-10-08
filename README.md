@@ -136,10 +136,12 @@ Establecer una contraseña para TALLY** le pones una en 4 pasos:
 Desde entonces:
 
 - TALLY pide la contraseña al abrir, y **se bloquea solo** si no lo usas un
-  rato: en **Configuración → Seguridad** lo prendes o lo apagas y eliges
-  tras cuánto tiempo (5, 10, 15, 25, 30 o 45 minutos, o 1 hora; viene en 10).
-  Al pasar ese tiempo, la pantalla vuelve sola a pedir tu contraseña aunque
-  no toques nada. También hay un botón **Bloquear ahora**.
+  rato. En **Configuración → Seguridad → Bloqueo automático** decides si
+  quieres ese bloqueo y tras cuánto tiempo sin dar ningún clic (5, 10, 15,
+  25, 30 o 45 minutos, o 1 hora; viene en 10). Al pasar ese tiempo, la
+  pantalla vuelve sola a pedir tu contraseña aunque no toques nada: lo que ya
+  guardaste no se pierde, lo que estabas escribiendo sin guardar, sí. También
+  hay un botón **Bloquear ahora**.
 - Tus datos y respaldos se guardan **cifrados** (AES-256): quien copie el
   archivo solo ve letras sin sentido.
 - Los respaldos se abren en **cualquier PC** con la contraseña de ese día o
