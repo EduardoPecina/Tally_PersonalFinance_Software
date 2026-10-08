@@ -1793,3 +1793,79 @@ def test_plan_para_salir_de_deudas(raiz, con_datos):
     at.button(key="plan_deudas_quitar").click().run()
     sin_errores(at)
     assert plan_deudas.guardado_de(sesion_en(raiz).libro) is None
+
+
+# ------------------------------------------------------------ comprobantes adjuntos
+
+FOTO_FICTICIA = b"\xff\xd8\xff\xe0" + b"ticket ficticio" * 4
+PDF_FICTICIO = b"%PDF-1.4\n" + b"factura ficticia" * 4
+
+
+def test_comprobantes_desde_el_historial(raiz, con_datos):
+    from motor import comprobantes
+
+    at = abrir(_pagina("historial"))
+    fila = list(at.dataframe[0].value["Descripción"]).index("Pizza")
+
+    def elegida() -> AppTest:                     # la tabla conserva el renglón elegido en cada vuelta
+        return seleccionar(at, "historial_tabla", fila)
+
+    elegida()
+    assert "📎 Comprobantes" in [t.label for t in at.tabs]
+    pizza = next(op for op in sesion_en(raiz).libro.operaciones() if op.descripcion == "Pizza")
+    at.file_uploader(key=f"comp_subir_{pizza.id}_0").set_value(
+        [("ticket.jpg", FOTO_FICTICIA, "image/jpeg"), ("factura.pdf", PDF_FICTICIO, "application/pdf")])
+    elegida()
+    at.button(key=f"comp_adjuntar_{pizza.id}").click()
+    elegida()
+    sin_errores(at)
+    s = sesion_en(raiz)
+    assert sorted(c.nombre for c in s.libro.comprobantes(pizza.id)) == ["factura.pdf", "ticket.jpg"]
+    assert {comprobantes.contenido(s, c.id) for c in s.libro.comprobantes()} == {FOTO_FICTICIA, PDF_FICTICIO}
+    assert "📎 Comprobantes (2)" in [t.label for t in at.tabs]
+    assert at.dataframe[0].value["📎"].tolist().count("2") == 1                # la columna del Historial
+
+    # Un archivo que no es lo que dice: no se adjunta nada.
+    at.file_uploader(key=f"comp_subir_{pizza.id}_1").set_value(("falso.pdf", b"hola", "application/pdf"))
+    elegida()
+    at.button(key=f"comp_adjuntar_{pizza.id}").click()
+    elegida()
+    assert any("no parece ser un archivo PDF" in e.value for e in at.error)
+    assert len(sesion_en(raiz).libro.comprobantes()) == 2
+
+    ticket = next(c for c in sesion_en(raiz).libro.comprobantes() if c.nombre == "ticket.jpg")
+    at.button(key=f"comp_quitar_{ticket.id}").click()
+    elegida()
+    sin_errores(at)
+    assert [c.nombre for c in sesion_en(raiz).libro.comprobantes()] == ["factura.pdf"]
+
+
+def test_registrar_con_comprobante(raiz, con_datos):
+    at = abrir(_pagina("registrar"))
+    _gasto_en_registrar(at, con_datos["debito"], 250.0, con_datos["cat"]["ALIMENTOS"])
+    next(t for t in at.text_input if t.label == "Descripción").input("Súper con ticket")
+    next(f for f in at.file_uploader if f.label.startswith("📎")).set_value(
+        ("ticket.jpg", FOTO_FICTICIA, "image/jpeg"))
+    boton(at, "Guardar").click().run()
+    sin_errores(at)
+    assert any("con 1 comprobante(s)" in str(t.value) for t in at.toast)
+    lib = sesion_en(raiz).libro
+    op = next(op for op in lib.operaciones() if op.descripcion == "Súper con ticket")
+    assert [c.nombre for c in lib.comprobantes(op.id)] == ["ticket.jpg"]
+
+
+def test_comprobantes_de_deducibles_en_impuestos(raiz, con_datos):
+    from motor import comprobantes, impuestos
+
+    s = sesion_en(raiz)
+    with s.cambio() as lib:
+        impuestos.guardar_concepto(lib, "Comida ficticia deducible", [con_datos["cat"]["ALIMENTOS"]])
+        pizza = next(op for op in lib.operaciones() if op.descripcion == "Pizza")
+        comprobantes.adjuntar(lib, pizza.id, "factura.pdf", PDF_FICTICIO)
+        movimientos.registrar_gasto(lib, lib.hoy(), con_datos["debito"], con_datos["cat"]["ALIMENTOS"], 90,
+                                    "Sin factura")
+    at = abrir(_pagina("impuestos"))
+    sin_errores(at)
+    assert any("1 de 2 pago(s) deducibles" in m.value for m in at.markdown)
+    assert any(e.label == "Ver los 1 sin comprobante" for e in at.expander)
+    assert any(b.label == "Descargar los comprobantes del año (.zip)" for b in at.get("download_button"))

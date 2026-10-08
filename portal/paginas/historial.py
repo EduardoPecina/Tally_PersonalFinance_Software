@@ -5,9 +5,10 @@ from __future__ import annotations
 import pandas as pd
 import streamlit as st
 
-from motor import bienes, categorias, consultas, cuentas, metas, movimientos
+from motor import bienes, categorias, comprobantes, consultas, cuentas, metas, movimientos
 from motor.consultas import ETIQUETA_TIPO_OPERACION, ORDENES
 from motor.modelo import TipoCuenta, TipoOperacion
+from portal.componentes import comprobantes as panel_comprobantes
 from portal.componentes import estado, formato
 from portal.componentes.sesion import ejecutar, libro
 
@@ -74,6 +75,7 @@ def mostrar() -> None:
         return
 
     filas = filas[:formato.cuantos_mostrar(len(filas), "historial_todos")]
+    adjuntos = comprobantes.por_movimiento(libro())
     tabla = pd.DataFrame(
         {
             "Fecha": [f.fecha for f in filas],
@@ -83,11 +85,15 @@ def mostrar() -> None:
             "Categoría": [f.rubro for f in filas],
             "Subcategoría": [f.categoria for f in filas],
             "Importe": [formato.dinero_con_signo(f.monto, f.sentido) for f in filas],
+            "📎": [str(adjuntos.get(f.id, "")) for f in filas],
         }
     )
+    if not adjuntos:
+        tabla = tabla.drop(columns="📎")
     evento = st.dataframe(
         formato.pintar(tabla), hide_index=True, on_select="rerun", selection_mode="single-row", key=TABLA,
-        column_config={"Fecha": st.column_config.DateColumn(format="DD/MM/YYYY")},
+        column_config={"Fecha": st.column_config.DateColumn(format="DD/MM/YYYY"),
+                       "📎": st.column_config.TextColumn(width="small", help="Comprobantes adjuntos")},
         height=min(38 + 35 * len(filas), 520),
     )
     seleccion = evento.selection.rows if evento else []
@@ -124,13 +130,17 @@ def detalle_movimiento(operacion_id: str, tabla: str = TABLA) -> None:
         return
 
     es_gasto = detalle.tipo is TipoOperacion.GASTO
-    pestanas = st.tabs(["Editar", "Repetir", "Eliminar", *(["Convertir en un bien"] if es_gasto else [])])
-    editar, repetir, eliminar = pestanas[:3]
+    adjuntos = len(lib.comprobantes(operacion_id))
+    pestanas = st.tabs(["Editar", f"📎 Comprobantes ({adjuntos})" if adjuntos else "📎 Comprobantes", "Repetir",
+                        "Eliminar", *(["Convertir en un bien"] if es_gasto else [])])
+    editar, adjuntar, repetir, eliminar = pestanas[:4]
     if es_gasto:
-        with pestanas[3]:
+        with pestanas[4]:
             _convertir_en_bien(operacion_id, tabla)
     with editar:
         _editar(detalle, tabla)
+    with adjuntar:
+        panel_comprobantes.mostrar(operacion_id)
     with repetir:
         st.caption("Registra otra vez este mismo movimiento en otra fecha (la renta, una suscripción, la nómina…).")
         fecha = st.date_input("Fecha del nuevo", value=lib.hoy(), format="DD/MM/YYYY", key=f"repetir_fecha_{operacion_id}")
@@ -142,6 +152,9 @@ def detalle_movimiento(operacion_id: str, tabla: str = TABLA) -> None:
     with eliminar:
         st.warning("Eliminar borra el movimiento completo (en una transferencia, los dos lados). "
                    "La bitácora conserva una copia.")
+        if adjuntos:
+            st.caption(f"📎 Tiene {adjuntos} comprobante(s): también se borran (tus respaldos anteriores los "
+                       "conservan).")
         for meta in metas.de_operacion(lib, operacion_id):
             st.caption(f"🏆 Es parte de tu meta **{formato.md(meta.nombre)}**: al eliminarlo, también se quita de "
                        "la meta.")

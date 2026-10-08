@@ -15,7 +15,7 @@ from collections.abc import Callable
 from dataclasses import replace
 from datetime import date, datetime
 
-from motor.errores import ErrorNoEncontrado, ErrorValidacion
+from motor.errores import ErrorDatos, ErrorNoEncontrado, ErrorValidacion
 from motor.modelo import (
     CATEGORIA_AJUSTE,
     CATEGORIA_BIENES,
@@ -32,6 +32,7 @@ from motor.modelo import (
     Fiscal,
     Meta,
     CierreMes,
+    Comprobante,
     Regla,
     Perfil,
     Recurrente,
@@ -63,6 +64,10 @@ class Libro:
         self._metas: dict[str, Meta] = {}
         self._cierres: dict[str, CierreMes] = {}
         self._reglas: dict[str, Regla] = {}
+        self._comprobantes: dict[str, Comprobante] = {}
+        # Archivos de comprobantes agregados y aún sin guardar: la persistencia los escribe en la misma transacción
+        # que sus datos (o se descartan con el libro si algo falla).
+        self._archivos_nuevos: dict[str, bytes] = {}
         self._secuencia = 0
         for categoria in (
             Categoria(CATEGORIA_AJUSTE, "AJUSTE DE SALDO", ClaseCategoria.SISTEMA, orden=-2),
@@ -92,6 +97,7 @@ class Libro:
         fiscal: Fiscal | None = None,
         cierres: list[CierreMes] = (),
         reglas: list[Regla] = (),
+        comprobantes: list[Comprobante] = (),
     ) -> Libro:
         """Reconstruye un libro ya guardado, tal cual (lo usa la persistencia)."""
         libro = cls(reloj=reloj)
@@ -109,6 +115,7 @@ class Libro:
         libro._metas = {m.id: m for m in metas}
         libro._cierres = {c.id: c for c in cierres}
         libro._reglas = {r.id: r for r in reglas}
+        libro._comprobantes = {c.id: c for c in comprobantes}
         libro.fiscal = fiscal or Fiscal()
         libro._secuencia = max([secuencia, *(op.secuencia for op in operaciones)])
         return libro
@@ -272,6 +279,48 @@ class Libro:
     def quitar_meta(self, meta_id: str) -> None:
         self.meta(meta_id)
         del self._metas[meta_id]
+
+    # ------------------------------------------------------------------ comprobantes
+
+    def comprobantes(self, operacion_id: str | None = None) -> list[Comprobante]:
+        lista = [c for c in self._comprobantes.values() if operacion_id is None or c.operacion_id == operacion_id]
+        return sorted(lista, key=lambda c: (c.agregado or datetime.min, c.nombre, c.id))
+
+    def comprobante(self, comprobante_id: str) -> Comprobante:
+        try:
+            return self._comprobantes[comprobante_id]
+        except KeyError:
+            raise ErrorNoEncontrado("Ese comprobante no existe.") from None
+
+    def guardar_comprobante(self, comprobante: Comprobante, contenido: bytes | None = None) -> Comprobante:
+        """``contenido``: el archivo, al agregarlo (se escribe al guardar el libro)."""
+        self.operacion(comprobante.operacion_id)
+        if contenido is None and comprobante.id not in self._comprobantes:
+            raise ErrorValidacion("Falta el archivo del comprobante.")
+        self._comprobantes[comprobante.id] = comprobante
+        if contenido is not None:
+            self._archivos_nuevos[comprobante.id] = contenido
+        return comprobante
+
+    def quitar_comprobante(self, comprobante_id: str) -> None:
+        self.comprobante(comprobante_id)
+        del self._comprobantes[comprobante_id]
+        self._archivos_nuevos.pop(comprobante_id, None)
+
+    def poner_archivos(self, archivos: dict[str, bytes]) -> None:
+        """Los archivos de los comprobantes que ya tiene el libro (al restaurar un respaldo): se escriben al
+        guardarlo. Deben estar todos."""
+        faltan = [c.nombre for c in self._comprobantes.values() if c.id not in archivos]
+        if faltan:
+            raise ErrorDatos(f"Faltan los archivos de {len(faltan)} comprobante(s) (por ejemplo «{faltan[0]}»).")
+        self._archivos_nuevos = {i: archivos[i] for i in self._comprobantes}
+
+    def archivos_nuevos(self) -> dict[str, bytes]:
+        """Los archivos agregados que aún no se guardan (los usa la persistencia)."""
+        return dict(self._archivos_nuevos)
+
+    def archivos_guardados(self) -> None:
+        self._archivos_nuevos.clear()
 
     # ------------------------------------------------------------------ reglas de categorías
 
@@ -439,6 +488,8 @@ class Libro:
         del self._operaciones[operacion_id]
         self._movimientos_cambiaron()
         self._seguir_aportes(operacion_id, None)
+        for c in [c for c in self._comprobantes.values() if c.operacion_id == operacion_id]:
+            self.quitar_comprobante(c.id)           # sus comprobantes se van con él
         return op
 
     def _seguir_aportes(self, operacion_id: str, op: Operacion | None) -> None:

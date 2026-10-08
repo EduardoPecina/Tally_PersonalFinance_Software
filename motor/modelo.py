@@ -309,6 +309,22 @@ class Prestamo:
 
 
 @dataclass(frozen=True, slots=True)
+class Comprobante:
+    """Un archivo (foto del ticket, PDF o XML de la factura) adjunto a un movimiento (motor/comprobantes.py).
+
+    Aquí solo van sus datos; el archivo se guarda aparte, en la tabla ``archivos`` del mismo ``tally.db``
+    (cifrado si tienes contraseña) y viaja en los respaldos."""
+
+    id: str
+    operacion_id: str
+    nombre: str                      # el nombre del archivo («ticket_super.jpg»)
+    tipo: str                        # image/jpeg, image/png, image/webp, application/pdf o application/xml
+    tamano: int                      # bytes
+    huella: str                      # SHA-256 del archivo: para saber si ya lo habías adjuntado
+    agregado: datetime | None = None
+
+
+@dataclass(frozen=True, slots=True)
 class Regla:
     """Una regla automática de categoría (motor/reglas_categorias.py): si la descripción de un movimiento contiene
     ``texto``, va a ``categoria_id``. Opcionalmente, solo en una cuenta."""

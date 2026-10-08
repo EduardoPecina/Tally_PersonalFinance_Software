@@ -130,6 +130,7 @@ class Pago:
     cuenta: str
     importe: Decimal              # positivo; un reembolso, negativo
     en_efectivo: bool
+    operacion_id: str = ""        # el movimiento (para sus comprobantes)
 
 
 @dataclass(slots=True)
@@ -182,7 +183,8 @@ def deducibles(libro: Libro, anio: int, ingreso: Decimal | None = None) -> Repor
         for p in op.partidas_de_categoria():
             for r in por_subcategoria.get(p.categoria_id, ()):
                 r.pagos.append(Pago(op.fecha, op.descripcion, categorias.etiqueta(libro, p.categoria_id),
-                                    libro.cuenta(cuenta).nombre if cuenta else "", a_pesos(p.importe), es_efectivo))
+                                    libro.cuenta(cuenta).nombre if cuenta else "", a_pesos(p.importe), es_efectivo,
+                                    op.id))
                 r.pagado += a_pesos(p.importe)
                 if es_efectivo and r.concepto.sin_efectivo:
                     efectivo[r.concepto.id] += p.importe

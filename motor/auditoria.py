@@ -81,6 +81,7 @@ ETIQUETA_ENTIDAD = {
     "fiscal": "Ajustes de impuestos",
     "cierre": "Cierre de mes",
     "regla": "Regla de categoría",
+    "comprobante": "Comprobante",
     "respaldo": "Respaldo",
 }
 ETIQUETA_ACCION = {CREAR: "Creó", EDITAR: "Editó", BORRAR: "Borró", RESTAURAR: "Restauró"}

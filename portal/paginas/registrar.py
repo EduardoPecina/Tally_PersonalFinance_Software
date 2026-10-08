@@ -14,6 +14,7 @@ from motor.dinero import a_centavos, a_pesos
 from motor.errores import ErrorTally
 from motor.modelo import Recurrente, TipoCuenta, TipoOperacion
 from motor.transferencias import registrar_pago_tarjeta, registrar_transferencia
+from portal.componentes import comprobantes as panel_comprobantes
 from portal.componentes import formato
 from portal.componentes.sesion import ejecutar, libro
 from portal.navegacion import enlace
@@ -158,6 +159,7 @@ def formulario(clave: str = "registrar", cuenta_fija: str | None = None) -> bool
         descripcion = st.text_input("Descripción", value=fijo.nombre if fijo else "", max_chars=120, placeholder="Ej. Verificación de Amazon"
                                     if temporal else "Ej. Pizza, Uber, Nómina…")
         notas = st.text_input("Notas (opcional)", max_chars=300)
+        archivos = panel_comprobantes.selector(f"{forma}_comprobantes")
         regla = None
         if tipo in CON_CATEGORIA and not temporal and not repartir and categoria_id is None and descripcion.strip():
             regla = reglas_categorias.buscar(lib, descripcion, reglas_categorias.CLASE_DE_TIPO[tipo], origen)
@@ -209,10 +211,21 @@ def formulario(clave: str = "registrar", cuenta_fija: str | None = None) -> bool
         return hecho
 
     memoria = st.session_state["_registrar_ultimas"]
+
+    def con_comprobantes(registrar_op):
+        """Registra el movimiento y le adjunta los archivos elegidos, en el mismo cambio (todo o nada)."""
+        def accion_completa(lib):
+            op = registrar_op(lib)
+            panel_comprobantes.adjuntar_todos(lib, op.id, archivos)
+            return op
+        return accion_completa
+
+    adjuntos = f" con {len(archivos)} comprobante(s)" if archivos else ""
     if temporal:
         memoria.update(cuenta=origen)
-        return guardado(ejecutar(lambda lib: temporales.registrar(lib, fecha, origen, monto, descripcion, notas),
-                                 exito=f"Cargo temporal de {formato.dinero(monto)} guardado: no cuenta como gasto"))
+        return guardado(ejecutar(
+            con_comprobantes(lambda lib: temporales.registrar(lib, fecha, origen, monto, descripcion, notas)),
+            exito=f"Cargo temporal de {formato.dinero(monto)} guardado{adjuntos}: no cuenta como gasto"))
     if tipo is TipoOperacion.TRANSFERENCIA:
         memoria.update(origen=origen, destino=destino)
 
@@ -242,7 +255,7 @@ def formulario(clave: str = "registrar", cuenta_fija: str | None = None) -> bool
         texto += f" a {int(msi)} meses sin intereses"
     if regla is not None:
         texto += f" en {etiquetas[categoria_id]} (por tu regla «{regla.texto}»)"
-    return guardado(ejecutar(accion, exito=texto))
+    return guardado(ejecutar(con_comprobantes(accion), exito=texto + adjuntos))
 
 
 def limpiar(clave: str = "registrar", todo: bool = False) -> None:
