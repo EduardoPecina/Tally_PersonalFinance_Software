@@ -1755,3 +1755,41 @@ def test_importar_del_banco_crea_una_regla_con_un_clic(raiz, con_datos):
     # Ya no hace falta elegir: la regla lo reconoce.
     assert not any(s.key and s.key.startswith("banco_grupo_") and "SPEI" in s.label for s in at.selectbox)
     assert not any("Te falta elegir" in w.value for w in at.warning)
+
+
+def test_plan_para_salir_de_deudas(raiz, con_datos):
+    from motor import plan_deudas
+
+    s = sesion_en(raiz)
+    with s.cambio() as lib:
+        cuentas.editar(lib, con_datos["tdc"], tasa_anual=60)
+        movimientos.registrar_gasto(lib, lib.hoy(), con_datos["tdc"], con_datos["cat"]["ALIMENTOS"], 1500, "Súper")
+        otra = cuentas.crear(lib, "TDC Ficticia Dos", "credito", deuda_inicial=800, limite_credito=3000, dia_corte=10,
+                             dia_pago=30, fecha_creacion=lib.hoy())
+        cuentas.editar(lib, otra.id, tasa_anual=40)
+    at = abrir(_pagina("deudas"))
+    sin_errores(at)
+    assert any(s.value == "🎯 Plan para salir de deudas" for s in at.subheader)
+    at.number_input(key="plan_deudas_monto").set_value(10.0).run()
+    assert any("no alcanzas ni lo mínimo" in e.value for e in at.error)
+    at.number_input(key="plan_deudas_monto").set_value(1000.0).run()
+    sin_errores(at)
+    tabla = next(d.value for d in at.dataframe if "Pagar este mes" in d.value.columns)
+    assert tabla["Deuda"].tolist()[0] == "🎯 TDC Ficticia"                      # avalancha: la de 60 % primero
+    at.segmented_control(key="plan_deudas_estrategia").set_value(plan_deudas.BOLA_DE_NIEVE).run()
+    tabla = next(d.value for d in at.dataframe if "Pagar este mes" in d.value.columns)
+    assert tabla["Deuda"].tolist()[0] == "🎯 TDC Ficticia Dos"                  # bola de nieve: la que debes menos
+    at.button(key="plan_deudas_guardar").click().run()
+    sin_errores(at)
+    assert plan_deudas.guardado_de(sesion_en(raiz).libro) == (Decimal(1000), plan_deudas.BOLA_DE_NIEVE)
+
+    # El Resumen te dice cuánto pagar a cada una.
+    at.switch_page(_pagina("inicio")).run()
+    sin_errores(at)
+    assert any(s.value == "🎯 Tu plan para salir de deudas" for s in at.subheader)
+    assert any("aquí va lo extra" in m.value and "TDC Ficticia Dos" in m.value for m in at.markdown)
+
+    at.switch_page(_pagina("deudas")).run()
+    at.button(key="plan_deudas_quitar").click().run()
+    sin_errores(at)
+    assert plan_deudas.guardado_de(sesion_en(raiz).libro) is None

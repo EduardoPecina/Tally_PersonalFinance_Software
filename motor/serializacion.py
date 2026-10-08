@@ -73,7 +73,7 @@ def perfil_a_dict(p: Perfil) -> dict:
             "periodo_inicial": p.periodo_inicial, "tema": p.tema, "icono": p.icono,
             "dias_para_reclamar": p.dias_para_reclamar, "clasificaciones": p.clasificaciones,
             "actualizar_precios": p.actualizar_precios, "iva": str(p.iva), "ingreso_esperado": p.ingreso_esperado,
-            "meta_ahorro": p.meta_ahorro}
+            "meta_ahorro": p.meta_ahorro, "plan_deudas": p.plan_deudas, "estrategia_deudas": p.estrategia_deudas}
 
 
 def grupo_a_dict(g: Grupo) -> dict:
@@ -142,7 +142,8 @@ def perfil_desde_dict(d: dict) -> Perfil:
                   icono=d.get("icono", "claro"), dias_para_reclamar=d.get("dias_para_reclamar", 45),
                   clasificaciones=d.get("clasificaciones", 1),
                   actualizar_precios=d.get("actualizar_precios", False), iva=Decimal(d.get("iva", "16")),
-                  ingreso_esperado=d.get("ingreso_esperado"), meta_ahorro=d.get("meta_ahorro", 10))
+                  ingreso_esperado=d.get("ingreso_esperado"), meta_ahorro=d.get("meta_ahorro", 10),
+                  plan_deudas=d.get("plan_deudas"), estrategia_deudas=d.get("estrategia_deudas", ""))
 
 
 def grupo_desde_dict(d: dict) -> Grupo:

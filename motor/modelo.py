@@ -78,6 +78,8 @@ class Perfil:
     iva: Decimal = Decimal(16)         # % de IVA/VAT de tu país: se cobra sobre los intereses (tarjetas, préstamos)
     ingreso_esperado: int | None = None  # centavos al mes; None = el promedio de tus ingresos fijos (planeacion.py)
     meta_ahorro: int = 10              # % del ingreso que quieres ahorrar (presupuestos sugeridos)
+    plan_deudas: int | None = None     # centavos al mes para todas tus deudas (motor/plan_deudas.py); None = sin plan
+    estrategia_deudas: str = ""        # avalancha o bola_de_nieve
 
 
 @dataclass(frozen=True, slots=True)
