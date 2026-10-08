@@ -1902,3 +1902,26 @@ def test_salud_de_los_datos_y_aviso_en_el_resumen(raiz, con_datos):
     assert sesion_en(raiz).libro.perfil.salud_ignorados[-1] == clave.removeprefix("salud_ignorar_")
     at.button(key="salud_mostrar_todo").click().run()
     assert any(b.key == clave for b in at.button)
+
+
+# ------------------------------------------------------------ guía y ayuda
+
+
+def test_guia_de_primeros_pasos_y_ayuda(raiz, con_datos):
+    at = abrir()
+    sin_errores(at)
+    assert any(m.value.startswith("**🚀 Primeros pasos**") for m in at.markdown)
+
+    at.switch_page(_pagina("ayuda")).run()
+    sin_errores(at)
+    assert at.title[0].value == "Guía y ayuda"
+    assert any(e.label == "Pagar mi tarjeta de crédito" for e in at.expander)
+    at.text_input(key="ayuda_buscar").input("tícket").run()
+    assert [e.label for e in at.expander] == ["Guardar el ticket o la factura de un gasto"]
+    at.text_input(key="ayuda_buscar").input("").run()
+
+    at.toggle(key="guia_en_resumen").set_value(False).run()
+    sin_errores(at)
+    assert sesion_en(raiz).libro.perfil.guia_oculta
+    at.switch_page(_pagina("inicio")).run()
+    assert not any(m.value.startswith("**🚀 Primeros pasos**") for m in at.markdown)

@@ -81,6 +81,7 @@ class Perfil:
     plan_deudas: int | None = None     # centavos al mes para todas tus deudas (motor/plan_deudas.py); None = sin plan
     estrategia_deudas: str = ""        # avalancha o bola_de_nieve
     salud_ignorados: tuple[str, ...] = ()   # hallazgos de la revisión de salud marcados «Está bien así» (salud.py)
+    guia_oculta: bool = False          # la guía de primeros pasos ya no sale en el Resumen (guia.py)
 
 
 @dataclass(frozen=True, slots=True)
