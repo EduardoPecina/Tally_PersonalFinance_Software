@@ -18,7 +18,7 @@ import zipfile
 from collections import defaultdict
 from dataclasses import dataclass
 from datetime import date
-from pathlib import PurePath
+from pathlib import PurePosixPath as PurePath     # rutas con «/» en cualquier sistema (también dentro del .zip)
 
 from motor import impuestos
 from motor.errores import ErrorValidacion

@@ -8,6 +8,7 @@ import io
 import json
 import sqlite3
 import zipfile
+from contextlib import closing
 from datetime import date
 
 import pytest
@@ -61,7 +62,7 @@ def _adjuntar(sesion, nombre="ticket.jpg", datos=FOTO, operacion=None):
 
 
 def _filas_archivos(ruta) -> list[tuple[str, bytes]]:
-    with sqlite3.connect(ruta) as conexion:
+    with closing(sqlite3.connect(ruta)) as conexion:            # cerrada: en Windows no deja el archivo tomado
         return [(i, bytes(d)) for i, d in conexion.execute("SELECT id, datos FROM archivos")]
 
 
@@ -105,6 +106,7 @@ def test_tamano_maximo_y_repetido(sesion, monkeypatch):
 def test_nombre_limpio(sesion):
     c = _adjuntar(sesion, 'C:\\Users\\Ficticio\\Mis "tickets"\\súper:julio?.jpg')
     assert c.nombre == "súper_julio_.jpg"
+    assert comprobantes.limpiar_nombre("a:b.jpg") == "a_b.jpg"               # no es una unidad de Windows
     assert comprobantes.limpiar_nombre("a" * 200 + ".pdf").endswith(".pdf")
     assert len(comprobantes.limpiar_nombre("a" * 200 + ".pdf")) == 120
 
@@ -195,7 +197,7 @@ def test_un_archivo_cifrado_alterado_no_se_entrega(sesion, ruta, tmp_path):
     _activar(sesion, tmp_path)
     (archivo_id, datos), = _filas_archivos(ruta)
     alterado = datos[:-1] + bytes([datos[-1] ^ 1])
-    with sqlite3.connect(ruta) as conexion:
+    with closing(sqlite3.connect(ruta)) as conexion, conexion:
         conexion.execute("UPDATE archivos SET datos = ? WHERE id = ?", (alterado, archivo_id))
     abierta = Sesion(ruta, reloj=reloj, llave=seguridad.entrar(ruta, CONTRASENA))
     with pytest.raises(ErrorDatos, match="modificado"):
@@ -312,6 +314,15 @@ def test_deducibles_con_y_sin_comprobante_y_su_zip(sesion):
         assert zz.read("Gastos médicos/2026-07-03_factura.pdf") == PDF
         indice = list(csv.reader(io.StringIO(zz.read("indice.csv").decode("utf-8-sig"))))
     assert indice[0][0] == "Concepto" and indice[-1][-1] == "SIN COMPROBANTE"
+
+    # Dos archivos con el mismo nombre el mismo día: el segundo lleva «_2», con «/» en cualquier sistema.
+    with sesion.cambio() as libro:
+        otra = movimientos.registrar_gasto(libro, date(2026, 7, 3), libro.cuentas()[0].id, sesion.medico, 50,
+                                           "Otra consulta ficticia").id
+    _adjuntar(sesion, "factura.pdf", PDF + b"otra", operacion=otra)
+    with zipfile.ZipFile(io.BytesIO(comprobantes.zip_de_deducibles(sesion, 2026))) as zz:
+        assert "Gastos médicos/2026-07-03_factura_2.pdf" in zz.namelist()
+        assert not any("\\" in n for n in zz.namelist())
     assert comprobantes.anios_con_deducibles(sesion.libro) == [2026]
 
 
