@@ -9,13 +9,13 @@ from collections import Counter
 import pandas as pd
 import streamlit as st
 
-from motor import bancos, categorias, importacion, respaldos
+from motor import bancos, categorias, importacion, reglas_categorias, respaldos
 from motor.consultas import ETIQUETA_TIPO_OPERACION
 from motor.dinero import a_pesos
 from motor.errores import ErrorTally
-from motor.modelo import TipoCuenta
+from motor.modelo import ClaseCategoria, TipoCuenta
 from portal.componentes import formato
-from portal.componentes.sesion import aplicar, avisar, libro, sesion
+from portal.componentes.sesion import aplicar, avisar, ejecutar, libro, sesion
 
 SALE, ENTRA = "🔻 Sale", "🔺 Entra"
 NINGUNA = "(ninguna)"
@@ -271,8 +271,9 @@ def _tabla(lib, cuenta_id: str, propuestas: list[bancos.Propuesta], clave: str):
     })
     duplicados = sum(not p.cargar for p in propuestas)
     sugeridas = sum(bool(p.destino) for p in propuestas)
-    st.caption(f"TALLY sugirió la subcategoría de **{sugeridas} de {len(propuestas)}** movimientos (✨) por lo que "
-               "elegiste antes o por el nombre del comercio. Cámbiala donde no te convenza. "
+    st.caption(f"TALLY sugirió la subcategoría de **{sugeridas} de {len(propuestas)}** movimientos (✨) por tus "
+               "reglas automáticas, por lo que elegiste antes o por el nombre del comercio. Cámbiala donde no te "
+               "convenza. "
                + (f"**{duplicados}** ya estaban en TALLY (⏭️): no se cargan, salvo que los marques. "
                   if duplicados else "")
                + "Si eliges la subcategoría de un movimiento, se usa también para los que se llaman igual o casi igual.")
@@ -328,15 +329,39 @@ def _desconocidos(propuestas: list[bancos.Propuesta], opciones: dict[str, str], 
             total = sum(abs(propuestas[i].movimiento.centavos) for i in indices)
             texto = (f"«{formato.md(primero.descripcion)}»" + (f" y {len(indices) - 1} más" if len(indices) > 1 else "")
                      + f" · {'entró' if primero.centavos > 0 else 'salió'} {formato.dinero_md(a_pesos(total))}")
-            a, b = st.columns([3, 2], vertical_alignment="center")
+            a, b, c = st.columns([6, 4, 1], vertical_alignment="center")
             a.markdown(texto)
             elegido = b.selectbox(texto, [ELIGE, *opciones], key=f"banco_grupo_{clave}_{n}",
                                   label_visibility="collapsed")
             if elegido != ELIGE:
                 elegidos.update(dict.fromkeys(indices, opciones[elegido]))
+            _boton_regla(c, [propuestas[i].movimiento for i in indices], opciones.get(elegido, ""), f"{clave}_{n}")
         if len(grupos) > 40:
             st.caption(f"…y {len(grupos) - 40} grupo(s) más: elígelos en la tabla.")
     return elegidos
+
+
+def _boton_regla(columna, movimientos: list[bancos.Movimiento], destino: str, clave: str) -> None:
+    """«⚡»: crea una regla automática con lo elegido para el grupo, para que la próxima vez TALLY lo haga solo."""
+    tipo, _, categoria_id = destino.partition(":")
+    texto = reglas_categorias.texto_para([m.descripcion for m in movimientos])
+    if tipo != "sub" or texto is None:
+        columna.button("⚡", key=f"banco_regla_{clave}", disabled=True,
+                       help="Elige una subcategoría y te ofrezco crear una regla automática para la próxima vez."
+                       if texto else "No encontré un texto que identifique a estos movimientos para una regla.")
+        return
+    lib = libro()
+    clase = lib.categoria(categoria_id).clase
+    if movimientos[0].centavos > 0 and clase is ClaseCategoria.GASTO:
+        columna.button("⚡", key=f"banco_regla_{clave}", disabled=True,
+                       help="Es una devolución: las reglas de gasto aplican a lo que sale.")
+        return
+    if columna.button("⚡", key=f"banco_regla_{clave}",
+                      help=f"Siempre así: crear la regla «{texto}» → {categorias.etiqueta(lib, categoria_id)}. "
+                           "La próxima vez TALLY lo hará solo (la editas en Categorías › ⚡ Reglas automáticas)."):
+        if ejecutar(lambda lib_: reglas_categorias.crear(lib_, texto, categoria_id),
+                    exito=f"Regla creada: «{texto}» → {categorias.etiqueta(lib, categoria_id)}"):
+            st.rerun()
 
 
 def _agregados(lib, cuenta_id: str, lectura: bancos.Lectura, clave: str) -> list[tuple[bancos.Movimiento, str]]:

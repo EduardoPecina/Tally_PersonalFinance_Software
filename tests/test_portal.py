@@ -1672,3 +1672,86 @@ def test_cierre_de_mes_cerrar_avisar_y_volver_a_cerrar(raiz, con_datos):
     next(b for b in at.button if b.key == "cierre_reabrir").click().run()
     sin_errores(at)
     assert sesion_en(raiz).libro.cierres() == []
+
+
+# ------------------------------------------------------------ reglas automáticas de categorías
+
+
+def test_reglas_automaticas_desde_categorias(raiz, con_datos):
+    from motor import reglas_categorias
+
+    at = abrir(_pagina("categorias"))
+    assert "⚡ Reglas automáticas" in [t.label for t in at.tabs]
+    assert any("Todavía no tienes reglas" in i.value for i in at.info)
+    next(t for t in at.text_input if t.label == "Si la descripción dice…").input("pizza")
+    next(s for s in at.selectbox if s.label == "…va a la subcategoría").set_value(con_datos["cat"]["RESTAURANTES"])
+    next(b for b in at.button if b.label == "Agregar regla").click().run()
+    sin_errores(at)
+    assert any("Regla agregada: «PIZZA»" in str(t.value) and "1 movimiento" in str(t.value) for t in at.toast)
+    (regla,) = sesion_en(raiz).libro.reglas()
+    assert (regla.texto, regla.categoria_id, regla.cuenta_id) == ("PIZZA", con_datos["cat"]["RESTAURANTES"], None)
+
+    # Probar una descripción.
+    at.text_input(key="regla_probar").input("PIZZA FICTICIA 123").run()
+    assert any("por tu regla «PIZZA»" in m.value and "Si es un gasto" in m.value for m in at.markdown)
+
+    # Corregir el historial: la «Pizza» que ya estaba en ALIMENTOS pasa a RESTAURANTES.
+    at.checkbox(key="regla_historial_confirmar").check().run()
+    at.button(key="regla_historial_aplicar").click().run()
+    sin_errores(at)
+    lib = sesion_en(raiz).libro
+    pizza = next(op for op in lib.operaciones() if op.descripcion == "Pizza")
+    assert movimientos.describir(pizza).categoria_id == con_datos["cat"]["RESTAURANTES"]
+    assert reglas_categorias.pendientes(lib) == []
+
+    # Pausarla y borrarla.
+    at.selectbox(key="regla_elegida").set_value(regla.id).run()
+    next(c for c in at.checkbox if c.label == "Activa").uncheck()
+    next(b for b in at.button if b.label == "Guardar cambios" and regla.id in str(b.form_id)).click().run()
+    sin_errores(at)
+    assert not sesion_en(raiz).libro.regla(regla.id).activa
+    at.checkbox(key=f"regla_confirmar_{regla.id}").check().run()
+    at.button(key=f"regla_borrar_{regla.id}").click().run()
+    sin_errores(at)
+    assert sesion_en(raiz).libro.reglas() == []
+
+
+def test_reglas_sugeridas_y_al_registrar(raiz, con_datos):
+    s = sesion_en(raiz)
+    with s.cambio() as lib:
+        for i in range(3):
+            movimientos.registrar_gasto(lib, lib.hoy(), con_datos["debito"], con_datos["cat"]["TRANSPORTE"], 50,
+                                        f"UBER FICTICIO {i}")
+    at = abrir(_pagina("categorias"))
+    assert any(e.label.startswith("💡 Sugerencias de reglas") for e in at.expander)
+    at.button(key="regla_sugerida_0").click().run()
+    sin_errores(at)
+    (regla,) = sesion_en(raiz).libro.reglas()
+    assert (regla.texto, regla.categoria_id) == ("UBER", con_datos["cat"]["TRANSPORTE"])
+
+    # Al registrar sin elegir subcategoría, la regla la decide.
+    at.switch_page(_pagina("registrar")).run()
+    next(s for s in at.selectbox if s.label == "Pagado con").set_value(con_datos["debito"])
+    next(n for n in at.number_input if n.label == "Importe").set_value(75.0)
+    next(t for t in at.text_input if t.label == "Descripción").input("Uber al aeropuerto")
+    boton(at, "Guardar").click().run()
+    sin_errores(at)
+    assert any("por tu regla «UBER»" in str(t.value) for t in at.toast)
+    nuevo = next(op for op in sesion_en(raiz).libro.operaciones() if op.descripcion == "Uber al aeropuerto")
+    assert movimientos.describir(nuevo).categoria_id == con_datos["cat"]["TRANSPORTE"]
+
+
+def test_importar_del_banco_crea_una_regla_con_un_clic(raiz, con_datos):
+    at = _banco(raiz)
+    clave = at.session_state["_banco_clave"]
+    grupo = next(s for s in at.selectbox if s.key and s.key.startswith(f"banco_grupo_{clave}_")
+                 and "SPEI" in s.label)
+    assert at.button(key=grupo.key.replace("banco_grupo_", "banco_regla_")).disabled     # falta elegir
+    etiqueta = next(o for o in grupo.options if o.endswith("› TRANSPORTE"))
+    grupo.set_value(etiqueta).run()
+    at.button(key=grupo.key.replace("banco_grupo_", "banco_regla_")).click().run()
+    sin_errores(at)
+    assert any("Regla creada: «FICTICIO»" in str(t.value) for t in at.toast)
+    # Ya no hace falta elegir: la regla lo reconoce.
+    assert not any(s.key and s.key.startswith("banco_grupo_") and "SPEI" in s.label for s in at.selectbox)
+    assert not any("Te falta elegir" in w.value for w in at.warning)

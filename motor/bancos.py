@@ -39,7 +39,7 @@ from datetime import date, datetime, timedelta
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from html.parser import HTMLParser
 
-from motor import categorias
+from motor import categorias, reglas_categorias
 from motor.errores import ErrorValidacion
 from motor.importacion import Archivo, Bloque, Destino, Linea, clave_destino, decodificar
 from motor.libro import Libro
@@ -1180,7 +1180,7 @@ _REGLAS = tuple(
         r"(?<![A-Z0-9])" + re.escape(p.rstrip("*")) + (r"[A-Z]*" if p.endswith("*") else "") + r"(?![A-Z0-9])"
         for p in patrones)))
     for sentido, nombre, patrones in _COMERCIOS)
-_DEVOLUCION = re.compile(r"(?<![A-Z])(DEVOLUCION|REEMBOLSO|REVERS[OA]|CANCELACION|CONTRACARGO)")
+_DEVOLUCION = reglas_categorias.DEVOLUCION
 _TRANSFERENCIA = re.compile(r"(?<![A-Z])(SPEI|TRASPASO|TRANSFERENCIA|TRANSF|PAGO TARJETA|PAGO TDC|SU PAGO)"
                             r"(?![A-Z])")
 
@@ -1204,15 +1204,23 @@ def _por_comercio(libro: Libro, movimiento: Movimiento) -> tuple[str, str] | Non
     return None
 
 
+def _por_regla(reglas: reglas_categorias.Indice, movimiento: Movimiento, cuenta_id: str) -> tuple[str, str] | None:
+    """Tus reglas automáticas (Categorías › Reglas automáticas) van primero: las pusiste tú."""
+    regla = reglas.para_importe(movimiento.descripcion, movimiento.centavos, cuenta_id) if reglas else None
+    return (destino_subcategoria(regla.categoria_id), reglas_categorias.motivo(regla)) if regla else None
+
+
 def revisar(libro: Libro, cuenta_id: str, movimientos) -> list[Propuesta]:
     """Una propuesta por movimiento, en el mismo orden."""
     cuenta = libro.cuenta(cuenta_id)
     historial = _Historial(libro, cuenta_id)
+    reglas = reglas_categorias.Indice(libro)
     duplicados = buscar_duplicados(libro, cuenta_id, movimientos)
     propuestas = []
     for i, m in enumerate(movimientos):
         antes = historial.sugerir(m)
-        sugerencia = (antes[:2] if antes and antes[2] else None) or _por_comercio(libro, m) or (antes and antes[:2])
+        sugerencia = (_por_regla(reglas, m, cuenta_id) or (antes[:2] if antes and antes[2] else None)
+                      or _por_comercio(libro, m) or (antes and antes[:2]))
         if sugerencia:
             destino, motivo = sugerencia
         elif _TRANSFERENCIA.search(clave(m.descripcion)):

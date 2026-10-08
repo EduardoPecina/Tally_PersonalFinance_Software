@@ -307,6 +307,19 @@ class Prestamo:
 
 
 @dataclass(frozen=True, slots=True)
+class Regla:
+    """Una regla automática de categoría (motor/reglas_categorias.py): si la descripción de un movimiento contiene
+    ``texto``, va a ``categoria_id``. Opcionalmente, solo en una cuenta."""
+
+    id: str
+    texto: str                     # como se compara: MAYÚSCULAS, sin acentos ni signos («OXXO GAS»)
+    categoria_id: str              # una subcategoría de gasto o de ingreso
+    cuenta_id: str | None = None   # solo en los movimientos de esta cuenta (None = en todas)
+    activa: bool = True
+    creada: date | None = None
+
+
+@dataclass(frozen=True, slots=True)
 class Recurrente:
     """Un pago o ingreso que se repite: renta, luz, Netflix, la nómina… (motor/recurrentes.py).
 

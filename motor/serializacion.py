@@ -24,6 +24,7 @@ from motor.modelo import (
     Operacion,
     Meta,
     CierreMes,
+    Regla,
     Aporte,
     ConceptoDeducible,
     Fiscal,
@@ -42,7 +43,7 @@ from motor.modelo import (
 
 # Tipos de entidad, en el orden en que se cargan.
 ENTIDADES = ("perfil", "grupo", "rubro", "categoria", "cuenta", "operacion", "valor", "plazo", "bien",
-             "prestamo", "recurrente", "meta", "fiscal", "cierre")
+             "prestamo", "recurrente", "meta", "fiscal", "cierre", "regla")
 ID_PERFIL = "perfil"
 ID_FISCAL = "fiscal"
 
@@ -248,6 +249,16 @@ def _decimal(valor) -> Decimal | None:
     return Decimal(valor) if valor is not None else None
 
 
+def regla_a_dict(r: Regla) -> dict:
+    return {"id": r.id, "texto": r.texto, "categoria_id": r.categoria_id, "cuenta_id": r.cuenta_id,
+            "activa": r.activa, "creada": _iso(r.creada)}
+
+
+def regla_desde_dict(d: dict) -> Regla:
+    return Regla(id=d["id"], texto=d["texto"], categoria_id=d["categoria_id"], cuenta_id=d.get("cuenta_id"),
+                 activa=d.get("activa", True), creada=_fecha(d.get("creada")))
+
+
 def cierre_a_dict(c: CierreMes) -> dict:
     return {"id": c.id, "cerrado_en": c.cerrado_en.isoformat(), "ingresos": c.ingresos, "gastos": c.gastos,
             "patrimonio": c.patrimonio, "movimientos": c.movimientos, "notas": c.notas}
@@ -373,6 +384,7 @@ def instantanea(libro: Libro, memoria: Memoria | None = None) -> Instantanea:
         "meta": {m.id: meta_a_dict(m) for m in libro.metas()},
         "fiscal": {ID_FISCAL: fiscal_a_dict(libro.fiscal)} if libro.fiscal != Fiscal() else {},
         "cierre": {c.id: cierre_a_dict(c) for c in libro.cierres()},
+        "regla": {r.id: regla_a_dict(r) for r in libro.reglas()},
     }
 
 
@@ -399,6 +411,7 @@ def libro_desde_instantanea(
             metas=[meta_desde_dict(d) for d in datos.get("meta", {}).values()],
             fiscal=fiscal_desde_dict(datos["fiscal"][ID_FISCAL]) if datos.get("fiscal") else None,
             cierres=[cierre_desde_dict(d) for d in datos.get("cierre", {}).values()],
+            reglas=[regla_desde_dict(d) for d in datos.get("regla", {}).values()],
             secuencia=secuencia,
             reloj=reloj,
         )
@@ -438,6 +451,11 @@ def verificar_integridad(libro: Libro) -> list[str]:
     for bien in libro.bienes():
         if libro.cuenta(bien.cuenta_id).tipo is not TipoCuenta.BIEN:
             problemas.append(f"«{libro.cuenta(bien.cuenta_id).nombre}» tiene datos de bien pero no es un bien")
+    for regla in libro.reglas():
+        if regla.categoria_id not in categorias:
+            problemas.append(f"la regla «{regla.texto}» usa una categoría inexistente")
+        if regla.cuenta_id is not None and regla.cuenta_id not in cuentas:
+            problemas.append(f"la regla «{regla.texto}» usa una cuenta inexistente")
     for op in libro.operaciones():
         if sum(p.importe for p in op.partidas) != 0:
             problemas.append(f"el movimiento del {op.fecha} no suma cero")

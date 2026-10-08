@@ -32,6 +32,7 @@ from motor.modelo import (
     Fiscal,
     Meta,
     CierreMes,
+    Regla,
     Perfil,
     Recurrente,
     Rubro,
@@ -61,6 +62,7 @@ class Libro:
         self._recurrentes: dict[str, Recurrente] = {}
         self._metas: dict[str, Meta] = {}
         self._cierres: dict[str, CierreMes] = {}
+        self._reglas: dict[str, Regla] = {}
         self._secuencia = 0
         for categoria in (
             Categoria(CATEGORIA_AJUSTE, "AJUSTE DE SALDO", ClaseCategoria.SISTEMA, orden=-2),
@@ -89,6 +91,7 @@ class Libro:
         metas: list[Meta] = (),
         fiscal: Fiscal | None = None,
         cierres: list[CierreMes] = (),
+        reglas: list[Regla] = (),
     ) -> Libro:
         """Reconstruye un libro ya guardado, tal cual (lo usa la persistencia)."""
         libro = cls(reloj=reloj)
@@ -105,6 +108,7 @@ class Libro:
         libro._recurrentes = {r.id: r for r in recurrentes}
         libro._metas = {m.id: m for m in metas}
         libro._cierres = {c.id: c for c in cierres}
+        libro._reglas = {r.id: r for r in reglas}
         libro.fiscal = fiscal or Fiscal()
         libro._secuencia = max([secuencia, *(op.secuencia for op in operaciones)])
         return libro
@@ -157,6 +161,8 @@ class Libro:
             del self._recurrentes[r.id]
         for m in [m for m in self._metas.values() if m.cuenta_id == cuenta_id]:
             self._metas[m.id] = replace(m, cuenta_id=None)
+        for r in [r for r in self._reglas.values() if r.cuenta_id == cuenta_id]:
+            del self._reglas[r.id]                 # una regla de esa cuenta ya no tiene a qué aplicarse
 
     # ------------------------------------------------- títulos e inversiones a plazo
 
@@ -266,6 +272,28 @@ class Libro:
     def quitar_meta(self, meta_id: str) -> None:
         self.meta(meta_id)
         del self._metas[meta_id]
+
+    # ------------------------------------------------------------------ reglas de categorías
+
+    def reglas(self) -> list[Regla]:
+        return sorted(self._reglas.values(), key=lambda r: (r.texto, r.cuenta_id or "", r.id))
+
+    def regla(self, regla_id: str) -> Regla:
+        try:
+            return self._reglas[regla_id]
+        except KeyError:
+            raise ErrorNoEncontrado("Esa regla no existe.") from None
+
+    def guardar_regla(self, regla: Regla) -> Regla:
+        self.categoria(regla.categoria_id)
+        if regla.cuenta_id is not None:
+            self.cuenta(regla.cuenta_id)
+        self._reglas[regla.id] = regla
+        return regla
+
+    def quitar_regla(self, regla_id: str) -> None:
+        self.regla(regla_id)
+        del self._reglas[regla_id]
 
     # ------------------------------------------------------------------ cierres de mes
 

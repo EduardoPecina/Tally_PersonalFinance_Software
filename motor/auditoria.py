@@ -80,6 +80,7 @@ ETIQUETA_ENTIDAD = {
     "meta": "Meta de ahorro",
     "fiscal": "Ajustes de impuestos",
     "cierre": "Cierre de mes",
+    "regla": "Regla de categoría",
     "respaldo": "Respaldo",
 }
 ETIQUETA_ACCION = {CREAR: "Creó", EDITAR: "Editó", BORRAR: "Borró", RESTAURAR: "Restauró"}
@@ -104,6 +105,8 @@ def resumen(registro: Registro | Cambio) -> str:
         return f"Empezó de cero (lo anterior quedó en «{datos.get('respaldo_de_seguridad', '')}»)"
     if registro.entidad == "cierre":
         datos = {**datos, "nombre": datos.get("id", "")}                # «2026-09»
+    elif registro.entidad == "regla":
+        datos = {**datos, "nombre": datos.get("texto", "")}             # «OXXO»
     nombre = datos.get("nombre") or datos.get("descripcion") or datos.get("archivo") or ""
     texto = f"{ETIQUETA_ACCION.get(registro.accion, registro.accion)} {ETIQUETA_ENTIDAD.get(registro.entidad, registro.entidad)}"
     if nombre:

@@ -11,7 +11,7 @@ from motor import catalogo, categorias, reportes
 from motor.errores import ErrorTally
 from motor.modelo import Categoria, ClaseCategoria, Rubro
 from motor.textos import clave
-from portal.componentes import formato
+from portal.componentes import formato, reglas
 from portal.componentes.sesion import ejecutar, libro, sesion
 
 SIN_CLASIFICACION = "— Sin clasificación —"
@@ -309,10 +309,13 @@ def mostrar() -> None:
     st.title("Categorías")
     st.caption("Las **categorías** son cajas que agrupan **subcategorías** (por ejemplo, SALUD agrupa DENTISTA y "
                "MEDICINAS Y FARMACIA). A cada movimiento le pones una subcategoría y los reportes suman por ambas.")
-    gastos, ingresos, clasificaciones = st.tabs(["Gastos", "Ingresos", "Clasificaciones"])
+    gastos, ingresos, clasificaciones, automaticas = st.tabs(["Gastos", "Ingresos", "Clasificaciones",
+                                                              "⚡ Reglas automáticas"])
     with gastos:
         _arbol(ClaseCategoria.GASTO)
     with ingresos:
         _arbol(ClaseCategoria.INGRESO)
     with clasificaciones:
         _clasificaciones_editables()
+    with automaticas:
+        reglas.mostrar()
