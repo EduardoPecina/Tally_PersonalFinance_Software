@@ -21,11 +21,13 @@ from portal.navegacion import enlace
 
 TIPOS = [TipoOperacion.GASTO, TipoOperacion.INGRESO, TipoOperacion.TRANSFERENCIA, TipoOperacion.PAGO_TARJETA,
          TipoOperacion.REEMBOLSO]
+OPCIONES = {TipoOperacion.TRANSFERENCIA: "Transferencia entre mis cuentas"}
 AYUDA = {
-    TipoOperacion.GASTO: "Dinero que gastaste, con cualquier cuenta o tarjeta (también la de crédito).",
+    TipoOperacion.GASTO: "Dinero que gastaste, con cualquier cuenta o tarjeta (también la de crédito). Si lo mandaste a "
+                         "otra de tus cuentas, es «Transferencia entre mis cuentas».",
     TipoOperacion.INGRESO: "Dinero que recibiste: nómina, ventas, freelance…",
-    TipoOperacion.TRANSFERENCIA: "Mover dinero entre tus cuentas (al ahorro, o sacar efectivo del cajero a tu cuenta "
-                                 "de efectivo). No es gasto.",
+    TipoOperacion.TRANSFERENCIA: "Mover dinero de una de tus cuentas a otra: de tu nómina al ahorro, sacar efectivo "
+                                 "del cajero… No es gasto ni ingreso: el dinero solo cambia de lugar.",
     TipoOperacion.PAGO_TARJETA: "Pagar tu tarjeta de crédito. No es otro gasto: el gasto se contó al comprar.",
     TipoOperacion.REEMBOLSO: "Te devolvieron dinero de una compra: resta del gasto de esa subcategoría.",
 }
@@ -74,7 +76,7 @@ def formulario(clave: str = "registrar", cuenta_fija: str | None = None) -> bool
 
     tipo = st.segmented_control(
         "¿Qué quieres registrar?", TIPOS, default=TipoOperacion.GASTO, required=True,
-        format_func=lambda t: ETIQUETA_TIPO_OPERACION[t], key=f"{clave}_tipo",
+        format_func=lambda t: OPCIONES.get(t, ETIQUETA_TIPO_OPERACION[t]), key=f"{clave}_tipo",
     )
     st.caption(AYUDA[tipo])
 

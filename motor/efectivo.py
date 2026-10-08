@@ -18,7 +18,6 @@ from __future__ import annotations
 from datetime import date
 
 from motor import categorias
-from motor.dinero import a_pesos
 from motor.errores import ErrorValidacion
 from motor.libro import Libro
 from motor.modelo import Cuenta, Operacion, TipoCuenta, TipoOperacion
@@ -98,14 +97,12 @@ def pendientes(libro: Libro) -> list[Operacion]:
 def convertir(libro: Libro, operacion_id: str) -> Operacion:
     """Pasa ese gasto a tu cuenta de efectivo: el mismo movimiento (fecha, importe, descripción, notas y
     comprobantes), ahora como transferencia."""
-    op = libro.operacion(operacion_id)
-    efectivo = convertible(libro, op)
+    from motor.movimientos import a_transferencia
+
+    efectivo = convertible(libro, libro.operacion(operacion_id))
     if efectivo is None:
         raise ErrorValidacion("Ese movimiento no es un retiro de efectivo que se pueda pasar a tu cuenta de efectivo.")
-    (partida,) = op.partidas_de_cuenta()
-    nueva = construir_transferencia(op.fecha, partida.cuenta_id, efectivo.id, a_pesos(abs(partida.importe)),
-                                    op.descripcion, op.notas)
-    return libro.reemplazar_operacion(op.id, nueva)
+    return a_transferencia(libro, operacion_id, efectivo.id)
 
 
 def convertir_todos(libro: Libro) -> int:
