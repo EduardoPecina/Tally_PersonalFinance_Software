@@ -100,10 +100,10 @@ def _plan() -> None:
         enlace("ingresos", "Ir a Ingresos", "💰")
         return
     a, b, c, d = st.columns(4)
-    a.metric("Ingreso esperado", formato.dinero(plan.ingreso))
-    b.metric("Pagos de préstamos", formato.dinero(plan.deudas))
-    c.metric(f"Ahorro ({lib.perfil.meta_ahorro} %)", formato.dinero(plan.ahorro))
-    d.metric("Para gastar al mes", formato.dinero(plan.para_gastar))
+    a.metric("Ingreso esperado", formato.dinero_metrica(plan.ingreso))
+    b.metric("Pagos de préstamos", formato.dinero_metrica(plan.deudas))
+    c.metric(f"Ahorro ({lib.perfil.meta_ahorro} %)", formato.dinero_metrica(plan.ahorro))
+    d.metric("Para gastar al mes", formato.dinero_metrica(plan.para_gastar))
     if not plan.sugerencias:
         st.caption("Aún no hay meses completos con gastos para sugerir presupuestos.")
         return
@@ -115,12 +115,12 @@ def _plan() -> None:
         st.success(f"Lo que sueles gastar ({formato.dinero_md(plan.total_promedio)}) cabe en tu presupuesto: te "
                    f"sobran {formato.dinero_md(plan.para_gastar - plan.total_sugerido)} al mes además de tu ahorro.",
                    icon="✅")
-    st.dataframe(pd.DataFrame({
+    st.dataframe(formato.pintar(pd.DataFrame({
         "Categoría": [s.nombre for s in plan.sugerencias],
         "Sueles gastar": [formato.dinero(s.promedio) for s in plan.sugerencias],
         "Sugerido": [formato.dinero(s.sugerido) for s in plan.sugerencias],
         "Tu presupuesto": [formato.dinero(s.actual) if s.actual is not None else "—" for s in plan.sugerencias],
-    }), hide_index=True, width="stretch")
+    })), hide_index=True, width="stretch")
     st.caption(f"Sugerido: tu promedio de los últimos 3 meses completos, redondeado a "
                f"{formato.dinero_md(plan.redondeo)} (los intereses de préstamos ya van en sus pagos).")
     if st.button("Usar los sugeridos como mis presupuestos", key="usar_sugeridos"):
@@ -140,9 +140,9 @@ def _proyeccion() -> None:
     st.caption(f"Día {p.dias_transcurridos} de {p.dias_del_mes}. Cada categoría: al menos lo que sueles gastar (si ya "
                "te pasaste, lo que llevas); las que no tienen historial, a este ritmo.")
     a, b, c = st.columns(3)
-    a.metric("Llevas gastado", formato.dinero(p.gastado))
-    b.metric("Gasto proyectado al cierre", formato.dinero(p.gasto_proyectado))
-    c.metric("Te quedaría", formato.dinero(p.ahorro_proyectado),
+    a.metric("Llevas gastado", formato.dinero_metrica(p.gastado))
+    b.metric("Gasto proyectado al cierre", formato.dinero_metrica(p.gasto_proyectado))
+    c.metric("Te quedaría", formato.dinero_metrica(p.ahorro_proyectado),
              help="Tu ingreso del mes (el esperado, o lo recibido si fue más) menos el gasto proyectado.")
     if p.ahorro_proyectado < 0:
         st.error("A este ritmo vas a gastar más de lo que ganas este mes.", icon="🔴")
@@ -152,8 +152,8 @@ def _proyeccion() -> None:
                                                       f"{formato.dinero_md(r.presupuesto)})" for r in pasados),
                    icon="⚠️")
     if p.rubros:
-        st.dataframe(pd.DataFrame({
+        st.dataframe(formato.pintar(pd.DataFrame({
             "Categoría": [r.nombre for r in p.rubros], "Llevas": [formato.dinero(r.gastado) for r in p.rubros],
             "Proyectado al cierre": [formato.dinero(r.proyectado) for r in p.rubros],
             "Presupuesto": [formato.dinero(r.presupuesto) if r.presupuesto is not None else "—" for r in p.rubros],
-        }), hide_index=True, width="stretch")
+        })), hide_index=True, width="stretch")

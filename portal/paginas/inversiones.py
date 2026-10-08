@@ -140,16 +140,16 @@ def _historial_de_precios(lib: Libro, cuenta_ids: list[str]) -> None:
 def _mostrar(evo: Evolucion, vista: str) -> None:
     total = evolucion.resultado(evo)
     columnas = st.columns(5)
-    columnas[0].metric("Valor al inicio", formato.dinero(total.valor_inicial),
+    columnas[0].metric("Valor al inicio", formato.dinero_metrica(total.valor_inicial),
                        help=f"Al cierre del {formato.fecha(evo.fechas[0])}, un día antes del periodo.")
-    columnas[1].metric("Metiste", formato.dinero(total.entradas),
+    columnas[1].metric("Metiste", formato.dinero_metrica(total.entradas),
                        help="Compras e inversiones a plazo nuevas." if vista == "titulo" else
                        "Transferencias y depósitos a la cuenta.")
-    columnas[2].metric("Sacaste", formato.dinero(total.salidas),
+    columnas[2].metric("Sacaste", formato.dinero_metrica(total.salidas),
                        help="Ventas y vencimientos (el dinero vuelve a la cuenta)." if vista == "titulo" else
                        "Transferencias y retiros de la cuenta.")
-    columnas[3].metric("Valor al final", formato.dinero(total.valor_final))
-    columnas[4].metric("Ganancia del periodo", formato.dinero(total.ganancia),
+    columnas[3].metric("Valor al final", formato.dinero_metrica(total.valor_final))
+    columnas[4].metric("Ganancia del periodo", formato.dinero_metrica(total.ganancia),
                        delta=f"{total.rendimiento:+.2f} %" if total.rendimiento is not None else None,
                        help="Valor final − valor inicial − (lo que metiste − lo que sacaste). El % toma en cuenta "
                             "cuándo metiste o sacaste el dinero.")
@@ -175,7 +175,7 @@ def _mostrar(evo: Evolucion, vista: str) -> None:
 
     st.subheader("Detalle" if vista == "titulo" else "Por cuenta")
     detalle = evolucion.por_serie(evo)
-    st.dataframe(pd.DataFrame({
+    st.dataframe(formato.pintar(pd.DataFrame({
         "Título o inversión" if vista == "titulo" else "Cuenta": [n for n, _ in detalle],
         "Valor al inicio": [formato.dinero(r.valor_inicial) for _, r in detalle],
         "Metiste": [formato.dinero(r.entradas) for _, r in detalle],
@@ -183,7 +183,7 @@ def _mostrar(evo: Evolucion, vista: str) -> None:
         "Valor al final": [formato.dinero(r.valor_final) for _, r in detalle],
         "Ganancia": [formato.dinero(r.ganancia) for _, r in detalle],
         "Rendimiento": [f"{r.rendimiento:+.2f} %" if r.rendimiento is not None else "—" for _, r in detalle],
-    }), hide_index=True, width="stretch")
+    })), hide_index=True, width="stretch")
 
     if vista == "titulo":
         st.caption("Estimado: precio de cierre de cada día por los títulos que tenías, en tu moneda al tipo de cambio de "

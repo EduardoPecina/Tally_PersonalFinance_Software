@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from datetime import date
 from decimal import Decimal
 
@@ -29,13 +30,71 @@ def md(texto: str) -> str:
     return texto.replace("$", "\\$")
 
 
+# Lo negativo (lo que sale) va en rojo; lo positivo, en el color normal del texto.
+ROJO = "#c62828"
+LIMITE_COLOR = 2_000            # renglones: pintar una tabla más grande tarda segundos (ver pintar)
+_NEGATIVO = re.compile(r"^-\D{0,4}\d")      # «-$300.00», «-1.234,56 €», «-S/ 99.90», «-5.2 %»
+
+
+def rojo_md(texto: str) -> str:
+    """Texto en rojo para Markdown (``st.markdown``, ``st.caption``, avisos, métricas…)."""
+    return f":red[{texto}]"
+
+
 def dinero_md(importe: Decimal | int) -> str:
-    """Como :func:`dinero`, para usar dentro de ``st.markdown``/``st.caption``."""
-    return md(dinero(importe))
+    """Como :func:`dinero`, para usar dentro de ``st.markdown``/``st.caption``. Negativo, en rojo."""
+    texto = md(dinero(importe))
+    return rojo_md(texto) if Decimal(importe) < 0 and texto.strip("\\$0.,- ") else texto
 
 
 def dinero_con_signo_md(importe: Decimal, sentido: str) -> str:
-    return md(dinero_con_signo(importe, sentido))
+    texto = md(dinero_con_signo(importe, sentido))
+    return rojo_md(texto) if sentido == "-" else texto
+
+
+def dinero_metrica(importe: Decimal | int) -> str:
+    """El valor de un ``st.metric``: igual que :func:`dinero`, y en rojo si es negativo."""
+    return dinero_md(importe) if Decimal(importe) < 0 else dinero(importe)
+
+
+def _rojo_si_negativo(valor) -> str:
+    if isinstance(valor, str):
+        return f"color: {ROJO}" if _NEGATIVO.match(valor) else ""
+    try:
+        return f"color: {ROJO}" if valor is not None and valor == valor and valor < 0 else ""
+    except TypeError:
+        return ""
+
+
+def pintar(tabla, columnas=None, *, rojas=()):
+    """La tabla para ``st.dataframe`` con lo negativo en rojo («-$300.00», saldos de tarjeta, pérdidas…).
+
+    Acepta un ``DataFrame`` o una tabla que ya tiene estilo (``Styler``): le suma el rojo. Con más de
+    ``LIMITE_COLOR`` renglones se regresa tal cual: pintar decenas de miles de celdas tarda segundos.
+    ``rojas``: columnas que son todo salidas (la «Salida» de un estado de cuenta): van en rojo completas.
+    """
+    datos = getattr(tabla, "data", tabla)                # el DataFrame de un Styler
+    if len(datos) == 0 or len(datos) > LIMITE_COLOR:
+        return tabla
+    estilo = tabla if hasattr(tabla, "data") and hasattr(tabla, "map") and tabla is not datos else datos.style
+    estilo = estilo.map(_rojo_si_negativo, subset=columnas)
+    rojas = [c for c in rojas if c in datos.columns]
+    if rojas:
+        estilo = estilo.map(lambda v: f"color: {ROJO}" if v not in (None, "") and v == v else "", subset=rojas)
+    return estilo
+
+
+def cuantos_mostrar(total: int, clave: str) -> int:
+    """Cuántos renglones mostrar en una tabla larga: hasta ``LIMITE_COLOR`` (con colores), o todos si lo pides."""
+    import streamlit as st
+
+    if total <= LIMITE_COLOR:
+        return total
+    if st.toggle(f"Ver los {total:,} (tarda más y van sin colores)", key=clave):
+        return total
+    st.caption(f"Se muestran los primeros {LIMITE_COLOR:,} en el orden elegido. Usa los filtros para encontrar "
+               "otros, o activa «Ver los …».")
+    return LIMITE_COLOR
 
 
 def fecha(valor: date) -> str:

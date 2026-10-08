@@ -94,13 +94,13 @@ def _estado(r: Reporte) -> None:
         if ops:
             with st.expander("Ver los movimientos que cambiaron"):
                 filas = {f.id: f for f in consultas.buscar(libro(), desde=r.desde, hasta=r.hasta)}
-                st.dataframe(pd.DataFrame({
+                st.dataframe(formato.pintar(pd.DataFrame({
                     "": ["Nuevo" if op in cambios.nuevos else "Corregido" for op in ops],
                     "Fecha": [op.fecha for op in ops],
                     "Descripción": [op.descripcion for op in ops],
                     "Importe": [formato.dinero_con_signo(filas[op.id].monto, filas[op.id].sentido)
                                 if op.id in filas else "" for op in ops],
-                }), hide_index=True, width="stretch",
+                })), hide_index=True, width="stretch",
                     column_config={"Fecha": st.column_config.DateColumn(format="DD/MM/YYYY")})
     a, b, _ = st.columns([1, 1, 2])
     if cambios.hay and a.button("Volver a cerrar con los cambios", type="primary", key="cierre_volver",
@@ -121,10 +121,10 @@ def _veredicto(r: Reporte) -> None:
     st.subheader("El resultado del mes")
     a, b, c, d = st.columns(4)
     base = r.anterior
-    a.metric("Entró", formato.dinero(n.ingresos), delta=_delta(n.ingresos, base and base.ingresos))
-    b.metric("Salió (gastos)", formato.dinero(n.gastos), delta=_delta(n.gastos, base and base.gastos),
+    a.metric("Entró", formato.dinero_metrica(n.ingresos), delta=_delta(n.ingresos, base and base.ingresos))
+    b.metric("Salió (gastos)", formato.dinero_metrica(n.gastos), delta=_delta(n.gastos, base and base.gastos),
              delta_color="inverse")
-    c.metric("Ahorraste", formato.dinero(n.ahorro), delta=_delta(n.ahorro, base and base.ahorro))
+    c.metric("Ahorraste", formato.dinero_metrica(n.ahorro), delta=_delta(n.ahorro, base and base.ahorro))
     d.metric("Parte ahorrada", f"{n.tasa} %" if n.tasa is not None else "—", help=f"Tu meta: {r.meta_ahorro} %.")
     if base is not None:
         st.caption("Las flechas comparan con el mes anterior."
@@ -162,13 +162,13 @@ def _gasto(r: Reporte) -> None:
     if not r.rubros:
         st.caption("Sin gastos este mes.")
         return
-    st.dataframe(pd.DataFrame({
+    st.dataframe(formato.pintar(pd.DataFrame({
         "Categoría": [x.nombre for x in r.rubros],
         "Este mes": [formato.dinero(x.gastado) for x in r.rubros],
         "Tu promedio": [formato.dinero(x.promedio) if x.promedio is not None else "—" for x in r.rubros],
         "Diferencia": [_con_signo(x.diferencia) for x in r.rubros],
         "": ["⬆️ subió" if x.subio else "" for x in r.rubros],
-    }), hide_index=True, width="stretch")
+    })), hide_index=True, width="stretch")
     minimo = r.rubros[0].minimo
     st.caption(f"Tu promedio: los meses anteriores con datos (hasta 3). «Subió»: {cierre.SUBE_PORCENTAJE} % más y al "
                f"menos {formato.dinero_md(minimo)} más.")
@@ -200,13 +200,13 @@ def _presupuestos(r: Reporte) -> None:
         return
     cumplidos = sum(1 for p in r.presupuestos if p.restante >= 0)
     st.markdown(f"Cumpliste **{cumplidos} de {len(r.presupuestos)}** presupuestos.")
-    st.dataframe(pd.DataFrame({
+    st.dataframe(formato.pintar(pd.DataFrame({
         "Categoría": [p.nombre for p in r.presupuestos],
         "Presupuesto": [formato.dinero(p.presupuesto) for p in r.presupuestos],
         "Gastaste": [formato.dinero(p.gastado) for p in r.presupuestos],
         "Resultado": [f"✅ te sobraron {formato.dinero(p.restante)}" if p.restante >= 0
                       else f"🔴 te pasaste por {formato.dinero(-p.restante)}" for p in r.presupuestos],
-    }), hide_index=True, width="stretch")
+    })), hide_index=True, width="stretch")
 
 
 def _ingresos(r: Reporte) -> None:
@@ -215,13 +215,13 @@ def _ingresos(r: Reporte) -> None:
                    "pagan, y aquí verás si te llegó todo.")
         navegacion.enlace("ingresos", "Ir a Ingresos", "💰")
         return
-    st.dataframe(pd.DataFrame({
+    st.dataframe(formato.pintar(pd.DataFrame({
         "Ingreso": [i.nombre for i in r.ingresos_fijos],
         "Esperabas": [formato.dinero(i.esperado) for i in r.ingresos_fijos],
         "Registraste": [formato.dinero(i.recibido) for i in r.ingresos_fijos],
         "": ["✅" if not i.faltan else "⚠️ falta el del " + ", ".join(formato.fecha(d) for d in i.faltan)
              for i in r.ingresos_fijos],
-    }), hide_index=True, width="stretch")
+    })), hide_index=True, width="stretch")
 
 
 def _deudas(r: Reporte) -> None:
@@ -231,21 +231,21 @@ def _deudas(r: Reporte) -> None:
     antes = sum((d.al_inicio for d in r.deudas), Decimal(0))
     despues = sum((d.al_final for d in r.deudas), Decimal(0))
     a, b, c = st.columns(3)
-    a.metric("Debías al empezar", formato.dinero(antes))
-    b.metric("Debías al terminar", formato.dinero(despues), delta=_con_signo(despues - antes) if despues != antes
+    a.metric("Debías al empezar", formato.dinero_metrica(antes))
+    b.metric("Debías al terminar", formato.dinero_metrica(despues), delta=_con_signo(despues - antes) if despues != antes
              else None, delta_color="inverse")
-    c.metric("Intereses y comisiones", formato.dinero(r.intereses), help="Lo que te costó deber este mes.")
-    st.dataframe(pd.DataFrame({
+    c.metric("Intereses y comisiones", formato.dinero_metrica(r.intereses), help="Lo que te costó deber este mes.")
+    st.dataframe(formato.pintar(pd.DataFrame({
         "Tarjeta o préstamo": [d.nombre for d in r.deudas],
         "Al empezar": [formato.dinero(d.al_inicio) for d in r.deudas],
         "Al terminar": [formato.dinero(d.al_final) for d in r.deudas],
         "Cambio": [_con_signo(d.cambio) for d in r.deudas],
-    }), hide_index=True, width="stretch")
+    })), hide_index=True, width="stretch")
 
 
 def _metas(r: Reporte) -> None:
     a, b = st.columns(2)
-    a.metric("Tu patrimonio al terminar", formato.dinero(r.patrimonio_fin),
+    a.metric("Tu patrimonio al terminar", formato.dinero_metrica(r.patrimonio_fin),
              delta=_con_signo(r.patrimonio_fin - r.patrimonio_inicio) if r.patrimonio_fin != r.patrimonio_inicio
              else None, help="Todo lo que tienes (cuentas, inversiones, bienes) menos lo que debes. La flecha: cuánto "
                              "cambió en el mes.")
@@ -254,12 +254,12 @@ def _metas(r: Reporte) -> None:
     if not r.metas:
         st.caption("No tienes metas de ahorro. Crea una en **Metas de ahorro**.")
         return
-    st.dataframe(pd.DataFrame({
+    st.dataframe(formato.pintar(pd.DataFrame({
         "Meta": [("🛟 " if m.emergencia else "") + m.nombre for m in r.metas],
         "Aportaste este mes": [_con_signo(m.aportado) if m.aportado else "—" for m in r.metas],
         "Llevas": [f"{formato.dinero(m.ahorrado)} de {formato.dinero(m.objetivo)}" for m in r.metas],
         "": ["" if m.a_tiempo is None else ("✅ a tiempo" if m.a_tiempo else "⏳ vas atrasado") for m in r.metas],
-    }), hide_index=True, width="stretch")
+    })), hide_index=True, width="stretch")
 
 
 def _pendientes(r: Reporte) -> None:
@@ -325,5 +325,5 @@ def _historial(lista: list[tuple[int, int]]) -> None:
                           "Salió": formato.dinero(n.gastos), "Ahorraste": formato.dinero(n.ahorro),
                           "%": f"{n.tasa} %" if n.tasa is not None else "—",
                           "Cierre": f"✅ {formato.fecha(c.cerrado_en.date())}" if c else ""})
-        st.dataframe(pd.DataFrame(filas), hide_index=True, width="stretch")
+        st.dataframe(formato.pintar(pd.DataFrame(filas)), hide_index=True, width="stretch")
         st.caption("Elige un mes arriba para ver su cierre completo.")

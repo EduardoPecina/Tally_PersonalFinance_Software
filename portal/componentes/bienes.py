@@ -34,7 +34,7 @@ def mostrar() -> None:
 
     hoy = lib.hoy()
     valuaciones = {b.cuenta_id: bienes.valuar(lib, b.cuenta_id, hoy) for b in todos}
-    st.dataframe(pd.DataFrame({
+    st.dataframe(formato.pintar(pd.DataFrame({
         "Bien": [lib.cuenta(b.cuenta_id).nombre for b in todos],
         "Tipo": [bienes.CLASES.get(b.clase, bienes.CLASES["otro"]).nombre for b in todos],
         "Costo (compra + mejoras)": [formato.dinero(valuaciones[b.cuenta_id].costo) if not b.fecha_baja else "—"
@@ -43,9 +43,9 @@ def mostrar() -> None:
         "Plusvalía": [formato.dinero(valuaciones[b.cuenta_id].revaluacion) for b in todos],
         "Valor hoy": [formato.dinero(valuaciones[b.cuenta_id].valor) if not b.fecha_baja
                       else f"Vendido el {formato.fecha(b.fecha_baja)}" for b in todos],
-    }), hide_index=True, width="stretch")
+    })), hide_index=True, width="stretch")
     activos = [b for b in todos if not b.fecha_baja]
-    st.metric("Tus bienes valen hoy", formato.dinero(sum((valuaciones[b.cuenta_id].valor for b in activos),
+    st.metric("Tus bienes valen hoy", formato.dinero_metrica(sum((valuaciones[b.cuenta_id].valor for b in activos),
                                                          Decimal(0))))
 
     nombres = {b.cuenta_id: lib.cuenta(b.cuenta_id).nombre for b in todos}
@@ -69,10 +69,10 @@ def _detalle(cuenta_id: str) -> None:
     st.caption(f"{clase.nombre} · {bienes.METODOS[bien.metodo]}" + (f" · vendido el {formato.fecha(bien.fecha_baja)}"
                                                                   if bien.fecha_baja else ""))
     a, b, c, d = st.columns(4)
-    a.metric("Costo", formato.dinero(v.costo if not bien.fecha_baja else _costo_antes_de_vender(cuenta_id)))
-    b.metric("Depreciación acumulada", formato.dinero(v.depreciacion))
-    c.metric("Plusvalía por avalúos", formato.dinero(v.revaluacion))
-    d.metric("Valor hoy", formato.dinero(v.valor))
+    a.metric("Costo", formato.dinero_metrica(v.costo if not bien.fecha_baja else _costo_antes_de_vender(cuenta_id)))
+    b.metric("Depreciación acumulada", formato.dinero_metrica(v.depreciacion))
+    c.metric("Plusvalía por avalúos", formato.dinero_metrica(v.revaluacion))
+    d.metric("Valor hoy", formato.dinero_metrica(v.valor))
     _grafica(cuenta_id)
     activo = bien.fecha_baja is None and cuenta.activa
 

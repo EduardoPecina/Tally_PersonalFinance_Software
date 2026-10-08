@@ -56,11 +56,11 @@ def _durar() -> None:
         a.metric("Te pagan", formato.fecha_con_dia(h.proximo),
                  help=f"Te llegan unos {formato.dinero(h.monto)} a {lib.cuenta(r.cuenta_id).nombre}.")
         b.metric("Faltan", "mañana" if h.dias == 1 else f"{h.dias} días")
-        c.metric("Te quedaría para gastar", formato.dinero(h.queda),
+        c.metric("Te quedaría para gastar", formato.dinero_metrica(h.queda),
                  help=f"Tu dinero disponible hoy ({formato.dinero(h.disponible)}) menos lo que te toca pagar antes de "
                       f"tu pago, más lo que te toca cobrar ({formato.dinero(h.compromisos)} en total). Lo ves en el "
                       "Calendario.")
-        d.metric("Al día", formato.dinero(h.por_dia), help="Lo que te quedaría, entre los días que faltan.")
+        d.metric("Al día", formato.dinero_metrica(h.por_dia), help="Lo que te quedaría, entre los días que faltan.")
         if h.queda < 0:
             st.error(f"Con lo que tienes y lo que te toca pagar, **no te alcanza** hasta el "
                      f"{formato.fecha_con_dia(h.proximo)}: te faltarían {formato.dinero_md(-h.queda)}. Revisa en el "
@@ -76,7 +76,7 @@ def _durar() -> None:
     st.caption("No todos los periodos duran lo mismo. Lo que importa en el día a día es cuántos días tiene que "
                "durarte cada pago, no cuánto te pagan.")
     quincenal = r.frecuencia == "quincenal"
-    st.dataframe(pd.DataFrame({
+    st.dataframe(formato.pintar(pd.DataFrame({
         "Te pagan": [formato.fecha_con_dia(p.pago) for p in lista],
         **({"Quincena": [f"{p.quincena}.ª" for p in lista]} if quincenal else {}),
         "Te llegan": [formato.dinero(p.monto) for p in lista],
@@ -84,7 +84,7 @@ def _durar() -> None:
         "Días": [p.dias for p in lista],
         "Al día": [formato.dinero(p.por_dia) for p in lista],
         "Aviso": [f"⚠️ +{p.dias_de_mas} días" if p.largo else "" for p in lista],
-    }), hide_index=True, width="stretch")
+    })), hide_index=True, width="stretch")
     largo = next((p for p in lista if p.largo and p.siguiente > hoy), None)
     if largo is not None:
         cual = f"La {largo.quincena}.ª quincena" if quincenal else "El pago"
@@ -202,7 +202,7 @@ def _otros() -> None:
                "tu ingreso esperado y aparecen en tu Calendario.")
     if lista:
         hoy = lib.hoy()
-        seleccion = st.dataframe(pd.DataFrame({
+        seleccion = st.dataframe(formato.pintar(pd.DataFrame({
             "Nombre": [r.nombre for r in lista],
             "Subcategoría": [categorias.etiqueta(lib, r.categoria_id) if r.categoria_id
                              else "❓ Elige la subcategoría" for r in lista],      # la suya se borró
@@ -211,7 +211,7 @@ def _otros() -> None:
             "Al mes": [formato.dinero(recurrentes.al_mes(r)) for r in lista],
             "Próxima vez": [formato.fecha_con_dia(d) if r.activa and (d := recurrentes.siguiente(r, hoy)) else "—"
                             for r in lista],
-        }), hide_index=True, width="stretch", on_select="rerun", selection_mode="single-row", key="ing_sel")
+        })), hide_index=True, width="stretch", on_select="rerun", selection_mode="single-row", key="ing_sel")
         st.caption("Haz clic en un renglón para editarlo o borrarlo.")
         filas = seleccion.selection.rows if seleccion else []
         if filas:
@@ -262,14 +262,14 @@ def _al_mes() -> None:
     lista = planeacion.ingresos(lib)
     esperado = planeacion.ingreso_esperado(lib)
     if any(i.promedio for i in lista):
-        st.dataframe(pd.DataFrame({"Ingreso": [i.nombre for i in lista],
+        st.dataframe(formato.pintar(pd.DataFrame({"Ingreso": [i.nombre for i in lista],
                                    "Tipo": ["Principal" if i.tipo == "principal" else "Secundario" for i in lista],
-                                   "Promedio al mes": [formato.dinero(i.promedio) for i in lista]}),
+                                   "Promedio al mes": [formato.dinero(i.promedio) for i in lista]})),
                      hide_index=True, width="stretch")
     ayuda = {"manual": "Escrito por ti",
              "configurado": "Aún no tienes meses completos registrados: es lo que configuraste en tus ingresos fijos.",
              }.get(esperado.fuente, f"Promedio de {esperado.meses} mes(es) completo(s)")
-    st.metric("Ingreso esperado al mes", formato.dinero(esperado.monto), help=ayuda)
+    st.metric("Ingreso esperado al mes", formato.dinero_metrica(esperado.monto), help=ayuda)
     with st.form("ingreso_manual", border=False):
         actual = lib.perfil.ingreso_esperado
         manual = st.number_input("¿Prefieres escribir cuánto ganas al mes? (vacío = el promedio)", min_value=0.0,

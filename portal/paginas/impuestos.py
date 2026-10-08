@@ -54,17 +54,17 @@ def _deducibles() -> None:
             help="Lo que registraste como ingreso en TALLY. Si tu ingreso para impuestos es otro, cámbialo.")))
         reporte = impuestos.deducibles(lib, anio, ingreso)
     x, y, z = st.columns(3)
-    x.metric("Gastos deducibles", formato.dinero(reporte.suma))
+    x.metric("Gastos deducibles", formato.dinero_metrica(reporte.suma))
     y.metric("Tope total", formato.dinero(reporte.tope) if reporte.tope is not None else "Sin tope",
              help=_explicar_tope(lib, ingreso))
-    z.metric("Podrías deducir", formato.dinero(reporte.total))
+    z.metric("Podrías deducir", formato.dinero_metrica(reporte.total))
     if reporte.tope is not None and reporte.suma - reporte.fuera_del_tope > reporte.tope:
         st.caption(f"Tus deducibles pasan del tope por "
                    f"{formato.dinero_md(reporte.suma - reporte.fuera_del_tope - reporte.tope)}: solo cuenta hasta el "
                    "tope.")
     if reporte.fuera_del_tope:
         st.caption(f"{formato.dinero_md(reporte.fuera_del_tope)} son de conceptos que no entran en el tope total.")
-    st.dataframe(pd.DataFrame({
+    st.dataframe(formato.pintar(pd.DataFrame({
         "Concepto": [r.concepto.nombre for r in reporte.renglones],
         "Pagaste": [formato.dinero(r.pagado) for r in reporte.renglones],
         "En efectivo (no cuenta)": [formato.dinero(r.en_efectivo) if r.concepto.sin_efectivo else "—"
@@ -72,7 +72,7 @@ def _deducibles() -> None:
         "Parte deducible": [f"{r.concepto.porcentaje.normalize():f} %" for r in reporte.renglones],
         "Tope": [formato.dinero(a_pesos(r.concepto.tope)) if r.concepto.tope else "—" for r in reporte.renglones],
         "Deducible": [formato.dinero(r.deducible) + (" (topado)" if r.topado else "") for r in reporte.renglones],
-    }), hide_index=True, width="stretch")
+    })), hide_index=True, width="stretch")
     if any(r.en_efectivo for r in reporte.renglones):
         st.warning("Algunos pagos fueron **en efectivo** y no cuentan en los conceptos que lo piden. Para la próxima, "
                    "paga con tarjeta o transferencia.", icon="💵")
@@ -82,12 +82,12 @@ def _deducibles() -> None:
         with st.expander(f"{r.concepto.nombre} · {len(r.pagos)} pago(s)"):
             if r.concepto.notas:
                 st.caption(r.concepto.notas)
-            st.dataframe(pd.DataFrame({
+            st.dataframe(formato.pintar(pd.DataFrame({
                 "Fecha": [p.fecha for p in r.pagos], "Descripción": [p.descripcion for p in r.pagos],
                 "Subcategoría": [p.subcategoria for p in r.pagos], "Cuenta": [p.cuenta for p in r.pagos],
                 "Importe": [formato.dinero(p.importe) for p in r.pagos],
                 "": ["💵 en efectivo" if p.en_efectivo and r.concepto.sin_efectivo else "" for p in r.pagos],
-            }), hide_index=True, width="stretch",
+            })), hide_index=True, width="stretch",
                 column_config={"Fecha": st.column_config.DateColumn(format="DD/MM/YYYY")})
     filas = [{"Concepto": r.concepto.nombre, "Fecha": p.fecha, "Descripción": p.descripcion,
               "Subcategoría": p.subcategoria, "Cuenta": p.cuenta, "Importe": float(p.importe),
@@ -134,8 +134,8 @@ def _recibo() -> None:
         filas = [("Subtotal", desglose.subtotal)] + [
             (f"{'−' if i.retenido else '+'} {i.nombre}", -v if i.retenido else v) for i, v in desglose.lineas]
         filas.append(("Total que recibes (o pagas)", desglose.total))
-        st.dataframe(pd.DataFrame({"Concepto": [n for n, _ in filas],
-                                   "Importe": [formato.dinero(v) for _, v in filas]}),
+        st.dataframe(formato.pintar(pd.DataFrame({"Concepto": [n for n, _ in filas],
+                                   "Importe": [formato.dinero(v) for _, v in filas]})),
                      hide_index=True, width="stretch")
     st.markdown("##### 🔎 Revisar un recibo o factura que te dieron")
     st.caption("Escribe el subtotal y lo que dice cada impuesto. TALLY te dice si cuadra con tu perfil.")

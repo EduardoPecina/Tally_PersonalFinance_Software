@@ -45,7 +45,7 @@ def _tabla(subcategorias: list[Categoria], usos: Counter, clase: ClaseCategoria,
     columnas = (["Categoría"] if con_categoria else []) + ["Subcategoría", "Clasificación", "Movimientos", "Estado"]
     if clase is ClaseCategoria.INGRESO:
         columnas.append("Ingreso principal")
-    st.dataframe(pd.DataFrame(datos), hide_index=True, width="stretch", column_order=columnas)
+    st.dataframe(formato.pintar(pd.DataFrame(datos)), hide_index=True, width="stretch", column_order=columnas)
 
 
 def _arbol(clase: ClaseCategoria) -> None:
@@ -240,12 +240,12 @@ def _reparto_del_gasto(grupos, gastos: list[Categoria]) -> None:
     filas = [(g.nombre, cuantas[g.id], montos.get(g.nombre, 0)) for g in grupos]
     filas.append((reportes.SIN_GRUPO, cuantas[None], montos.get(reportes.SIN_GRUPO, 0)))
     with st.expander(f"¿Cómo se reparte tu gasto de {desde.year}?", expanded=bool(total)):
-        st.dataframe(pd.DataFrame({
+        st.dataframe(formato.pintar(pd.DataFrame({
             "Clasificación": [f[0] for f in filas],
             "Subcategorías": [f[1] for f in filas],
             "Gasto": [formato.dinero(f[2]) for f in filas],
             "% del gasto": [f"{f[2] / total:.0%}" if total else "—" for f in filas],
-        }), hide_index=True, width="stretch")
+        })), hide_index=True, width="stretch")
 
 
 def _caja(grupo, gastos: list[Categoria], version: int) -> None:

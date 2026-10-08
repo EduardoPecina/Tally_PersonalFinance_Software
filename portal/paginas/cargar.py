@@ -135,7 +135,7 @@ def _vista_previa(resultado: importacion.Resultado) -> None:
                  + (f"\n- … y {len(problemas) - 30} más" if len(problemas) > 30 else ""))
     if resultado.filas:
         st.dataframe(
-            pd.DataFrame({
+            formato.pintar(pd.DataFrame({
                 "Línea": [f.numero for f in resultado.filas],
                 "Estado": [ESTADOS[f.estado] for f in resultado.filas],
                 "Cuenta": [f.cuenta for f in resultado.filas],
@@ -145,7 +145,7 @@ def _vista_previa(resultado: importacion.Resultado) -> None:
                 "Subcategoría o cuenta": [f.destino for f in resultado.filas],
                 "Importe": [formato.dinero_con_signo(f.monto, f.sentido) for f in resultado.filas],
                 "Detalle": [f.detalle for f in resultado.filas],
-            }),
+            })),
             hide_index=True, width="stretch", height=min(38 + 35 * len(resultado.filas), 460),
             column_config={"Fecha": st.column_config.DateColumn(format="DD/MM/YYYY")},
         )

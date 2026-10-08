@@ -131,15 +131,15 @@ def _tarjeta_de_cuenta(cuenta: Cuenta) -> None:
                 st.rerun()
         if cuenta.tipo is TipoCuenta.BIEN and lib.bien(cuenta.id) is not None:
             valor = bienes.valuar(lib, cuenta.id, lib.hoy())
-            derecha.metric("Valor hoy", formato.dinero(valor.valor),
+            derecha.metric("Valor hoy", formato.dinero_metrica(valor.valor),
                            help=f"Costo {formato.dinero(valor.costo)} − depreciación "
                                 f"{formato.dinero(valor.depreciacion)} ± avalúos. Ajústalo en Contabilidad Técnica.")
             return
         if cuenta.tipo is TipoCuenta.PRESTAMO:
-            derecha.metric("Debes", formato.dinero(max(-saldo, 0)), help="Sus pagos y simulaciones, en Deudas.")
+            derecha.metric("Debes", formato.dinero_metrica(max(-saldo, 0)), help="Sus pagos y simulaciones, en Deudas.")
             return
         if cuenta.tipo is not TipoCuenta.CREDITO:
-            derecha.metric("Saldo", formato.dinero(saldo))
+            derecha.metric("Saldo", formato.dinero_metrica(saldo))
             return
         estado_tarjeta.mostrar(cuenta)
 

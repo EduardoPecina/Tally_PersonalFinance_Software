@@ -2,6 +2,17 @@
 
 Todos los cambios relevantes de TALLY se documentan aquí.
 
+## [0.22.0] — Sin publicar
+
+- **Lo que sale, en rojo.** Los importes negativos (gastos, salidas, ahorro en contra, saldos y diferencias que
+  bajan, pérdidas) se ven en rojo en toda la app; los ingresos y lo positivo, en el color normal del texto.
+  - En las métricas grandes (por ejemplo «Ahorro real» cuando gastaste más de lo que entró), en los textos y avisos,
+    y en las tablas: Historial, estado de cuenta (la columna «Salida» completa), Cierre de mes, Contabilidad,
+    Tablas dinámicas, Inversiones, Deudas…
+  - Funciona con cualquier moneda (`-$300.00`, `-1.234,56 €`, `-S/ 99.90`) y con el tema oscuro.
+- **Tablas muy largas:** el Historial y el estado de cuenta muestran los primeros 2,000 movimientos (con colores) y
+  un interruptor «Ver los …» para verlos todos. Pintar decenas de miles de celdas tardaría segundos.
+
 ## [0.21.1] — Sin publicar
 
 Correcciones de los avisos y del bloqueo automático, probadas en un navegador real:
