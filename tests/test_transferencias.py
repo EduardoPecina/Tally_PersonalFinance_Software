@@ -150,3 +150,48 @@ def test_tipo_de_operacion_se_conserva(libro, ctas):
     assert op.tipo is TipoOperacion.PAGO_TARJETA
     movimientos.editar(libro, op.id, monto=20)
     assert libro.operacion(op.id).tipo is TipoOperacion.PAGO_TARJETA
+
+
+# ------------------------------------------------------------------ pasar un gasto o ingreso a transferencia
+
+
+def test_un_gasto_que_fue_al_ahorro_pasa_a_transferencia(libro, ctas, cat):
+    from motor import comprobantes
+
+    cuentas.cambiar_saldo_inicial(libro, ctas.debito, 5_000, date(2026, 7, 1))
+    gasto = movimientos.registrar_gasto(libro, date(2026, 7, 10), ctas.debito, cat("ALIMENTOS"), 1_000,
+                                        "Al ahorro (por error como gasto)", "nota ficticia")
+    comprobantes.adjuntar(libro, gasto.id, "comprobante.pdf", b"%PDF-1.4 ficticio")
+    nueva = movimientos.a_transferencia(libro, gasto.id, ctas.ahorro)
+    assert (nueva.id, nueva.tipo, nueva.fecha) == (gasto.id, TipoOperacion.TRANSFERENCIA, gasto.fecha)
+    assert (nueva.descripcion, nueva.notas) == ("Al ahorro (por error como gasto)", "nota ficticia")
+    assert cuentas.saldo(libro, ctas.debito) == 4_000 and cuentas.saldo(libro, ctas.ahorro) == 1_000
+    assert reportes.resumen(libro, date(2026, 7, 1), date(2026, 7, 31)).gastos == 0
+    assert [c.operacion_id for c in libro.comprobantes()] == [gasto.id]
+
+
+def test_un_gasto_que_fue_a_la_tarjeta_es_pago_de_tarjeta(libro, ctas, cat):
+    movimientos.registrar_gasto(libro, date(2026, 7, 5), ctas.credito, cat("ALIMENTOS"), 300, "Compra")
+    gasto = movimientos.registrar_gasto(libro, date(2026, 7, 10), ctas.debito, cat("ALIMENTOS"), 300, "Pago TDC")
+    assert movimientos.a_transferencia(libro, gasto.id, ctas.credito).tipo is TipoOperacion.PAGO_TARJETA
+    assert cuentas.saldo(libro, ctas.credito) == 0
+
+
+def test_un_ingreso_que_vino_de_otra_cuenta(libro, ctas, cat):
+    cuentas.cambiar_saldo_inicial(libro, ctas.ahorro, 2_000, date(2026, 7, 1))
+    ingreso = movimientos.registrar_ingreso(libro, date(2026, 7, 10), ctas.debito, cat("NOMINA"), 500, "Del ahorro")
+    nueva = movimientos.a_transferencia(libro, ingreso.id, ctas.ahorro)
+    assert nueva.tipo is TipoOperacion.TRANSFERENCIA
+    assert cuentas.saldo(libro, ctas.ahorro) == 1_500 and cuentas.saldo(libro, ctas.debito) == 500
+
+
+def test_lo_que_no_se_puede_pasar_a_transferencia(libro, ctas, cat):
+    msi = movimientos.registrar_gasto(libro, date(2026, 7, 10), ctas.credito, cat("ROPA"), 600, "A meses", msi=3)
+    gasto = movimientos.registrar_gasto(libro, date(2026, 7, 10), ctas.debito, cat("ROPA"), 100, "Ropa")
+    transferencia = registrar_transferencia(libro, date(2026, 7, 10), ctas.debito, ctas.ahorro, 50)
+    with pytest.raises(ErrorValidacion, match="meses sin intereses"):
+        movimientos.a_transferencia(libro, msi.id, ctas.ahorro)
+    with pytest.raises(ErrorValidacion, match="otra de tus cuentas"):
+        movimientos.a_transferencia(libro, gasto.id, ctas.debito)
+    with pytest.raises(ErrorValidacion, match="Solo un gasto"):
+        movimientos.a_transferencia(libro, transferencia.id, ctas.inversion)

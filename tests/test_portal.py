@@ -1976,3 +1976,27 @@ def test_historial_ofrece_pasar_un_retiro_a_efectivo(raiz, con_datos):
     sin_errores(at)
     lib = sesion_en(raiz).libro
     assert lib.operacion(retiro).tipo.value == "transferencia" and cuentas.saldo(lib, cartera) == 250
+
+
+def test_historial_pasa_un_gasto_a_transferencia_entre_mis_cuentas(raiz, con_datos):
+    s = sesion_en(raiz)
+    with s.cambio() as lib:
+        gasto = movimientos.registrar_gasto(lib, lib.hoy(), con_datos["debito"], con_datos["cat"]["ALIMENTOS"], 400,
+                                            "Al ahorro ficticio").id
+    at = abrir(_pagina("historial"))
+    fila = list(at.dataframe[0].value["Descripción"]).index("Al ahorro ficticio")
+    seleccionar(at, "historial_tabla", fila)
+    assert "↔ Entre mis cuentas" in [t.label for t in at.tabs]
+    at.selectbox(key=f"a_transferencia_{gasto}").set_value(con_datos["ahorro"])
+    seleccionar(at, "historial_tabla", fila)
+    at.button(key=f"a_transferencia_boton_{gasto}").click()
+    seleccionar(at, "historial_tabla", fila)
+    sin_errores(at)
+    assert any("ahora es una transferencia a Ahorro Ficticio" in str(t.value) for t in at.toast)
+    lib = sesion_en(raiz).libro
+    assert lib.operacion(gasto).tipo.value == "transferencia" and cuentas.saldo(lib, con_datos["ahorro"]) == 1400
+
+
+def test_registrar_dice_transferencia_entre_mis_cuentas(con_datos):
+    at = abrir(_pagina("registrar"))
+    assert "Transferencia entre mis cuentas" in at.segmented_control(key="registrar_tipo").options

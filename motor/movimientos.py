@@ -14,7 +14,7 @@ from decimal import Decimal
 from motor.dinero import a_centavos, a_pesos
 from motor.errores import ErrorValidacion
 from motor.libro import Libro
-from motor.modelo import CATEGORIA_AJUSTE, Operacion, Partida, TipoOperacion
+from motor.modelo import CATEGORIA_AJUSTE, Operacion, Partida, TipoCuenta, TipoOperacion
 from motor.transferencias import construir_pago_tarjeta, construir_transferencia, origen_y_destino
 
 Monto = Decimal | int | float | str
@@ -26,6 +26,7 @@ _SIGNO_CUENTA = {
     TipoOperacion.INGRESO: +1,
     TipoOperacion.REEMBOLSO: +1,
 }
+CON_CUENTA_Y_CATEGORIA = tuple(_SIGNO_CUENTA)      # gasto, ingreso y devolución: los que se pueden pasar a transferencia
 
 
 # ------------------------------------------------------------- construcción
@@ -306,6 +307,30 @@ def reemplazar(libro: Libro, operacion_id: str, nueva: Operacion) -> Operacion:
     if nueva.tipo is TipoOperacion.SALDO_INICIAL or libro.operacion(operacion_id).tipo is TipoOperacion.SALDO_INICIAL:
         raise ErrorValidacion("El saldo inicial se cambia desde la cuenta.")
     return libro.reemplazar_operacion(operacion_id, nueva)
+
+
+def a_transferencia(libro: Libro, operacion_id: str, otra_cuenta_id: str) -> Operacion:
+    """Un gasto o ingreso que en realidad fue mover dinero entre tus cuentas (al ahorro, a tu efectivo, a pagar tu
+    tarjeta…): el mismo movimiento —fecha, importe, descripción, notas y comprobantes—, ahora como transferencia, o
+    como pago de tarjeta si fue a una de crédito. En un gasto, el dinero fue a ``otra_cuenta_id``; en un ingreso,
+    vino de ella. Deja de contar como gasto o ingreso y aparece en la otra cuenta."""
+    op = libro.operacion(operacion_id)
+    if op.tipo not in _SIGNO_CUENTA:
+        raise ErrorValidacion("Solo un gasto, un ingreso o una devolución se pueden pasar a transferencia.")
+    if op.msi:
+        raise ErrorValidacion("Es una compra a meses sin intereses: esa sí es un gasto.")
+    if op.liquida:
+        raise ErrorValidacion("Es parte de un cargo temporal: arréglalo desde «Te deben» en el Resumen.")
+    (cuenta,) = op.partidas_de_cuenta()
+    otra = libro.cuenta(otra_cuenta_id)
+    if otra.id == cuenta.cuenta_id:
+        raise ErrorValidacion("Elige otra de tus cuentas, no la misma.")
+    origen, destino = (cuenta.cuenta_id, otra.id) if cuenta.importe < 0 else (otra.id, cuenta.cuenta_id)
+    tipo = (TipoOperacion.PAGO_TARJETA if libro.cuenta(destino).tipo is TipoCuenta.CREDITO
+            and libro.cuenta(origen).tipo is not TipoCuenta.CREDITO else TipoOperacion.TRANSFERENCIA)
+    nueva = construir_transferencia(op.fecha, origen, destino, a_pesos(abs(cuenta.importe)), op.descripcion, op.notas,
+                                    tipo=tipo)
+    return libro.reemplazar_operacion(op.id, nueva)
 
 
 def eliminar(libro: Libro, operacion_id: str) -> Operacion:

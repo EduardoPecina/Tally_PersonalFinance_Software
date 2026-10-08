@@ -132,12 +132,17 @@ def detalle_movimiento(operacion_id: str, tabla: str = TABLA) -> None:
 
     es_gasto = detalle.tipo is TipoOperacion.GASTO
     adjuntos = len(lib.comprobantes(operacion_id))
+    entre_cuentas = detalle.tipo in movimientos.CON_CUENTA_Y_CATEGORIA and not op.msi and not op.liquida
+    extras = (["↔ Entre mis cuentas"] if entre_cuentas else []) + (["Convertir en un bien"] if es_gasto else [])
     pestanas = st.tabs(["Editar", f"📎 Comprobantes ({adjuntos})" if adjuntos else "📎 Comprobantes", "Repetir",
-                        "Eliminar", *(["Convertir en un bien"] if es_gasto else [])])
+                        "Eliminar", *extras])
     editar, adjuntar, repetir, eliminar = pestanas[:4]
-    if es_gasto:
-        with pestanas[4]:
-            _convertir_en_bien(operacion_id, tabla)
+    for pestana, nombre in zip(pestanas[4:], extras, strict=True):
+        with pestana:
+            if nombre == "Convertir en un bien":
+                _convertir_en_bien(operacion_id, tabla)
+            else:
+                _a_transferencia(op, tabla)
     with editar:
         _editar(detalle, tabla)
     with adjuntar:
@@ -164,6 +169,34 @@ def detalle_movimiento(operacion_id: str, tabla: str = TABLA) -> None:
             if ejecutar(lambda lib: movimientos.eliminar(lib, operacion_id), exito="Movimiento eliminado"):
                 st.session_state.pop(tabla, None)
                 st.rerun()
+
+
+def _a_transferencia(op, tabla: str) -> None:
+    """Un gasto o ingreso que en realidad fue mover dinero entre tus cuentas: pásalo a transferencia."""
+    lib = libro()
+    (partida,) = op.partidas_de_cuenta()
+    sale = partida.importe < 0
+    st.caption(("¿En realidad **mandaste este dinero a otra de tus cuentas** (al ahorro, a tu efectivo, a pagar tu "
+                "tarjeta)? Pásalo a transferencia: deja de contar como gasto y el dinero aparece en la otra cuenta."
+                if sale else
+                "¿Este dinero en realidad **vino de otra de tus cuentas** (del ahorro, de tu inversión…)? Pásalo a "
+                "transferencia: deja de contar como ingreso y sale de la otra cuenta.")
+               + " Fecha, importe, descripción y comprobantes se quedan igual.")
+    otras = [c for c in cuentas.listar(lib) if c.id != partida.cuenta_id]
+    if not otras:
+        st.info("Primero agrega tu otra cuenta en **Cuentas**.")
+        return
+    nombres = {c.id: c.nombre for c in otras}
+    otra = st.selectbox("¿A qué cuenta fue?" if sale else "¿De qué cuenta vino?", list(nombres), index=None,
+                        format_func=nombres.get, placeholder="Elige la cuenta", key=f"a_transferencia_{op.id}")
+    if otra is not None and sale and lib.cuenta(otra).tipo is TipoCuenta.CREDITO:
+        st.caption("💳 Quedará como **pago de tarjeta**.")
+    if st.button("Pasar a transferencia entre mis cuentas", type="primary", disabled=otra is None,
+                 key=f"a_transferencia_boton_{op.id}", icon=":material/sync_alt:"):
+        if ejecutar(lambda lib_: movimientos.a_transferencia(lib_, op.id, otra),
+                    exito=f"Listo: ahora es una transferencia {'a' if sale else 'desde'} {nombres[otra]}"):
+            st.session_state.pop(tabla, None)
+            st.rerun()
 
 
 def _retiro_de_efectivo(op, tabla: str) -> None:
