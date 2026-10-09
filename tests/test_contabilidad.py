@@ -87,6 +87,24 @@ def test_balanza_sumas_iguales_y_cuenta_por_cobrar_compensada(libro, datos):
     assert {c.nombre for c in b.por_categoria().cuentas} >= {"SUELDO Y PRESTACIONES", "ALIMENTACION"}
 
 
+def test_balanza_comparada_con_otro_periodo(libro, datos):
+    actual = cb.balanza(libro, *ESTE_ANIO)
+    anterior = cb.balanza(libro, date(2025, 1, 1), date(2025, 12, 31))
+    comparadas = cb.comparar_balanzas(actual, anterior)
+    filas = {x.cuenta.nombre: x for x in comparadas}
+    debito = filas["Banco Ficticio Débito"]
+    assert debito.anterior == D(28_500) and debito.diferencia == D(15_000)   # saldo final 2025 → hoy
+    tarjeta = filas["Tarjeta Ficticia"]
+    assert tarjeta.cuenta.natural == D(700) and tarjeta.diferencia == tarjeta.cuenta.natural - tarjeta.anterior
+    # Una cuenta que solo tuvo movimientos en el otro periodo aparece en ceros, con su saldo de allá.
+    solo_alla = [x for x in comparadas if not (x.cuenta.inicial or x.cuenta.debe or x.cuenta.haber)]
+    assert all(x.cuenta.lectura == "Sin movimientos en este periodo" for x in solo_alla)
+    assert {x.cuenta.nombre for x in comparadas} >= {c.nombre for c in actual.cuentas}
+    assert {x.cuenta.nombre for x in comparadas} >= {c.nombre for c in anterior.cuentas}
+    naturalezas = [x.cuenta.naturaleza for x in comparadas]
+    assert naturalezas == sorted(naturalezas, key=[cb.ACTIVO, cb.PASIVO, cb.PATRIMONIO, cb.INGRESO, cb.GASTO].index)
+
+
 def test_un_movimiento_corregido_cambia_todos_los_reportes(libro, datos, ctas, cat):
     op = movimientos.registrar_gasto(libro, date(2026, 5, 1), ctas.debito, cat("ALIMENTOS"), 300, "Ficticio")
     assert cb.resultados(libro, [ESTE_ANIO]).total_gastos() == (D(1_000),)
