@@ -154,10 +154,17 @@ Un respaldo es un `.zip` con:
 | `respaldos.inspeccionar(ruta)` | Valida el archivo y resume su contenido (cuentas, movimientos, fechas) para mostrarlo antes de restaurar |
 | `respaldos.restaurar(sesion, ruta)` | 1) valida todo, 2) crea `TALLY_antes_de_restaurar_*.zip` con lo actual, 3) reemplaza en una sola transacción y lo anota en la bitácora |
 | `respaldos.respaldo_automatico(sesion)` | Respaldo con rotación (conserva los últimos 10) |
+| `respaldos.iniciar_respaldo_del_dia(sesion)` | El respaldo automático del día **en segundo plano** (TALLY 0.23.6): regresa un `RespaldoEnCurso` (`terminado`, `esperar()`, `error`). Lee el archivo por su cuenta en una sola transacción; si ya hay uno en curso en esa carpeta, regresa ese. `esperar_en_curso()` lo espera: antes de cifrar o descifrar la carpeta de respaldos y antes de apagar el portal |
 | `respaldos.de_seguridad(sesion, prefijo)` | Respaldo antes de algo delicado (cargar datos, restaurar, empezar de cero; el instalador, antes de actualizar). Conserva los últimos 5 de cada tipo |
 | `respaldos.respaldar_archivo_de_datos(ruta, carpeta)` | Respaldo en solo lectura de un `tally.db`. Lo usa el instalador antes de actualizar |
 | `respaldos.empezar_de_cero(sesion)` | Respalda todo (`TALLY_antes_de_empezar_de_cero_*.zip`) y deja TALLY como recién instalado. Sin respaldo no borra nada |
 | `respaldos.copiar_archivo_de_datos(origen, destino)` | Copia un `tally.db` y comprueba con una segunda lectura independiente que sea idéntico (entidades y bitácora). Nunca sobrescribe. Lo usa el instalador para mover los datos |
+
+Todos los respaldos se arman con lo guardado tal como está en el disco, leído en una sola transacción
+(`Almacen.leer_crudo`): con contraseña, cada registro cifrado tal cual; sin ella, el JSON de cada registro se
+copia a `datos.json` sin leerlo y volverlo a escribir (TALLY 0.23.6; con años de datos era lo más lento). Las
+categorías del sistema no van, porque nunca se guardan: TALLY las crea al abrir. La única excepción es la copia
+«sin contraseña» de unos datos que sí tienen: se arma con lo ya descifrado en memoria.
 
 Un respaldo dañado, incompleto, modificado o de una versión más nueva se
 rechaza **antes** de tocar nada. Formato 2 desde TALLY 0.4. Un respaldo de

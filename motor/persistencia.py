@@ -20,10 +20,11 @@ errores de Streamlit:
 
 from __future__ import annotations
 
+import gc
 import json
 import sqlite3
-from collections.abc import Callable, Iterable
-from contextlib import closing
+from collections.abc import Callable, Iterable, Iterator
+from contextlib import closing, contextmanager
 from datetime import datetime
 from pathlib import Path
 
@@ -72,6 +73,23 @@ CREATE TABLE IF NOT EXISTS archivos (
 
 def _json(valor) -> str | None:
     return None if valor is None else json.dumps(valor, ensure_ascii=False, sort_keys=True)
+
+
+@contextmanager
+def sin_pausas_de_memoria() -> Iterator[None]:
+    """Mientras se arma un libro completo, Python no se detiene a buscar memoria que liberar.
+
+    Al leer años de movimientos se crean cientos de miles de objetos y nada se vuelve basura; aun así Python los
+    revisaría todos una y otra vez (con 30 años de datos, la mitad del tiempo de abrir TALLY). Al terminar todo
+    vuelve a ser como antes.
+    """
+    estaba = gc.isenabled()
+    gc.disable()
+    try:
+        yield
+    finally:
+        if estaba:
+            gc.enable()
 
 
 class Almacen:
@@ -304,10 +322,14 @@ class Almacen:
             conexion.execute("PRAGMA wal_checkpoint(TRUNCATE)")
 
     def leer_crudo(self) -> dict:
-        """Todo tal como está en el disco (cifrado o no), sin necesitar la llave: para respaldos y copias."""
+        """Todo tal como está en el disco (cifrado o no), sin necesitar la llave: para respaldos y copias.
+
+        Se lee en una sola transacción: aunque otra ventana guarde algo mientras tanto (el respaldo del día se hace
+        en segundo plano), todo corresponde al mismo momento."""
         self._preparar()
         try:
-            with closing(self._conectar()) as conexion:
+            with closing(self._conectar()) as conexion, sin_pausas_de_memoria():
+                conexion.execute("BEGIN")
                 entidades: dict = {}
                 for tipo, entidad_id, texto in conexion.execute("SELECT tipo, id, datos FROM entidades"):
                     entidades.setdefault(tipo, {})[entidad_id] = texto
@@ -317,9 +339,11 @@ class Almacen:
                         "SELECT fecha_hora, entidad, entidad_id, accion, antes, despues FROM bitacora ORDER BY id")
                 ]
                 archivos = {i: bytes(d) for i, d in conexion.execute("SELECT id, datos FROM archivos ORDER BY id")}
-                return {"entidades": entidades, "bitacora": bitacora,
-                        "secuencia": int(self._meta(conexion, "secuencia") or 0),
-                        "cifrado": self._meta(conexion, "cifrado"), "archivos": archivos}
+                crudo = {"entidades": entidades, "bitacora": bitacora,
+                         "secuencia": int(self._meta(conexion, "secuencia") or 0),
+                         "cifrado": self._meta(conexion, "cifrado"), "archivos": archivos}
+                conexion.execute("COMMIT")
+                return crudo
         except sqlite3.DatabaseError as error:
             raise ErrorDatos(f"No se pudo leer el archivo de datos ({error}).") from error
 
@@ -328,8 +352,13 @@ class Almacen:
     def cargar(self, *, reloj: Callable[[], datetime] | None = None) -> Libro:
         """Lee el archivo completo y devuelve el libro."""
         self._preparar()
+        with sin_pausas_de_memoria():
+            return self._cargar(reloj)
+
+    def _cargar(self, reloj: Callable[[], datetime] | None) -> Libro:
         try:
             with closing(self._conectar()) as conexion:
+                conexion.execute("BEGIN")            # los datos y la revisión, del mismo momento
                 if self._meta(conexion, "cifrado") and self._cifrador is None:
                     raise ErrorBloqueado("Tus datos tienen contraseña: escríbela para entrar.")
                 datos: Instantanea = {}
@@ -338,6 +367,7 @@ class Almacen:
                         texto, cifrado.contexto_entidad(tipo, entidad_id))
                 secuencia = int(self._meta(conexion, "secuencia") or 0)
                 revision = int(self._meta(conexion, "revision") or 0)
+                conexion.execute("COMMIT")
         except (sqlite3.DatabaseError, json.JSONDecodeError) as error:
             raise ErrorDatos(f"No se pudieron leer los datos ({error}). Restaura un respaldo.") from error
         self._memoria = Memoria()        # recuerda cada movimiento con el diccionario que se leyó del archivo

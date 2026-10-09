@@ -1,11 +1,16 @@
 import json
+import os
+import sqlite3
+import threading
+import time
 import zipfile
+from contextlib import closing
 from datetime import date
 
 import pytest
 
 from conftest import AHORA, D
-from motor import auditoria, categorias, cuentas, movimientos, perfil, respaldos
+from motor import auditoria, categorias, comprobantes, cuentas, movimientos, perfil, respaldos
 from motor.errores import ErrorDatos
 from motor.serializacion import instantanea
 from motor.sesion import Sesion
@@ -238,6 +243,104 @@ def test_respaldo_del_dia(sesion, tmp_path):
         perfil.ajustar(libro, respaldo_diario=False)
     primero.unlink()
     assert respaldos.respaldo_del_dia(sesion, carpeta) is None            # desactivado
+
+
+def test_sin_contrasena_el_respaldo_lleva_lo_guardado_tal_cual(sesion, tmp_path):
+    """Se arma con el JSON de cada registro sin leerlo y volverlo a escribir: debe ser idéntico a hacerlo."""
+    with sesion.cambio() as libro:
+        debito, comida = cuentas.buscar(libro, "Débito").id, categorias.buscar(libro, "Alimentos").id
+        cafe = movimientos.registrar_gasto(libro, date(2026, 7, 5), debito, comida, 45,
+                                           'Café «Ñandú» ☕ "ficticio" \\ con\nsalto')
+        otro = movimientos.registrar_gasto(libro, date(2026, 7, 6), debito, comida, 10, "Se borra")
+        comprobantes.adjuntar(libro, cafe.id, "ticket.jpg", b"\xff\xd8\xff ficticio")
+    with sesion.cambio() as libro:
+        movimientos.editar(libro, cafe.id, monto=46)
+        movimientos.eliminar(libro, otro.id)                     # en la bitácora: «después» vacío
+    ruta = respaldos.crear(sesion, tmp_path / "Respaldos")
+    with zipfile.ZipFile(ruta) as zz:
+        datos, manifiesto = json.loads(zz.read("datos.json")), json.loads(zz.read("manifiesto.json"))
+        assert zz.read("archivos/" + sesion.libro.comprobantes()[0].id) == b"\xff\xd8\xff ficticio"
+    with closing(sqlite3.connect(sesion.almacen.ruta)) as conexion:
+        guardadas: dict = {}
+        for tipo, i, texto in conexion.execute("SELECT tipo, id, datos FROM entidades"):
+            guardadas.setdefault(tipo, {})[i] = json.loads(texto)
+    esperado = {"secuencia": sesion.libro.secuencia, "entidades": guardadas, "bitacora": [
+        {"fecha_hora": r.fecha_hora, "entidad": r.entidad, "entidad_id": r.entidad_id, "accion": r.accion,
+         "antes": r.antes, "despues": r.despues} for r in sesion.almacen.bitacora(mas_recientes_primero=False)]}
+    assert datos == json.loads(json.dumps(esperado, ensure_ascii=False))
+    # Lo único que no va es lo que TALLY crea solo al abrir (las categorías del sistema), igual que con contraseña.
+    assert {(t, i) for t, porid in sesion.almacen.estado_guardado.items() for i in porid} - {
+        (t, i) for t, porid in guardadas.items() for i in porid} <= {("categoria", c.id) for c in sesion.libro.categorias()
+                                                                    if c.clase.value == "sistema"}
+    assert any(r["despues"] is None for r in datos["bitacora"]) and any(r["antes"] is None for r in datos["bitacora"])
+    assert manifiesto["resumen"] == respaldos._resumen(sesion.libro)
+    assert instantanea(respaldos._leer(ruta).libro) == instantanea(sesion.libro)
+
+
+def test_respaldo_del_dia_en_segundo_plano(sesion, tmp_path):
+    carpeta = tmp_path / "Respaldos"
+    en_curso = respaldos.iniciar_respaldo_del_dia(sesion, carpeta)
+    ruta = en_curso.esperar(30)
+    assert en_curso.terminado and ruta.name.startswith("TALLY_automatico_2026-07-20_")
+    assert respaldos.inspeccionar(ruta).movimientos == 2
+    assert respaldos.iniciar_respaldo_del_dia(sesion, carpeta) is None            # uno por día
+    with sesion.cambio() as libro:
+        perfil.ajustar(libro, respaldo_diario=False)
+    ruta.unlink()
+    assert respaldos.iniciar_respaldo_del_dia(sesion, carpeta) is None            # desactivado
+
+
+@pytest.fixture
+def lento(monkeypatch):
+    """El respaldo espera a que se le dé permiso: así se puede hacer algo mientras se está haciendo."""
+    real, permiso = respaldos._crear_desde, threading.Event()
+
+    def esperando(*args, **kwargs):
+        assert permiso.wait(10)
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(respaldos, "_crear_desde", esperando)
+    return permiso
+
+
+def test_mientras_se_hace_el_del_dia_puedes_seguir_guardando(sesion, tmp_path, lento):
+    carpeta = tmp_path / "Respaldos"
+    primero = respaldos.iniciar_respaldo_del_dia(sesion, carpeta)
+    assert respaldos.iniciar_respaldo_del_dia(sesion, carpeta) is primero           # otra pestaña: el mismo
+    with sesion.cambio() as libro:
+        movimientos.registrar_gasto(libro, date(2026, 7, 20), cuentas.buscar(libro, "Débito").id,
+                                    categorias.buscar(libro, "Alimentos").id, 30, "Mientras tanto")
+    assert not primero.terminado
+    lento.set()
+    ruta = primero.esperar(30)
+    assert respaldos.inspeccionar(ruta).movimientos == 3                           # lo leyó después: incluido
+    assert [r.name for r in carpeta.iterdir()] == [ruta.name]                      # nada a medias
+    assert Sesion(sesion.almacen.ruta, reloj=reloj).libro.operaciones()[-1].descripcion == "Mientras tanto"
+
+
+def test_si_el_del_dia_falla_queda_el_error_para_avisar_y_se_reintenta(sesion, tmp_path, monkeypatch):
+    def falla(*_, **__):
+        raise OSError("disco lleno (ficticio)")
+
+    monkeypatch.setattr(respaldos, "_crear_desde", falla)
+    carpeta = tmp_path / "Respaldos"
+    en_curso = respaldos.iniciar_respaldo_del_dia(sesion, carpeta)
+    with pytest.raises(OSError, match="disco lleno"):
+        en_curso.esperar(10)
+    monkeypatch.undo()
+    otro = respaldos.iniciar_respaldo_del_dia(sesion, carpeta)                      # no quedó el de hoy
+    assert otro is not en_curso and otro.esperar(30).exists()
+
+
+def test_rotar_borra_lo_que_dejo_un_respaldo_interrumpido(tmp_path):
+    viejo = tmp_path / "TALLY_automatico_2026-07-18_120000.zip.tmp"
+    reciente = tmp_path / "TALLY_automatico_2026-07-20_120000.zip.tmp"          # quizá se está escribiendo
+    for resto in (viejo, reciente):
+        resto.write_bytes(b"a medias")
+    hace_dos_dias = time.time() - 2 * 24 * 60 * 60
+    os.utime(viejo, (hace_dos_dias, hace_dos_dias))
+    respaldos.rotar(tmp_path, "automatico", 10)
+    assert not viejo.exists() and reciente.exists()
 
 
 def test_ajustes_del_perfil(sesion):

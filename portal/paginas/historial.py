@@ -38,10 +38,10 @@ def _filtros() -> dict:
     col1, col2, col3, col4 = st.columns([2, 2, 2, 2], vertical_alignment="bottom")
     with col1:
         desde = estado.control(FILTROS, "desde", None, lambda k: st.date_input(
-            "Desde", key=k, format="DD/MM/YYYY"))
+            "Desde", key=k, format="DD/MM/YYYY", **formato.limites_de_fecha(lib)))
     with col2:
         hasta = estado.control(FILTROS, "hasta", None, lambda k: st.date_input(
-            "Hasta", key=k, format="DD/MM/YYYY"))
+            "Hasta", key=k, format="DD/MM/YYYY", **formato.limites_de_fecha(lib)))
     with col3:
         orden = estado.control(FILTROS, "orden", "fecha_desc", lambda k: st.selectbox(
             "Ordenar", list(ORDENES), format_func=ORDENES.get, key=k))

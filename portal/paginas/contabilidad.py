@@ -37,7 +37,7 @@ def mostrar() -> None:
     elegido = None
     if clave == "rango":
         fechas = centro.date_input("Del … al …", value=(date(hoy.year, 1, 1), hoy), format="DD/MM/YYYY",
-                                   key="conta_fechas")
+                                   **formato.limites_de_fecha(lib), key="conta_fechas")
         if isinstance(fechas, (tuple, list)) and fechas:
             elegido = (fechas[0], fechas[-1])
     desde, hasta = cb.periodo(clave, hoy, elegido)

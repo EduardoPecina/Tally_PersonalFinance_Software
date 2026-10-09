@@ -101,6 +101,16 @@ def fecha(valor: date) -> str:
     return f"{valor.day:02d}/{valor.month:02d}/{valor.year}"
 
 
+PRIMERA_FECHA = date(1900, 1, 1)
+
+
+def limites_de_fecha(lib) -> dict:
+    """``min_value`` y ``max_value`` para los filtros de fechas. Si no se le dicen, el calendario solo deja ir 10 años
+    atrás o adelante de la fecha elegida: con más años de datos no podrías ver tu historia completa. Son fijos (no
+    dependen de tus movimientos) para que una fecha que ya elegiste nunca quede fuera."""
+    return {"min_value": PRIMERA_FECHA, "max_value": date(lib.hoy().year + 10, 12, 31)}
+
+
 DIAS_SEMANA = ("lun", "mar", "mié", "jue", "vie", "sáb", "dom")
 
 
