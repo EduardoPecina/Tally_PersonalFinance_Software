@@ -1,4 +1,9 @@
-<p align="center"><img src="docs/marca/logotipo.png" alt="TALLY" width="360"></p>
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/marca/logotipo_blanco.png">
+    <img src="docs/marca/logotipo.png" alt="TALLY" width="360">
+  </picture>
+</p>
 
 <p align="center"><b>Your money. Your computer. Your data.</b><br>
 <i>Tus finanzas, en tu PC, con tus datos.</i></p>

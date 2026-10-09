@@ -143,6 +143,7 @@ def main() -> None:
 
     (DOCS / "simbolo.svg").write_text(svg_simbolo(), encoding="utf-8")
     logotipo(96, fuente).save(DOCS / "logotipo.png")
+    logotipo(96, fuente, BLANCO).save(DOCS / "logotipo_blanco.png")        # README en el modo oscuro de GitHub
     for nombre, fondo, tinta, borde in VARIANTES:
         mosaico(256, fondo, tinta, borde).save(DOCS / f"icono_{nombre}.png")
     iconos_de_acceso()
