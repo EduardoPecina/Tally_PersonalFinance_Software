@@ -931,8 +931,14 @@ def test_contabilidad_tecnica(raiz, con_datos):
     for periodo in ("anio_pasado", "mes", "mes_pasado", "12m"):
         at.selectbox(key="conta_periodo").set_value(periodo).run()
         sin_errores(at)
+    def columnas_balanza():
+        return next(d.value for d in at.dataframe if "Debe" in d.value.columns).columns
+
+    at.selectbox(key="conta_comparar").set_value("anterior").run()
+    assert {"Saldo final (anterior)", "Diferencia vs. anterior", "Cambio en el periodo"} <= set(columnas_balanza())
     at.selectbox(key="conta_comparar").set_value("no").run()
     sin_errores(at)
+    assert "Saldo final (anterior)" not in columnas_balanza()          # «No comparar» ya no compara
     at.selectbox(key="conta_periodo").set_value("rango").run()
     sin_errores(at)
 

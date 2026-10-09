@@ -2,6 +2,15 @@
 
 Todos los cambios relevantes de TALLY se documentan aquí.
 
+## [0.23.5] — Sin publicar
+
+- **«Comparar con» ya aplica a la Balanza de comprobación.** Antes solo cambiaba Situación financiera, Resultados y
+  Flujo de efectivo; en la Balanza no pasaba nada. Ahora, al comparar, la Balanza muestra el **saldo final de cada
+  cuenta en el otro periodo** y la **diferencia**, también de las cuentas que solo tuvieron movimientos allá (en ceros
+  en este periodo). Con «No comparar» esas columnas desaparecen. También van en el Excel.
+- La columna «Variación» de la Balanza se llama ahora **«Cambio en el periodo»** (saldo final − saldo inicial del
+  mismo periodo), para no confundirla con la comparación.
+
 ## [0.23.4] — Sin publicar
 
 - **«✓ Todo guardado» en el menú de la izquierda**, con la hora del último cambio («hoy 6:42 p. m.»). TALLY guarda cada

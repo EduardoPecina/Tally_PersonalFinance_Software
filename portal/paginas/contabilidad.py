@@ -68,6 +68,7 @@ def mostrar() -> None:
     resultados = cb.resultados(lib, periodos)
     flujo = cb.flujo(lib, periodos)
     balanza = cb.balanza(lib, desde, hasta)
+    balanza_contra = cb.balanza(lib, *contra) if contra else None
 
     pestanas = st.tabs(["Situación financiera", "Resultados", "Flujo de efectivo", "Balanza de comprobación",
                         "Bienes"])
@@ -78,7 +79,7 @@ def mostrar() -> None:
     with pestanas[2]:
         _flujo(flujo)
     with pestanas[3]:
-        _balanza(balanza)
+        _balanza(balanza, balanza_contra)
     with pestanas[4]:
         bienes_ui.mostrar()
 
@@ -89,7 +90,7 @@ def mostrar() -> None:
                              "Resultados": _exportable(_filas_resultados(resultados, detalle=True),
                                                        _columnas_periodo(resultados.periodos)),
                              "Flujo de efectivo": _exportable(_filas_flujo(flujo), _columnas_periodo(flujo.periodos)),
-                             "Balanza": _tabla_balanza(balanza)}),
+                             "Balanza": _tabla_balanza(balanza, balanza_contra)}),
         file_name=f"TALLY_contabilidad_{desde:%Y-%m-%d}_a_{hasta:%Y-%m-%d}.xlsx")
 
 
@@ -295,19 +296,35 @@ def _filas_flujo(f: cb.Flujo) -> list[Fila]:
 # ---------------------------------------------------- balanza de comprobación
 
 
-def _balanza(b: cb.Balanza) -> None:
+def _balanza(b: cb.Balanza, contra: cb.Balanza | None = None) -> None:
     st.subheader("Balanza de Comprobación")
     st.caption(f"Vista técnica · {formato.rango(b.desde, b.hasta)} · saldo al "
-               f"{formato.fecha(b.desde - timedelta(days=1))} y al {formato.fecha(b.hasta)}")
+               f"{formato.fecha(b.desde - timedelta(days=1))} y al {formato.fecha(b.hasta)}"
+               + (f" · comparada con {formato.rango(contra.desde, contra.hasta)} (columnas «{ANTERIOR}» y "
+                  f"«{DIFERENCIA}»)" if contra else ""))
     detalle = st.toggle("Ver cada subcategoría (subcuentas)", key="conta_subcuentas")
     vista = b if detalle else b.por_categoria()
+    vista_contra = (contra if detalle else contra.por_categoria()) if contra else None
     if vista.cuadra:
         st.success("Sumas iguales: el Debe es igual al Haber.", icon="✅")
     else:
         st.error("Las sumas no son iguales: revisa la bitácora o restaura un respaldo.")
-    tabla = _tabla_balanza(vista)
+    tabla = _tabla_balanza(vista, vista_contra)
+    renglones = ([x.cuenta for x in cb.comparar_balanzas(vista, vista_contra)] if vista_contra
+                 else vista.cuentas)
     columnas = [c for c in tabla.columns if c not in ("Naturaleza", "Cuenta", "Origen / Aplicación", "Lectura")]
     mostrada, config = formato.tabla_en_pesos(tabla, columnas, fijar="Cuenta")
+    config[CAMBIO] = st.column_config.TextColumn(
+        alignment="right", help="Saldo final menos saldo inicial de este mismo periodo, en el sentido de la cuenta "
+                                "(un gasto o una deuda que crece da positivo). No es la comparación.")
+    if vista_contra:
+        rango = formato.rango(vista_contra.desde, vista_contra.hasta)
+        config[ANTERIOR] = st.column_config.TextColumn(
+            alignment="right", help=f"Saldo final de cada cuenta en el periodo con el que comparas ({rango}): lo "
+                                    "que tenías, debías, ganaste o gastaste.")
+        config[DIFERENCIA] = st.column_config.TextColumn(
+            alignment="right", help="Este periodo menos el anterior: positivo si ahora tienes, debes, ganas o "
+                                    "gastas más.")
     config["Origen / Aplicación"] = st.column_config.TextColumn(
         help="Solo en cuentas de balance. Origen: de ahí salieron recursos (bajó un activo, o creció una deuda o "
              "tu patrimonio). Aplicación: ahí se usaron (creció un activo o bajó una deuda).")
@@ -322,8 +339,8 @@ def _balanza(b: cb.Balanza) -> None:
                "«Resultados de periodos anteriores». Una cuenta por cobrar que ya te pagaron queda en ceros "
                "(compensada). " + TIP)
     seleccion = evento.selection.rows if evento else []
-    if seleccion and seleccion[0] < len(vista.cuentas):
-        c = vista.cuentas[seleccion[0]]
+    if seleccion and seleccion[0] < len(renglones):
+        c = renglones[seleccion[0]]
         _detalle(("renglon", c.nombre, (), "", c.origen), tecnico=True)
 
 
@@ -337,25 +354,35 @@ def _exportable(filas: list[Fila], columnas: list[str]) -> pd.DataFrame:
     return pd.DataFrame(datos)
 
 
-def _tabla_balanza(b: cb.Balanza) -> pd.DataFrame:
+CAMBIO, ANTERIOR, DIFERENCIA = "Cambio en el periodo", "Saldo final (anterior)", "Diferencia vs. anterior"
+
+
+def _tabla_balanza(b: cb.Balanza, contra: cb.Balanza | None = None) -> pd.DataFrame:
+    """La balanza como tabla. Con ``contra`` (el periodo con el que comparas), dos columnas más: el saldo final de
+    cada cuenta en ese periodo y la diferencia; y las cuentas que solo tuvieron movimientos allá, en ceros."""
     def deudor(v: Decimal) -> float | None:
         return float(v) if v > 0 else None
 
     def acreedor(v: Decimal) -> float | None:
         return float(-v) if v < 0 else None
 
+    comparadas = cb.comparar_balanzas(b, contra) if contra else None
+    cuentas = [x.cuenta for x in comparadas] if comparadas else b.cuentas
     sumas = b.sumas()
-    return pd.DataFrame({
-        "Naturaleza": [c.naturaleza for c in b.cuentas] + [""],
-        "Cuenta": [c.nombre for c in b.cuentas] + ["SUMAS IGUALES"],
-        "Saldo inicial deudor": [deudor(c.inicial) for c in b.cuentas] + [float(sumas.get("inicial_deudor", 0))],
-        "Saldo inicial acreedor": [acreedor(c.inicial) for c in b.cuentas]
-        + [float(sumas.get("inicial_acreedor", 0))],
-        "Debe": [float(c.debe) or None for c in b.cuentas] + [float(sumas.get("debe", 0))],
-        "Haber": [float(c.haber) or None for c in b.cuentas] + [float(sumas.get("haber", 0))],
-        "Saldo final deudor": [deudor(c.final) for c in b.cuentas] + [float(sumas.get("final_deudor", 0))],
-        "Saldo final acreedor": [acreedor(c.final) for c in b.cuentas] + [float(sumas.get("final_acreedor", 0))],
-        "Variación": [float(c.variacion) or None for c in b.cuentas] + [None],
-        "Origen / Aplicación": [c.origen_aplicacion for c in b.cuentas] + [""],
-        "Lectura": [c.lectura for c in b.cuentas] + [""],
-    })
+    datos = {
+        "Naturaleza": [c.naturaleza for c in cuentas] + [""],
+        "Cuenta": [c.nombre for c in cuentas] + ["SUMAS IGUALES"],
+        "Saldo inicial deudor": [deudor(c.inicial) for c in cuentas] + [float(sumas.get("inicial_deudor", 0))],
+        "Saldo inicial acreedor": [acreedor(c.inicial) for c in cuentas] + [float(sumas.get("inicial_acreedor", 0))],
+        "Debe": [float(c.debe) or None for c in cuentas] + [float(sumas.get("debe", 0))],
+        "Haber": [float(c.haber) or None for c in cuentas] + [float(sumas.get("haber", 0))],
+        "Saldo final deudor": [deudor(c.final) for c in cuentas] + [float(sumas.get("final_deudor", 0))],
+        "Saldo final acreedor": [acreedor(c.final) for c in cuentas] + [float(sumas.get("final_acreedor", 0))],
+    }
+    if comparadas:                                    # junto al saldo final, para verlos sin desplazar la tabla
+        datos[ANTERIOR] = [float(x.anterior) or None for x in comparadas] + [None]
+        datos[DIFERENCIA] = [float(x.diferencia) or None for x in comparadas] + [None]
+    datos[CAMBIO] = [float(c.variacion) or None for c in cuentas] + [None]
+    datos["Origen / Aplicación"] = [c.origen_aplicacion for c in cuentas] + [""]
+    datos["Lectura"] = [c.lectura for c in cuentas] + [""]
+    return pd.DataFrame(datos)

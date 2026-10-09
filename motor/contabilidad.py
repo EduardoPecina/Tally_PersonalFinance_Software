@@ -629,7 +629,14 @@ class CuentaBalanza:
         return "Aplicación" if cambio > 0 else "Origen"
 
     @property
+    def natural(self) -> Decimal:
+        """El saldo final en el sentido de la cuenta: lo que tienes, debes, ganaste o gastaste (positivo)."""
+        return self.final if self.naturaleza in DEUDORAS else -self.final
+
+    @property
     def lectura(self) -> str:
+        if not (self.inicial or self.debe or self.haber):
+            return "Sin movimientos en este periodo"
         if not self.final and (self.inicial or self.debe or self.haber) and self.naturaleza in (ACTIVO, PASIVO):
             return "En ceros: compensada ✓"
         v = self.variacion
@@ -687,6 +694,34 @@ class Balanza:
 
 
 _ORDEN_NATURALEZA = (ACTIVO, PASIVO, PATRIMONIO, INGRESO, GASTO)
+
+
+@dataclass(frozen=True, slots=True)
+class Comparada:
+    """Un renglón de la balanza junto con su saldo final en el periodo contra el que se compara."""
+
+    cuenta: CuentaBalanza
+    anterior: Decimal           # saldo final del otro periodo, en el sentido de la cuenta
+
+    @property
+    def diferencia(self) -> Decimal:
+        return self.cuenta.natural - self.anterior
+
+
+def comparar_balanzas(actual: Balanza, anterior: Balanza) -> list[Comparada]:
+    """Los renglones de ``actual`` con el saldo final de cada cuenta en ``anterior``. Las cuentas que solo tuvieron
+    saldo o movimientos en el otro periodo (un gasto que este año no hubo) se agregan en ceros, en su grupo."""
+    previos = {(c.naturaleza, c.nombre): c for c in anterior.cuentas}
+    vistos = {(c.naturaleza, c.nombre) for c in actual.cuentas}
+    faltan = [CuentaBalanza(c.naturaleza, c.nombre, c.categoria, Decimal(0), Decimal(0), Decimal(0))
+              for c in anterior.cuentas if (c.naturaleza, c.nombre) not in vistos]
+    filas = []
+    for naturaleza in _ORDEN_NATURALEZA:
+        filas += [c for c in actual.cuentas if c.naturaleza == naturaleza]
+        filas += [c for c in faltan if c.naturaleza == naturaleza]
+    filas += [c for c in actual.cuentas if c.naturaleza not in _ORDEN_NATURALEZA]
+    return [Comparada(c, previos[(c.naturaleza, c.nombre)].natural if (c.naturaleza, c.nombre) in previos
+                      else Decimal(0)) for c in filas]
 
 
 def balanza(libro: Libro, desde: date, hasta: date) -> Balanza:
