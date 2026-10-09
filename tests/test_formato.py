@@ -1,5 +1,6 @@
 """Lo negativo en rojo: textos, métricas y tablas. Solo datos ficticios."""
 
+from datetime import date, datetime
 from decimal import Decimal
 
 import pytest
@@ -52,3 +53,11 @@ def test_tablas_enormes_y_vacias_van_tal_cual():
     assert formato.pintar(grande) is grande
     vacia = pd.DataFrame({"Importe": []})
     assert formato.pintar(vacia) is vacia
+
+
+def test_cuando_se_guardo():
+    hoy = date(2026, 10, 9)
+    assert formato.cuando(datetime(2026, 10, 9, 18, 42), hoy) == "hoy 6:42 p. m."
+    assert formato.cuando(datetime(2026, 10, 8, 9, 5), hoy) == "ayer 9:05 a. m."
+    assert formato.cuando(datetime(2026, 10, 7, 0, 30), hoy) == "el 07/10/2026 12:30 a. m."
+    assert formato.hora(datetime(2026, 10, 9, 12, 0)) == "12:00 p. m."

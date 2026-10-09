@@ -2,6 +2,11 @@
 
 Todos los cambios relevantes de TALLY se documentan aquí.
 
+## [0.23.4] — Sin publicar
+
+- **«✓ Todo guardado» en el menú de la izquierda**, con la hora del último cambio («hoy 6:42 p. m.»). TALLY guarda cada
+  cambio en cuanto lo haces: no hay que darle «Guardar» a nada más. El «?» lo explica.
+
 ## [0.23.3] — Sin publicar
 
 - **«Lo que te sobró antes de cada pago» usa el nombre de tu ingreso principal.** La gráfica del Resumen ya se

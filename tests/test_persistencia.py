@@ -253,3 +253,16 @@ def test_archivo_danado_no_queda_bloqueado(ruta, monkeypatch):
         with pytest.raises(sqlite3.ProgrammingError):  # «Cannot operate on a closed database»
             conexion.execute("SELECT 1")
     assert Sesion.apartar_archivo_danado(ruta) is not None
+
+
+def test_cuando_fue_el_ultimo_cambio(tmp_path):
+    from datetime import datetime
+
+    from motor.persistencia import Almacen
+
+    momento = datetime(2026, 7, 20, 18, 42, 5)
+    sesion = Sesion(tmp_path / "Datos" / "tally.db", reloj=lambda: momento)
+    with sesion.cambio() as libro:
+        perfil.configurar(libro, "Usuario Ficticio")
+    assert Almacen(tmp_path / "Datos" / "tally.db").ultimo_cambio() == momento
+    assert Almacen(tmp_path / "otra" / "tally.db").ultimo_cambio() is None

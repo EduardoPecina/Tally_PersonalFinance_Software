@@ -15,7 +15,7 @@ from motor import monedas, perfil, respaldos  # noqa: E402
 from motor.config import LEMA, VERSION  # noqa: E402
 from motor.errores import ErrorBloqueado, ErrorDatos, ErrorTally  # noqa: E402
 from portal import accesos, navegacion  # noqa: E402
-from portal.componentes import candado, por_recuperar, tema  # noqa: E402
+from portal.componentes import candado, formato, por_recuperar, tema  # noqa: E402
 from portal.apagado import cerrar_portal, vigilar_inactividad  # noqa: E402
 from portal.componentes.cierre import pagina_cerrado  # noqa: E402
 from portal.componentes.sesion import mostrar_avisos, sesion  # noqa: E402
@@ -62,6 +62,12 @@ def _barra_lateral() -> None:
     with st.sidebar:
         nombre = sesion().libro.perfil.nombre
         st.caption(f"Sesión de **{nombre}** · TALLY {VERSION}  \n*{LEMA}*")
+        ultimo = sesion().almacen.ultimo_cambio()
+        st.caption((":green[✓ Todo guardado] · último cambio " + formato.cuando(ultimo, sesion().libro.hoy()))
+                   if ultimo else ":green[✓] Todo se guarda solo, al momento",
+                   help="TALLY guarda cada cambio en tu computadora en cuanto lo haces: no hay que darle «Guardar» "
+                        "a nada más. Si se va la luz o cierras la ventana, no se pierde nada. Además hace un "
+                        "respaldo automático cada día.")
         if candado.config() is not None and st.button(
                 "Bloquear ahora", icon=":material/lock:", width="stretch", key="bloquear_ahora",
                 help="Cierra tus datos: para volver a verlos hay que escribir tu contraseña."):

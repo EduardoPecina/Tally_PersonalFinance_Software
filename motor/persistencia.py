@@ -474,6 +474,18 @@ class Almacen:
                 self._guardar_valor(despues, cifrado.contexto_bitacora("despues", fecha_hora, entidad, entidad_id,
                                                                        accion)))
 
+    def ultimo_cambio(self) -> datetime | None:
+        """Cuándo se guardó el último cambio (la hora de su registro en la bitácora). ``None`` si aún no hay."""
+        try:
+            with closing(self._conectar()) as conexion:
+                fila = conexion.execute("SELECT fecha_hora FROM bitacora ORDER BY id DESC LIMIT 1").fetchone()
+        except sqlite3.DatabaseError:
+            return None
+        try:
+            return datetime.fromisoformat(fila[0]) if fila else None
+        except ValueError:
+            return None
+
     # -------------------------------------------------------------- bitácora
 
     def bitacora(

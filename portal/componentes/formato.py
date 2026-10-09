@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import re
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal
 
 from motor import monedas
@@ -107,6 +107,21 @@ DIAS_SEMANA = ("lun", "mar", "mié", "jue", "vie", "sáb", "dom")
 def fecha_con_dia(valor: date) -> str:
     """``vie 13/03/2026``."""
     return f"{DIAS_SEMANA[valor.weekday()]} {fecha(valor)}"
+
+
+def hora(valor: datetime) -> str:
+    """``6:42 p. m.``"""
+    return f"{valor.hour % 12 or 12}:{valor.minute:02d} {'a. m.' if valor.hour < 12 else 'p. m.'}"
+
+
+def cuando(valor: datetime, hoy: date) -> str:
+    """``hoy 6:42 p. m.``, ``ayer 9:05 a. m.`` o ``el 07/10/2026 6:42 p. m.``"""
+    dia = valor.date()
+    if dia == hoy:
+        return f"hoy {hora(valor)}"
+    if (hoy - dia).days == 1:
+        return f"ayer {hora(valor)}"
+    return f"el {fecha(dia)} {hora(valor)}"
 
 
 def fecha_larga(valor: date) -> str:

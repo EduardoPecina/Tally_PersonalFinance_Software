@@ -2015,3 +2015,10 @@ def test_lo_que_te_sobro_usa_el_nombre_de_tu_ingreso_principal(raiz, con_datos):
     sin_errores(at)
     assert any(h.value == "Lo que te sobró antes de cada pago de Honorarios ficticios · Débito Ficticio"
                for h in at.subheader)
+
+
+def test_el_menu_dice_que_todo_esta_guardado(raiz, con_datos):
+    at = abrir()
+    sin_errores(at)
+    textos = [c.value for c in at.sidebar.caption]
+    assert any(t.startswith(":green[✓ Todo guardado] · último cambio hoy ") for t in textos), textos
