@@ -266,3 +266,24 @@ def test_cuando_fue_el_ultimo_cambio(tmp_path):
         perfil.configurar(libro, "Usuario Ficticio")
     assert Almacen(tmp_path / "Datos" / "tally.db").ultimo_cambio() == momento
     assert Almacen(tmp_path / "otra" / "tally.db").ultimo_cambio() is None
+
+
+def test_al_abrir_python_no_se_queda_sin_limpiar_memoria(tmp_path):
+    """Mientras se arma el libro se pausa la limpieza de memoria (con años de datos abre al doble de rápido), pero
+    siempre vuelve a como estaba."""
+    import gc
+
+    from motor.persistencia import sin_pausas_de_memoria
+
+    Almacen(tmp_path / "tally.db").cargar()
+    assert gc.isenabled()
+    gc.disable()
+    try:
+        with sin_pausas_de_memoria():
+            pass
+        assert not gc.isenabled()                       # si ya estaba en pausa, se respeta
+    finally:
+        gc.enable()
+    with pytest.raises(ValueError), sin_pausas_de_memoria():
+        raise ValueError("ficticio")
+    assert gc.isenabled()

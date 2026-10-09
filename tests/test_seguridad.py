@@ -210,6 +210,25 @@ def test_activar_cifra_todo_y_no_deja_nada_legible(sesion, raiz):
     assert len(otra.almacen.bitacora()) == len(sesion.almacen.bitacora())
 
 
+def test_el_respaldo_del_dia_que_se_hace_mientras_pones_contrasena_tambien_queda_cifrado(sesion, raiz, monkeypatch):
+    import threading
+
+    real, permiso = respaldos._crear_desde, threading.Event()
+
+    def esperando(*args, **kwargs):
+        assert permiso.wait(10)
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(respaldos, "_crear_desde", esperando)
+    del_dia = respaldos.iniciar_respaldo_del_dia(sesion, _carpeta(raiz))       # aún sin contraseña
+    threading.Timer(0.2, permiso.set).start()
+    _activar(sesion, raiz)                                                      # espera al del día y lo convierte
+    assert del_dia.terminado and del_dia.esperar() is not None
+    assert respaldos.contrasena_de(del_dia.ruta) is not None
+    disco = _bytes_en_disco(raiz)
+    assert not [s for s in SECRETOS if s in disco]
+
+
 def test_lo_nuevo_tambien_se_guarda_cifrado(sesion, raiz):
     _activar(sesion, raiz)
     with sesion.cambio() as libro:

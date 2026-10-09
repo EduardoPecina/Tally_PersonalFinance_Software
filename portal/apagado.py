@@ -52,7 +52,18 @@ def _vigilar() -> None:
         if sin_pestanas is None:
             return                               # no se puede saber: no se apaga solo (queda el botón)
         if sin_pestanas >= INACTIVIDAD:
-            os._exit(0)
+            _salir()
+
+
+def _salir() -> None:
+    """Apaga este proceso, pero antes deja terminar el respaldo del día si se está haciendo (segundos, aun con años
+    de datos): así no se pierde el de hoy."""
+    try:
+        from motor import respaldos
+
+        respaldos.esperar_en_curso(segundos=120)
+    finally:
+        os._exit(0)
 
 
 def vigilar_inactividad() -> None:
@@ -126,4 +137,4 @@ def cerrar_portal(espera: float = 1.5) -> None:
         detener(procesos_del_portal() + psutil.Process().children(recursive=True))
     except Exception:
         pass                                            # aunque falle la limpieza, este portal sí se apaga
-    threading.Timer(espera, os._exit, args=(0,)).start()
+    threading.Timer(espera, _salir).start()

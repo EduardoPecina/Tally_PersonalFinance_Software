@@ -26,7 +26,7 @@ def _periodo() -> tuple[date, date]:
     if clave == PERSONALIZADO:
         inicial = reportes.rango_periodo(lib, "mes_actual")
         rango = estado.control("inicio", "rango", inicial, lambda k: st.date_input(
-            "Fechas", key=k, format="DD/MM/YYYY"))
+            "Fechas", key=k, format="DD/MM/YYYY", **formato.limites_de_fecha(lib)))
         if isinstance(rango, (tuple, list)) and len(rango) == 2:
             return rango[0], rango[1]
         st.caption("Elige la fecha final.")

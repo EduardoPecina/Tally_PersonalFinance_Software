@@ -8,8 +8,8 @@ Qué revisa:
 
 - 🔴 **Datos que no cuadran** (``serializacion.verificar_integridad``): nunca debería pasar; restaura un respaldo.
 - 🟠 **Por revisar**: movimientos que parecen **duplicados**; cuentas de débito, ahorro o efectivo **en negativo**;
-  tarjetas **pasadas de su límite**; **fechas** muy adelante o muy atrás; cargos temporales que **no te han
-  devuelto**.
+  tarjetas **pasadas de su límite**; **fechas** muy adelante o sueltas muy atrás (a más de un año de todo lo
+  demás: no importa cuántos años lleves en TALLY); cargos temporales que **no te han devuelto**.
 - 🔵 **Para mejorar**: movimientos en OTROS GASTOS / OTROS INGRESOS o **sin descripción**; tarjetas **sin día de
   corte o sin tasa**; préstamos sin sus datos; cuentas **sin movimientos** hace meses; tus **reglas** que dicen otra
   subcategoría; deducibles del año **sin comprobante**.
@@ -20,6 +20,7 @@ from __future__ import annotations
 from collections import defaultdict
 from dataclasses import dataclass, field, replace
 from datetime import date, timedelta
+from itertools import islice, pairwise
 
 from motor import categorias, temporales
 from motor.consultas import ETIQUETA_TIPO_CUENTA
@@ -27,12 +28,14 @@ from motor.dinero import a_pesos, formatear
 from motor.errores import ErrorValidacion
 from motor.libro import Libro
 from motor.modelo import Operacion, TipoCuenta, TipoOperacion
+from motor.persistencia import sin_pausas_de_memoria
 
 ERROR, REVISAR, MEJORAR = "error", "revisar", "mejorar"
 NIVELES = {ERROR: ("🔴", "No cuadra"), REVISAR: ("🟠", "Por revisar"), MEJORAR: ("🔵", "Para mejorar")}
 DIAS_DUPLICADO = 3               # dos movimientos iguales a lo más con estos días de diferencia
 DIAS_ADELANTE = 31
-ANIOS_ATRAS = 15
+DIAS_SUELTA = 365               # un movimiento a más de un año del siguiente más antiguo…
+MAXIMO_SUELTAS = 10             # …y solo unos cuantos así; si son más, es historia de verdad, no un error de dedo
 DIAS_SIN_USO = 120
 SIN_NEGATIVO = (TipoCuenta.DEBITO, TipoCuenta.AHORRO, TipoCuenta.EFECTIVO)
 GENERICAS = ("OTROS GASTOS", "OTROS INGRESOS")
@@ -67,12 +70,13 @@ class Revision:
 
 def revisar(libro: Libro, hoy: date | None = None, *, incluir_ignorados: bool = False) -> Revision:
     hoy = hoy or libro.hoy()
-    hallazgos = [
-        *_integridad(libro), *_duplicados(libro), *_negativos(libro, hoy), *_limites(libro, hoy),
-        *_fechas(libro, hoy), *_temporales(libro, hoy), *_retiros(libro), *_genericas(libro), *_sin_descripcion(libro),
-        *_tarjetas_incompletas(libro), *_prestamos_sin_datos(libro), *_sin_uso(libro, hoy), *_reglas(libro),
-        *_deducibles(libro, hoy),
-    ]
+    with sin_pausas_de_memoria():                               # recorre todo tu historial varias veces
+        hallazgos = [
+            *_integridad(libro), *_duplicados(libro), *_negativos(libro, hoy), *_limites(libro, hoy),
+            *_fechas(libro, hoy), *_temporales(libro, hoy), *_retiros(libro), *_genericas(libro),
+            *_sin_descripcion(libro), *_tarjetas_incompletas(libro), *_prestamos_sin_datos(libro),
+            *_sin_uso(libro, hoy), *_reglas(libro), *_deducibles(libro, hoy),
+        ]
     ignorados = set(libro.perfil.salud_ignorados) if libro.perfil else set()
     visibles = [h for h in hallazgos if incluir_ignorados or not (h.se_puede_ignorar and h.clave in ignorados)]
     orden = {ERROR: 0, REVISAR: 1, MEJORAR: 2}
@@ -110,7 +114,10 @@ def _integridad(libro: Libro) -> list[Hallazgo]:
 
 
 def _firma(op: Operacion) -> tuple:
-    return (op.tipo, tuple(sorted((p.cuenta_id or "", p.importe) for p in op.partidas_de_cuenta())))
+    de_cuenta = op.partidas_de_cuenta()
+    if len(de_cuenta) == 1:                                     # casi todos: un gasto o un ingreso
+        return op.tipo, de_cuenta[0].cuenta_id, de_cuenta[0].importe
+    return op.tipo, tuple(sorted((p.cuenta_id or "", p.importe) for p in de_cuenta))
 
 
 def _parecidas(a: Operacion, b: Operacion) -> bool:
@@ -182,8 +189,7 @@ def _limites(libro: Libro, hoy: date) -> list[Hallazgo]:
 
 def _fechas(libro: Libro, hoy: date) -> list[Hallazgo]:
     adelante = [op for op in libro.operaciones(desde=hoy + timedelta(days=DIAS_ADELANTE + 1))]
-    atras = [op for op in libro.operaciones(hasta=date(hoy.year - ANIOS_ATRAS, 12, 31))
-             if op.tipo is not TipoOperacion.SALDO_INICIAL]
+    atras = _sueltas_al_principio(libro)
     hallazgos = []
     for op in adelante:
         hallazgos.append(Hallazgo(
@@ -193,9 +199,21 @@ def _fechas(libro: Libro, hoy: date) -> list[Hallazgo]:
     for op in atras:
         hallazgos.append(Hallazgo(
             f"fecha:{op.id}", REVISAR, "Fechas muy antiguas",
-            f"«{op.descripcion or 'sin descripción'}» tiene fecha {op.fecha:%d/%m/%Y}. ¿El año mal escrito?",
-            "historial", (op.id,)))
+            f"«{op.descripcion or 'sin descripción'}» tiene fecha {op.fecha:%d/%m/%Y}, más de un año antes que todos "
+            "tus demás movimientos. ¿El año mal escrito?", "historial", (op.id,)))
     return hallazgos
+
+
+def _sueltas_al_principio(libro: Libro) -> list[Operacion]:
+    """Los movimientos más antiguos que quedan solos, a más de un año del resto: casi siempre el año mal escrito
+    (2016 por 2026). No depende de cuántos años lleves en TALLY: con 30 años de historia seguida no sale nada."""
+    primeras = list(islice((op for op in libro.operaciones() if op.tipo is not TipoOperacion.SALDO_INICIAL),
+                           MAXIMO_SUELTAS + 1))
+    corte = 0
+    for i, (op, siguiente) in enumerate(pairwise(primeras), start=1):
+        if (siguiente.fecha - op.fecha).days > DIAS_SUELTA:
+            corte = i
+    return primeras[:corte]
 
 
 def _temporales(libro: Libro, hoy: date) -> list[Hallazgo]:

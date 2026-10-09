@@ -156,6 +156,28 @@ def test_historial_filtra_y_conserva_filtros(con_datos):
     assert at.dataframe[0].value.shape[0] == 6
 
 
+def test_con_decadas_de_datos_los_filtros_de_fecha_llegan_al_primer_movimiento(raiz, con_datos):
+    """El calendario solo deja ir 10 años atrás si no se le dice otra cosa."""
+    s = sesion_en(raiz)
+    with s.cambio() as lib:
+        viejo = movimientos.registrar_gasto(lib, date(2001, 5, 4), cuentas.buscar(lib, "Débito Ficticio").id,
+                                            next(c.id for c in lib.categorias() if c.nombre == "ALIMENTOS"), 80,
+                                            "Súper de hace años")
+    at = abrir(_pagina("historial"))
+    desde, hasta = (next(d for d in at.date_input if d.label == nombre) for nombre in ("Desde", "Hasta"))
+    assert desde.min <= viejo.fecha and hasta.min <= viejo.fecha
+    desde.set_value(date(2001, 1, 1)).run()
+    hasta.set_value(date(2001, 12, 31)).run()
+    sin_errores(at)
+    assert list(at.dataframe[0].value["Descripción"]) == ["Súper de hace años"]
+    at.switch_page(_pagina("cuentas")).run()                   # al volver, las fechas elegidas siguen ahí
+    at.switch_page(_pagina("historial")).run()
+    sin_errores(at)
+    hasta = next(d for d in at.date_input if d.label == "Hasta")
+    assert hasta.value == date(2001, 12, 31) and hasta.max >= date.today()   # y se puede volver a hoy
+    assert list(at.dataframe[0].value["Descripción"]) == ["Súper de hace años"]
+
+
 def test_cuentas_y_categorias_y_respaldos_cargan(con_datos):
     at = abrir()
     for pagina in ("cuentas", "categorias", "respaldos", "cargar"):
@@ -335,11 +357,28 @@ def test_descargar_respaldo_en_un_clic(raiz, con_datos):
 
 
 def test_el_respaldo_automatico_del_dia(raiz, con_datos):
-    abrir()
+    at = abrir()                                       # se hace en segundo plano: TALLY no lo espera
+    respaldos.esperar_en_curso()
     (automatico,) = (raiz / "Respaldos").glob("TALLY_automatico_*.zip")
     assert respaldos.inspeccionar(automatico).movimientos == 6
+    at.run()                                           # ya terminó: no hay aviso de error
+    assert not at.toast
     abrir()
+    respaldos.esperar_en_curso()
     assert len(list((raiz / "Respaldos").glob("TALLY_automatico_*.zip"))) == 1   # uno por día
+
+
+def test_si_el_respaldo_del_dia_falla_se_avisa(raiz, con_datos, monkeypatch):
+    def falla(*_, **__):
+        raise OSError("disco lleno (ficticio)")
+
+    monkeypatch.setattr(respaldos, "_crear_desde", falla)
+    at = abrir()
+    sin_errores(at)                                    # TALLY abre igual
+    respaldos.esperar_en_curso()
+    at.run()
+    assert any("disco lleno (ficticio)" in t.value for t in at.toast)
+    assert not list((raiz / "Respaldos").glob("TALLY_automatico_*"))
 
 
 @pytest.mark.parametrize("formato", ["zip", "db"])

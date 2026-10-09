@@ -36,14 +36,24 @@ def _vigilante() -> bool:
 
 
 def _respaldo_del_dia(actual) -> None:
-    """Una vez por sesión del navegador: el respaldo automático del día (Configuración → Respaldos)."""
-    if st.session_state.get("_respaldo_del_dia"):
-        return
-    st.session_state["_respaldo_del_dia"] = True
-    try:
-        respaldos.respaldo_del_dia(actual)
-    except Exception as error:  # noqa: BLE001 - un respaldo fallido nunca impide usar TALLY
-        st.toast(f"No se pudo hacer el respaldo automático de hoy: {error}", icon="⚠️")
+    """Una vez por sesión del navegador: el respaldo automático del día (Configuración → Respaldos). Se hace en
+    segundo plano, así que TALLY abre de inmediato aunque tengas años de datos; si falla, se avisa en cuanto se
+    sepa (al siguiente clic)."""
+    en_curso = st.session_state.get("_respaldo_del_dia")
+    if en_curso is None:
+        st.session_state["_respaldo_del_dia"] = True
+        try:
+            st.session_state["_respaldo_del_dia"] = respaldos.iniciar_respaldo_del_dia(actual) or True
+        except Exception as error:  # noqa: BLE001 - un respaldo fallido nunca impide usar TALLY
+            _aviso_de_respaldo(error)
+    elif isinstance(en_curso, respaldos.RespaldoEnCurso) and en_curso.terminado:
+        st.session_state["_respaldo_del_dia"] = True
+        if en_curso.error is not None:
+            _aviso_de_respaldo(en_curso.error)
+
+
+def _aviso_de_respaldo(error: Exception) -> None:
+    st.toast(f"No se pudo hacer el respaldo automático de hoy: {error}", icon="⚠️")
 
 
 def _recordar_kit() -> None:

@@ -2,6 +2,32 @@
 
 Todos los cambios relevantes de TALLY se documentan aquí.
 
+## [0.23.6] — Sin publicar
+
+Listo para muchos años de datos. Medido con libros ficticios de unos 6 movimientos al día:
+
+| | 10 años (~22,700 movimientos) | 30 años (~68,000) |
+|---|---|---|
+| Primera vez que abres TALLY en el día | 4.7 s → **2.1 s** | 16.2 s → **4.9 s** |
+| Respaldo (manual o del día) | 1.7 s → **0.8 s** | 6.3 s → **3.6 s** |
+| Salud de tus datos | 0.3 s → **0.2 s** | 1.2 s → **0.6 s** |
+
+- **El respaldo automático del día se hace en segundo plano.** TALLY abre de inmediato y el respaldo termina mientras
+  ya lo usas; lo que guardes mientras tanto entra en el de mañana. El `.zip` solo aparece completo. Si falla, te avisa
+  al siguiente clic. Si cierras TALLY antes de que termine, espera unos segundos a que acabe; si se interrumpe de todos
+  modos, se vuelve a hacer la próxima vez que abras. Si pones o quitas tu contraseña mientras se hace, también se
+  convierte.
+- **Respaldos más rápidos y con menos memoria.** Sin contraseña, el respaldo se arma con lo guardado tal cual, como
+  ya se hacía con contraseña: antes se leía todo y se volvía a escribir.
+- **Abrir TALLY, casi el doble de rápido con años de datos.** Mientras se cargan tus movimientos, Python ya no se
+  detiene una y otra vez a revisar la memoria. Además, los datos y su número de versión se leen del mismo momento,
+  aunque otra ventana esté guardando.
+- **Arreglado: con más de 15 años de datos, «Salud de tus datos» marcaba como «Fechas muy antiguas» todo lo de antes.**
+  Con 30 años eran unos 34,000 avisos, también en el Resumen. Ahora solo marca los movimientos que quedan sueltos, a más
+  de un año de todo lo demás (casi siempre el año mal escrito): no importa cuántos años lleves en TALLY.
+- **Los filtros de fechas llegan a toda tu historia.** El calendario solo dejaba ir 10 años atrás: en el Historial,
+  en el periodo personalizado del Resumen y en Contabilidad técnica ahora puedes elegir cualquier fecha.
+
 ## [0.23.5] — Sin publicar
 
 - **«Comparar con» ya aplica a la Balanza de comprobación.** Antes solo cambiaba Situación financiera, Resultados y

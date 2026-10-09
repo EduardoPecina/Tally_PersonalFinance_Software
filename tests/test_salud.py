@@ -73,6 +73,26 @@ def test_fechas_raras(base, ctas, cat):
     assert {h.operaciones for h in r.hallazgos if h.titulo.startswith("Fechas")} == {(futura.id,), (vieja.id,)}
 
 
+def test_con_muchos_anos_de_historia_no_todo_es_fecha_rara(base, ctas, cat):
+    """Antes, todo lo de hace más de 15 años salía como «Fechas muy antiguas»: con 30 años de datos, miles."""
+    for anio in range(1996, HOY.year + 1):
+        for mes in (1, 4, 7, 10):
+            movimientos.registrar_gasto(base, date(anio, mes, 5), ctas.debito, cat("ALIMENTOS"), 5, "Súper ficticio")
+    assert not [h for h in salud.revisar(base).hallazgos if h.titulo == "Fechas muy antiguas"]
+    sueltos = [movimientos.registrar_gasto(base, date(anio, 2, 1), ctas.debito, cat("ALIMENTOS"), 5, "Error de dedo")
+               for anio in (1986, 1990)]                                  # solos, años antes que todo lo demás
+    (a, b) = [h for h in salud.revisar(base).hallazgos if h.titulo == "Fechas muy antiguas"]
+    assert {a.operaciones, b.operaciones} == {(sueltos[0].id,), (sueltos[1].id,)}
+    assert "más de un año antes que todos tus demás movimientos" in a.detalle
+
+
+def test_un_bloque_grande_de_historia_vieja_tampoco_es_fecha_rara(base, ctas, cat):
+    for dia in range(1, 21):                                   # 20 movimientos de 2015, luego años sin usar TALLY
+        movimientos.registrar_gasto(base, date(2015, 3, dia), ctas.debito, cat("ALIMENTOS"), 5, "Historia ficticia")
+    movimientos.registrar_gasto(base, HOY, ctas.debito, cat("ALIMENTOS"), 5, "Hoy")
+    assert not [h for h in salud.revisar(base).hallazgos if h.titulo == "Fechas muy antiguas"]
+
+
 def test_cargos_temporales_sin_devolver(base, ctas):
     temporales.registrar(base, HOY - timedelta(days=90), ctas.credito, 30, "Verificación ficticia")
     assert "Cargos temporales que no te han devuelto" in titulos(base)

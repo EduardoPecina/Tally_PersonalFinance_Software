@@ -21,6 +21,15 @@ def D(valor) -> Decimal:
     return Decimal(str(valor))
 
 
+@pytest.fixture(autouse=True)
+def _sin_respaldos_pendientes():
+    """El portal hace el respaldo del día en segundo plano: ninguna prueba termina con uno a medias."""
+    yield
+    from motor import respaldos
+
+    respaldos.esperar_en_curso()
+
+
 @pytest.fixture
 def libro() -> Libro:
     """Libro vacío con el catálogo inicial y reloj fijo."""

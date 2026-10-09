@@ -26,17 +26,20 @@ import json
 import os
 import sqlite3
 import tempfile
+import threading
+import time
 import zipfile
 from contextlib import closing
 from dataclasses import dataclass
 from datetime import datetime
+from json.encoder import encode_basestring
 from pathlib import Path
 
 from motor import auditoria, catalogo, cifrado, rutas
 from motor.config import VERSION
 from motor.errores import ErrorBloqueado, ErrorDatos
 from motor.libro import Libro
-from motor.persistencia import Almacen
+from motor.persistencia import Almacen, sin_pausas_de_memoria
 from motor.serializacion import libro_desde_instantanea
 from motor.sesion import Sesion
 
@@ -112,6 +115,13 @@ def rotar(carpeta: Path | str, prefijo: str, conservar: int) -> None:
     anteriores = sorted(Path(carpeta).glob(f"TALLY_{prefijo}_*.zip"), key=antiguedad)
     for viejo in anteriores[:-conservar] if conservar > 0 else []:
         viejo.unlink(missing_ok=True)
+    limite = time.time() - 24 * 60 * 60                 # de un respaldo que se interrumpió (TALLY se cerró)
+    for resto in Path(carpeta).glob(f"TALLY_{prefijo}_*.zip.tmp"):
+        try:
+            if resto.stat().st_mtime < limite:
+                resto.unlink()
+        except OSError:
+            pass
 
 
 def leer_perfil(ruta_datos: Path | str):
@@ -133,15 +143,87 @@ def respaldo_del_dia(sesion: Sesion, carpeta: Path | str | None = None) -> Path 
     """El respaldo automático diario (Configuración): uno por día, al abrir TALLY.
 
     No hace nada si el usuario lo desactivó, si aún no hay perfil o si ya existe el de hoy. Conserva los
-    últimos ``respaldos_a_conservar``.
+    últimos ``respaldos_a_conservar``. El portal usa :func:`iniciar_respaldo_del_dia`, que no te hace esperar.
     """
+    carpeta = Path(carpeta or rutas.carpeta_respaldos())
+    if not _toca_respaldo_del_dia(sesion, carpeta):
+        return None
+    return respaldo_automatico(sesion, carpeta, conservar=sesion.libro.perfil.respaldos_a_conservar)
+
+
+def _toca_respaldo_del_dia(sesion: Sesion, carpeta: Path) -> bool:
     perfil = sesion.libro.perfil
     if perfil is None or not perfil.respaldo_diario:
-        return None
+        return False
+    return not any(carpeta.glob(f"TALLY_automatico_{sesion.libro.hoy():%Y-%m-%d}_*.zip"))
+
+
+class RespaldoEnCurso:
+    """Un respaldo que se hace en segundo plano: el del día, mientras ya usas TALLY.
+
+    Lee el archivo de datos por su cuenta, en una sola transacción, así que lo que guardes mientras tanto no lo
+    afecta (queda en el respaldo de mañana). El ``.zip`` solo aparece ya completo: si TALLY se cierra a la mitad,
+    no queda un respaldo a medias y se vuelve a intentar la próxima vez que lo abras.
+    """
+
+    def __init__(self, ruta_datos: Path, carpeta: Path, momento: datetime, conservar: int) -> None:
+        self.carpeta = carpeta
+        self.ruta: Path | None = None
+        self.error: Exception | None = None
+        self._hilo = threading.Thread(target=self._hacer, args=(ruta_datos, momento, conservar),
+                                      name="TALLY-respaldo-del-dia", daemon=True)
+
+    def _hacer(self, ruta_datos: Path, momento: datetime, conservar: int) -> None:
+        try:
+            self.ruta = _crear_desde(Almacen(ruta_datos), momento, self.carpeta, "automatico")
+            rotar(self.carpeta, "automatico", conservar)
+        except Exception as error:  # noqa: BLE001 - se le avisa a quien lo pidió (esperar o error)
+            self.error = error
+
+    @property
+    def terminado(self) -> bool:
+        return not self._hilo.is_alive()
+
+    def esperar(self, segundos: float | None = None) -> Path | None:
+        """Espera a que termine (a lo más ``segundos``): el respaldo, o el error si falló."""
+        self._hilo.join(segundos)
+        if self.error is not None:
+            raise self.error
+        return self.ruta
+
+
+_EN_CURSO: dict[Path, RespaldoEnCurso] = {}
+_CANDADO = threading.Lock()
+
+
+def iniciar_respaldo_del_dia(sesion: Sesion, carpeta: Path | str | None = None) -> RespaldoEnCurso | None:
+    """Como :func:`respaldo_del_dia`, pero en segundo plano: TALLY abre de inmediato, aunque tengas años de datos.
+
+    Si ya se está haciendo uno en esa carpeta (otra pestaña), regresa ese mismo.
+    """
     carpeta = Path(carpeta or rutas.carpeta_respaldos())
-    if any(carpeta.glob(f"TALLY_automatico_{sesion.libro.hoy():%Y-%m-%d}_*.zip")):
-        return None
-    return respaldo_automatico(sesion, carpeta, conservar=perfil.respaldos_a_conservar)
+    with _CANDADO:
+        actual = _EN_CURSO.get(carpeta.resolve())
+        if actual is not None and not actual.terminado:
+            return actual
+        if not _toca_respaldo_del_dia(sesion, carpeta):
+            return None
+        nuevo = RespaldoEnCurso(sesion.almacen.ruta, carpeta, sesion.libro.ahora(),
+                                sesion.libro.perfil.respaldos_a_conservar)
+        _EN_CURSO[carpeta.resolve()] = nuevo
+        nuevo._hilo.start()
+        return nuevo
+
+
+def esperar_en_curso(carpeta: Path | str | None = None, segundos: float | None = 120) -> None:
+    """Espera a que terminen los respaldos que se están haciendo en segundo plano (en ``carpeta``, o todos).
+
+    Antes de cifrar o descifrar los respaldos guardados y antes de cerrar TALLY: así ninguno queda sin convertir
+    ni a la mitad. Si alguno falló, aquí no importa (ya se avisó)."""
+    with _CANDADO:
+        pendientes = [r for c, r in _EN_CURSO.items() if carpeta is None or c == Path(carpeta).resolve()]
+    for respaldo in pendientes:
+        respaldo._hilo.join(segundos)
 
 
 def respaldo_automatico(
@@ -222,10 +304,18 @@ def _crear_desde(almacen: Almacen, momento: datetime, destino: Path | str | None
     config = almacen.config_cifrado()
     if config is not None and sin_contrasena and not almacen.desbloqueado:
         raise ErrorBloqueado("Para sacar una copia sin contraseña, primero entra con tu contraseña.")
-    if config is not None and not sin_contrasena:
+    if config is None or not sin_contrasena:
+        # Lo guardado tal como está en el disco, sin leerlo y volverlo a escribir: con años de datos es lo que más
+        # tardaba. Con contraseña, cifrado tal cual (no hace falta la llave); sin ella, el JSON de cada registro.
         crudo = almacen.leer_crudo()
-        contenido = {"secuencia": crudo["secuencia"], "entidades": crudo["entidades"], "bitacora": crudo["bitacora"]}
-        return _escribir_zip(ruta, contenido, momento, None, config, archivos=crudo["archivos"])
+        config = cifrado.Config.de_json(crudo["cifrado"]) if crudo["cifrado"] else None    # del mismo momento
+        if config is not None:
+            contenido = {"secuencia": crudo["secuencia"], "entidades": crudo["entidades"],
+                         "bitacora": crudo["bitacora"]}
+            return _escribir_zip(ruta, contenido, momento, None, config, archivos=crudo["archivos"])
+        with sin_pausas_de_memoria():
+            datos, resumen = _datos_sin_cifrar(crudo), _resumen_crudo(crudo["entidades"])
+        return _escribir_zip(ruta, datos, momento, resumen, None, archivos=crudo["archivos"])
     libro = almacen.libro_guardado()
     contenido = {
         "secuencia": libro.secuencia,
@@ -239,11 +329,13 @@ def _crear_desde(almacen: Almacen, momento: datetime, destino: Path | str | None
     return _escribir_zip(ruta, contenido, momento, _resumen(libro), None, archivos=almacen.archivos_descifrados())
 
 
-def _escribir_zip(ruta: Path, contenido: dict, momento: datetime | str, resumen: dict | None,
+def _escribir_zip(ruta: Path, contenido: dict | bytes, momento: datetime | str, resumen: dict | None,
                   config: cifrado.Config | None, *, archivos: dict[str, bytes] | None = None,
                   version_formato: int = VERSION_FORMATO, version_app: str = VERSION) -> Path:
-    # Sin sangría: así Python usa su codificador en C (con sangría es diez veces más lento con años de datos).
-    datos = json.dumps(contenido, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    if isinstance(contenido, bytes):
+        datos = contenido
+    else:   # sin sangría: así Python usa su codificador en C (con sangría es diez veces más lento con años de datos)
+        datos = json.dumps(contenido, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
     manifiesto = {
         "formato": FORMATO,
         "version_formato": version_formato,
@@ -280,6 +372,40 @@ def _ruta_libre(carpeta: Path, prefijo: str, momento: datetime) -> Path:
     while ruta.exists():
         ruta, n = carpeta / f"{base}_{n}.zip", n + 1
     return ruta
+
+
+def _datos_sin_cifrar(crudo: dict) -> bytes:
+    """``datos.json`` de un respaldo sin contraseña, armado con el JSON de cada registro tal como está guardado.
+
+    Es exactamente lo que saldría de leer cada registro y volverlo a escribir, pero sin hacerlo: con 30 años de
+    datos eso tardaba segundos. Cada registro ya es JSON válido (TALLY lo escribió y lo lee al abrir)."""
+    texto = encode_basestring                       # una cadena JSON entre comillas, como json.dumps pero en C directo
+
+    def valor(crudo_: str | None) -> str:
+        return crudo_ or "null"
+
+    bitacora = ",".join(
+        f'{{"accion":{texto(r["accion"])},"antes":{valor(r["antes"])},"despues":{valor(r["despues"])},'
+        f'"entidad":{texto(r["entidad"])},"entidad_id":{texto(r["entidad_id"])},"fecha_hora":{texto(r["fecha_hora"])}}}'
+        for r in crudo["bitacora"])
+    entidades = ",".join(
+        texto(tipo) + ":{" + ",".join(f"{texto(i)}:{valor(v)}" for i, v in sorted(porid.items())) + "}"
+        for tipo, porid in sorted(crudo["entidades"].items()))
+    return (f'{{"bitacora":[{bitacora}],"entidades":{{{entidades}}},"secuencia":{int(crudo["secuencia"])}}}'
+            .encode("utf-8"))
+
+
+def _resumen_crudo(entidades: dict[str, dict[str, str]]) -> dict:
+    """Lo mismo que :func:`_resumen`, desde los registros sin cifrar tal como están guardados."""
+    perfil = next((json.loads(t) for t in (entidades.get("perfil") or {}).values() if t), None)
+    fechas = [json.loads(t)["fecha"] for t in (entidades.get("operacion") or {}).values() if t]
+    return {
+        "perfil": perfil.get("nombre") if perfil else None,
+        "cuentas": len(entidades.get("cuenta") or {}),
+        "movimientos": len(fechas),
+        "primera_fecha": min(fechas) if fechas else None,
+        "ultima_fecha": max(fechas) if fechas else None,
+    }
 
 
 def _resumen(libro: Libro) -> dict:
@@ -551,6 +677,7 @@ def _reescribir(ruta: Path, contenido: dict, manifiesto: dict, config: cifrado.C
 def convertir_carpeta(carpeta: Path | str, llave: bytes, config: cifrado.Config | None) -> tuple[int, list[str]]:
     """Cifra (``config``) o descifra (``None``) todos los respaldos de la carpeta. Devuelve cuántos cambió y los
     nombres de los que no se pudieron (por ejemplo, dañados): esos se dejan como estaban."""
+    esperar_en_curso(carpeta)                          # el del día, si se está haciendo, también se convierte
     cambiados, fallidos = 0, []
     for ruta in sorted(Path(carpeta).glob("TALLY_*.zip")):
         try:
