@@ -36,6 +36,16 @@ def principal(libro: Libro) -> Recurrente | None:
     return next((r for r in activos if r.activa), activos[0] if activos else None)
 
 
+def nombre_principal(libro: Libro) -> str | None:
+    """Cómo se llama tu ingreso principal en los textos: el nombre que le pusiste en Ingresos («Nómina», «Honorarios»,
+    «Ventas»…) o, si aún no lo configuras, el de su subcategoría. ``None`` si no tienes ingreso principal."""
+    r = principal(libro)
+    if r is not None:
+        return r.nombre
+    marcadas = [c for c in libro.categorias() if c.principal]
+    return marcadas[0].nombre if len(marcadas) == 1 else None
+
+
 def fijos(libro: Libro) -> list[Recurrente]:
     """Tus ingresos que se repiten (el principal primero)."""
     lista = [r for r in libro.recurrentes() if r.tipo is TipoOperacion.INGRESO]

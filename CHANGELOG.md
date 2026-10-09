@@ -2,6 +2,13 @@
 
 Todos los cambios relevantes de TALLY se documentan aquí.
 
+## [0.23.3] — Sin publicar
+
+- **«Lo que te sobró antes de cada pago» usa el nombre de tu ingreso principal.** La gráfica del Resumen ya se
+  calculaba con tu ingreso principal (el que marcaste como principal, sea nómina, honorarios o ventas), pero el título
+  siempre decía «nómina». Ahora dice, por ejemplo, «antes de cada pago de Honorarios»: el nombre que le pusiste en
+  Ingresos o, si aún no lo configuras, el de su subcategoría.
+
 ## [0.23.2] — Sin publicar
 
 - **«Transferencia entre mis cuentas».** Así se llama ahora la opción de Registrar para mover dinero de una de tus
