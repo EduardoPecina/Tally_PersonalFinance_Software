@@ -2000,3 +2000,18 @@ def test_historial_pasa_un_gasto_a_transferencia_entre_mis_cuentas(raiz, con_dat
 def test_registrar_dice_transferencia_entre_mis_cuentas(con_datos):
     at = abrir(_pagina("registrar"))
     assert "Transferencia entre mis cuentas" in at.segmented_control(key="registrar_tipo").options
+
+
+def test_lo_que_te_sobro_usa_el_nombre_de_tu_ingreso_principal(raiz, con_datos):
+    from motor import ingresos
+
+    s = sesion_en(raiz)
+    with s.cambio() as lib:
+        movimientos.registrar_ingreso(lib, lib.hoy() - timedelta(days=15), con_datos["debito"],
+                                      con_datos["cat"]["NOMINA"], 4000, "Pago anterior")
+        ingresos.guardar(lib, "Honorarios ficticios", con_datos["cat"]["NOMINA"], 4000, con_datos["debito"],
+                         "quincenal", inicio=lib.hoy() - timedelta(days=60), es_principal=True)
+    at = abrir()
+    sin_errores(at)
+    assert any(h.value == "Lo que te sobró antes de cada pago de Honorarios ficticios · Débito Ficticio"
+               for h in at.subheader)

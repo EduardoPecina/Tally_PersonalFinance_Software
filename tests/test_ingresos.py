@@ -107,3 +107,12 @@ def test_el_primer_mes_a_medias_no_se_promedia(libro, ctas, cat):
     movimientos.registrar_ingreso(libro, date(2026, 6, 30), ctas.debito, cat("NOMINA"), "5000.56", "Nómina")
     esperado = planeacion.ingreso_esperado(libro)              # junio está a medias: aún no hay meses completos
     assert (esperado.monto, esperado.fuente) == (D("10001.29"), "configurado")
+
+
+def test_el_nombre_de_tu_ingreso_principal(libro, ctas, cat):
+    assert ingresos.nombre_principal(libro) == "NOMINA"                  # la subcategoría marcada (catálogo)
+    nomina(libro, ctas, cat)
+    assert ingresos.nombre_principal(libro) == "Nómina Ficticia"         # el nombre que le pusiste en Ingresos
+    ingresos.guardar(libro, "Honorarios Ficticios", cat("HONORARIOS"), 9_000, ctas.debito, "mensual",
+                     inicio=date(2026, 1, 1), es_principal=True)
+    assert ingresos.nombre_principal(libro) == "Honorarios Ficticios"   # una persona independiente

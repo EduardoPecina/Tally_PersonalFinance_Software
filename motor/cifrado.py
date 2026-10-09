@@ -115,6 +115,8 @@ def validar_contrasena(contrasena: str, confirmacion: str | None = None, pista: 
 
 
 def _verificacion(cuerpo: str) -> str:
+    """Los 2 caracteres de verificación (10 bits): atrapan los errores de tecleo, salvo 1 de cada 1,024. El que se
+    cuela tampoco abre nada (la llave no es la correcta): ``abrir_con_kit`` lo explica."""
     valor = int.from_bytes(hashlib.sha256(cuerpo.encode("ascii")).digest()[:2], "big") >> 6   # 10 bits
     return ALFABETO[valor >> 5] + ALFABETO[valor & 31]
 
@@ -219,6 +221,10 @@ def abrir_con_kit(config: Config, kit: str) -> bytes:
     try:
         llave = _desenvolver(config.recuperacion, _bytes_kit(kit))
     except ErrorContrasena:
+        if normalizar_kit(kit)[-4:] == config.kit_final:      # termina igual: casi seguro, una letra cambiada
+            raise ErrorContrasena(f"Esa llave no abre tus datos, aunque termina igual que la de tu Kit "
+                                  f"(…{config.kit_final}): seguramente hay una letra o número cambiado. Compárala "
+                                  f"letra por letra con tu Kit del {_fecha(config.kit_creado)}.") from None
         raise ErrorContrasena(f"Esa llave es válida, pero no es la de estos datos. Busca tu Kit del "
                               f"{_fecha(config.kit_creado)} (su llave termina en …{config.kit_final}).") from None
     return _comprobar(config, llave)

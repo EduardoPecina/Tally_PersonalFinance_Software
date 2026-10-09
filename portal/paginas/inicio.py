@@ -6,7 +6,7 @@ from datetime import date, timedelta
 
 import streamlit as st
 
-from motor import cierre, cuentas, plan_deudas, reportes, tarjetas
+from motor import cierre, cuentas, ingresos, plan_deudas, reportes, tarjetas
 from motor.modelo import TipoCuenta
 from portal.componentes import estado, formato, graficas, por_recuperar
 from portal.componentes import tarjeta as estado_tarjeta
@@ -127,14 +127,17 @@ def _plan_de_deudas() -> None:
 
 
 def _quincenas() -> None:
+    """Lo que quedaba en la cuenta justo antes de cada pago de tu ingreso principal (sea nómina, honorarios, ventas…)."""
     lib = libro()
+    nombre = ingresos.nombre_principal(lib)
+    cada = f"cada pago de {nombre}" if nombre else "cada pago de tu ingreso principal"
     for cuenta in cuentas.listar(lib):
         sobrantes = reportes.sobrantes_de_quincena(lib, cuenta.id, lib.hoy() - timedelta(days=200))[-6:]
         if len(sobrantes) < 2:
             continue
-        st.subheader(f"Lo que te sobró antes de cada nómina · {cuenta.nombre}")
+        st.subheader(f"Lo que te sobró antes de {cada} · {cuenta.nombre}")
         graficas.barras([(formato.fecha(s.fecha), s.sobrante) for s in reversed(sobrantes)], "Sobrante",
-                       "Nómina del")
+                       "Pago del")
 
 
 def mostrar() -> None:

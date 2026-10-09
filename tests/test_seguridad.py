@@ -88,16 +88,42 @@ def test_el_kit_tolera_errores_de_tecleo_y_detecta_letras_cambiadas():
         assert cifrado.normalizar_kit(variante) == kit
     confusa = kit.replace("0", "O").replace("1", "I")               # O por 0 e I por 1: se entienden
     assert cifrado.normalizar_kit(confusa) == kit
-    for i in range(len(kit)):                                     # cualquier carácter cambiado se detecta
-        if kit[i] == "-":
-            continue
-        otro = next(c for c in cifrado.ALFABETO if c != kit[i])
-        with pytest.raises(ErrorValidacion):
-            cifrado.normalizar_kit(kit[:i] + otro + kit[i + 1:])
     with pytest.raises(ErrorValidacion, match="faltan"):
         cifrado.normalizar_kit(kit[:-3])
     with pytest.raises(ErrorValidacion, match="sobran"):
         cifrado.normalizar_kit(kit + "AB")
+
+
+# Una llave fija (no al azar): así la prueba da siempre lo mismo. Con 2 caracteres de verificación (10 bits), 1 de
+# cada 1,024 letras cambiadas pasa el filtro; en esta llave, cambiar la «X» del 4.º grupo por «B».
+KIT_FIJO = "7M1E-V8N2-FW9P-3GXA-Q4HY-BRGP"
+COLADO = KIT_FIJO[:17] + "B" + KIT_FIJO[18:]
+
+
+def test_la_verificacion_atrapa_casi_cualquier_letra_cambiada():
+    assert cifrado.normalizar_kit(KIT_FIJO) == KIT_FIJO
+    colados, total = [], 0
+    for i, c in enumerate(KIT_FIJO):
+        if c == "-":
+            continue
+        for otro in cifrado.ALFABETO:
+            if otro != c:
+                total += 1
+                try:
+                    cifrado.normalizar_kit(KIT_FIJO[:i] + otro + KIT_FIJO[i + 1:])
+                    colados.append(KIT_FIJO[:i] + otro + KIT_FIJO[i + 1:])
+                except ErrorValidacion:
+                    pass
+    assert total == 24 * 31 and colados == [COLADO]                 # 743 de 744 se detectan al teclear
+
+
+def test_una_letra_cambiada_que_se_cuela_no_abre_nada_y_lo_dice():
+    config, _llave = cifrado.preparar(CONTRASENA, KIT_FIJO, ahora=AHORA)
+    assert cifrado.abrir_con_kit(config, KIT_FIJO.lower())
+    with pytest.raises(ErrorContrasena, match="letra o número cambiado"):
+        cifrado.abrir_con_kit(config, COLADO)
+    with pytest.raises(ErrorContrasena, match="no es la de estos datos"):
+        cifrado.abrir_con_kit(config, cifrado.nuevo_kit())          # otra llave (termina distinto)
     assert len({cifrado.nuevo_kit() for _ in range(200)}) == 200          # siempre distinto
 
 

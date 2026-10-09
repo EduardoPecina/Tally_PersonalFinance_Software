@@ -2,6 +2,19 @@
 
 Todos los cambios relevantes de TALLY se documentan aquí.
 
+## [0.23.3] — Sin publicar
+
+- **«Lo que te sobró antes de cada pago» usa el nombre de tu ingreso principal.** La gráfica del Resumen ya se
+  calculaba con tu ingreso principal (el que marcaste como principal, sea nómina, honorarios o ventas), pero el título
+  siempre decía «nómina». Ahora dice, por ejemplo, «antes de cada pago de Honorarios»: el nombre que le pusiste en
+  Ingresos o, si aún no lo configuras, el de su subcategoría.
+- **Kit de emergencia: un mensaje más claro.** Los 2 caracteres de verificación de la llave atrapan los errores de
+  tecleo salvo 1 de cada 1,024. Ese error que se cuela nunca abría nada, pero TALLY decía que la llave «no es la de
+  estos datos». Ahora, si termina igual que la de tu Kit, te dice que seguramente hay una letra o número cambiado.
+  Las llaves que ya tienes siguen sirviendo igual.
+- Pruebas: la del Kit usaba una llave al azar y fallaba cerca de 1 de cada 40 corridas (la falla suelta que veíamos).
+  Ahora usa una llave fija y revisa los 744 cambios de una letra posibles.
+
 ## [0.23.2] — Sin publicar
 
 - **«Transferencia entre mis cuentas».** Así se llama ahora la opción de Registrar para mover dinero de una de tus
