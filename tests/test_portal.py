@@ -1726,6 +1726,38 @@ def test_impuestos_deducibles_y_recibo_hechos_a_mano_y_borrables(raiz, con_datos
     assert sesion_en(raiz).libro.fiscal.conceptos == ()
 
 
+def test_perfil_de_impuestos_con_renglones_normales(raiz, con_datos):
+    """Antes era una tabla editable que confundía (había que dar clic en la celda; la casilla seleccionaba el
+    renglón y escondía el ➕). Ahora cada impuesto es un renglón con campos normales."""
+    from decimal import Decimal as Dec
+
+    at = abrir(_pagina("impuestos"))
+    at.text_input(key="imp_nuevo_nombre_perfil").input("RESICO ficticio")
+    at.text_input(key="imp_nuevo_0_nombre").input("IVA")
+    at.text_input(key="imp_nuevo_0_tasa").input("16")
+    at.button(key="imp_nuevo_agregar").click().run()
+    sin_errores(at)
+    at.text_input(key="imp_nuevo_1_nombre").input("Retención IVA")
+    at.text_input(key="imp_nuevo_1_tasa").input("2/3").run()
+    assert at.selectbox(key="imp_nuevo_1_sobre").options == ["(el subtotal)", "IVA"]   # el de arriba, sin escribirlo
+    at.selectbox(key="imp_nuevo_1_sobre").set_value("IVA")
+    at.selectbox(key="imp_nuevo_1_efecto").set_value("Se retiene (se resta)")
+    at.button(key="imp_nuevo_guardar").click().run()
+    sin_errores(at)
+    (perfil,) = sesion_en(raiz).libro.fiscal.perfiles
+    assert perfil.nombre == "RESICO ficticio"
+    assert [(i.nombre, i.tasa.quantize(Dec("0.01")), i.sobre, i.retenido) for i in perfil.impuestos] == [
+        ("IVA", Dec("16.00"), "", False), ("Retención IVA", Dec("66.67"), "IVA", True)]
+    assert at.text_input(key="imp_nuevo_nombre_perfil").value == ""                   # el formulario se limpia
+
+    # Al editarlo aparecen sus renglones; se puede quitar uno.
+    assert at.text_input(key=f"imp_{perfil.id}_1_nombre").value == "Retención IVA"
+    at.button(key=f"imp_{perfil.id}_1_quitar").click().run()
+    at.button(key=f"imp_{perfil.id}_guardar").click().run()
+    sin_errores(at)
+    assert [i.nombre for i in sesion_en(raiz).libro.fiscal.perfiles[0].impuestos] == ["IVA"]
+
+
 def test_impuestos_con_un_deducible_que_apunta_a_una_subcategoria_borrada(raiz, con_datos):
     """Datos que quedaron así antes del arreglo (TALLY 0.17.0): la página abre y ya no ofrece la que no existe."""
     from dataclasses import replace

@@ -346,36 +346,81 @@ def _tasa_texto(tasa: Decimal) -> str:
     return mostrada.split(" ")[0] if "/" in mostrada else f"{tasa.normalize():f}"
 
 
+AYUDA_RENGLONES = ("Un impuesto por renglón, en orden. Si uno se calcula sobre otro (la retención de 2/3 del IVA), "
+                   "ponlo debajo de ese otro y elígelo en «Sobre». Los renglones sin nombre no se guardan.")
+
+
 def _formulario_perfil(p: PerfilImpuestos | None) -> None:
+    """Un renglón por impuesto, con campos normales. (Antes era una tabla editable: había que dar clic en la celda
+    para escribir, y la casilla de la izquierda seleccionaba el renglón y escondía el ➕.)"""
     clave = p.id if p else "nuevo"
-    lista = list(p.impuestos) if p else []
-    datos = pd.DataFrame({
-        "Impuesto": [i.nombre for i in lista] or [""],
-        "Tasa (%)": [_tasa_texto(i.tasa) for i in lista] or [""],
-        "Sobre": [i.sobre or SUBTOTAL for i in lista] or [SUBTOTAL],
-        "Efecto": [EFECTO[i.retenido] for i in lista] or [EFECTO[False]],
-    })
-    with st.form(f"imp_perfil_{clave}", border=False):
-        nombre = st.text_input("Nombre del perfil", value=p.nombre if p else "",
-                               placeholder="Mis honorarios, ventas de la tienda…")
-        st.caption("Un impuesto por renglón, en orden (agrega renglones con el ➕ de la tabla). «Sobre»: escribe "
-                   "«(el subtotal)» o el nombre de otro impuesto de arriba. Renglones sin nombre no se guardan.")
-        tabla = st.data_editor(datos, num_rows="dynamic", hide_index=True, width="stretch",
-                               key=f"imp_tabla_{clave}",
-                               column_config={
-                                   "Impuesto": st.column_config.TextColumn(help="IVA, Retención ISR, IRPF…"),
-                                   "Tasa (%)": st.column_config.TextColumn(help="16, 1.25 o una fracción: 2/3"),
-                                   "Sobre": st.column_config.TextColumn(
-                                       default=SUBTOTAL,
-                                       help="«(el subtotal)» o el nombre de otro impuesto de arriba."),
-                                   "Efecto": st.column_config.SelectboxColumn(options=list(EFECTO.values()),
-                                                                              default=EFECTO[False])})
-        notas = st.text_input("Notas", value=p.notas if p else "")
-        if st.form_submit_button("Guardar cambios" if p else "Guardar perfil", type="primary"):
-            filas = [{"nombre": str(f["Impuesto"] or "").strip(), "tasa": str(f["Tasa (%)"] or "0"),
-                      "sobre": "" if str(f["Sobre"] or SUBTOTAL).strip() in (SUBTOTAL, "subtotal", "el subtotal")
-                      else str(f["Sobre"]).strip(),
-                      "retenido": f["Efecto"] == EFECTO[True]} for _, f in tabla.iterrows()]
-            if ejecutar(lambda li: impuestos.guardar_perfil(li, nombre, filas, notas=notas,
-                                                            perfil_id=p.id if p else None), "Perfil guardado"):
-                st.rerun()
+    filas = _renglones_del_formulario(p, clave)
+    st.text_input("Nombre del perfil", key=f"imp_{clave}_nombre_perfil", placeholder="Mis honorarios, ventas de la "
+                  "tienda…", help="Para reconocerlo al calcular un recibo: «Honorarios a empresas», «RESICO»…")
+    st.markdown("**Sus impuestos**", help=AYUDA_RENGLONES)
+    arriba: list[str] = []
+    for n in list(filas):
+        a, b, c, d, e = st.columns([3, 1.4, 2.2, 2.6, 0.8], vertical_alignment="bottom")
+        etiqueta = "visible" if n == filas[0] else "collapsed"
+        nombre = a.text_input("Impuesto", key=f"imp_{clave}_{n}_nombre", placeholder="IVA, ISR, IRPF…",
+                              label_visibility=etiqueta, help="Como aparece en tu recibo o factura.")
+        b.text_input("Tasa (%)", key=f"imp_{clave}_{n}_tasa", placeholder="16", label_visibility=etiqueta,
+                     help="En %: 16, 1.25, o una fracción como 2/3.")
+        opciones = [SUBTOTAL, *dict.fromkeys(x for x in arriba if x)]
+        sobre = f"imp_{clave}_{n}_sobre"
+        if st.session_state.get(sobre) not in opciones:
+            st.session_state[sobre] = SUBTOTAL                  # el de arriba cambió de nombre o se quitó
+        c.selectbox("Sobre", opciones, key=sobre, label_visibility=etiqueta,
+                    help="Casi siempre el subtotal. Si se calcula sobre otro impuesto (2/3 del IVA), elige ese "
+                         "otro: aparece aquí cuando lo escribes en un renglón de arriba.")
+        d.selectbox("Efecto", list(EFECTO.values()), key=f"imp_{clave}_{n}_efecto", label_visibility=etiqueta,
+                    help="Se suma: lo cobras aparte (IVA). Se retiene: te lo quitan del pago (retención de ISR).")
+        if e.button("", key=f"imp_{clave}_{n}_quitar", icon=":material/delete:", disabled=len(filas) == 1,
+                    help="Quitar este renglón"):
+            filas.remove(n)
+            st.rerun()
+        arriba.append(nombre.strip())
+    if st.button("Agregar otro impuesto", key=f"imp_{clave}_agregar", icon=":material/add:"):
+        filas.append(_siguiente(clave))
+        st.rerun()
+    st.text_input("Notas", key=f"imp_{clave}_notas")
+    if st.button("Guardar cambios" if p else "Guardar perfil", type="primary", key=f"imp_{clave}_guardar"):
+        estado = st.session_state
+        datos = [{"nombre": str(estado.get(f"imp_{clave}_{n}_nombre") or "").strip(),
+                  "tasa": str(estado.get(f"imp_{clave}_{n}_tasa") or "0").strip() or "0",
+                  "sobre": "" if estado.get(f"imp_{clave}_{n}_sobre", SUBTOTAL) == SUBTOTAL
+                  else estado[f"imp_{clave}_{n}_sobre"],
+                  "retenido": estado.get(f"imp_{clave}_{n}_efecto") == EFECTO[True]} for n in filas]
+        if ejecutar(lambda li: impuestos.guardar_perfil(li, estado.get(f"imp_{clave}_nombre_perfil", ""), datos,
+                                                        notas=estado.get(f"imp_{clave}_notas", ""),
+                                                        perfil_id=p.id if p else None), "Perfil guardado"):
+            _olvidar_formulario(clave)                          # que se vuelva a llenar con lo guardado
+            st.rerun()
+
+
+def _renglones_del_formulario(p: PerfilImpuestos | None, clave: str) -> list[int]:
+    """Los renglones del formulario (se llenan una vez con lo guardado y luego se quedan como los dejes)."""
+    estado = st.session_state
+    if f"imp_{clave}_filas" not in estado:
+        lista = list(p.impuestos) if p else []
+        estado[f"imp_{clave}_nombre_perfil"] = p.nombre if p else ""
+        estado[f"imp_{clave}_notas"] = p.notas if p else ""
+        for n, i in enumerate(lista):
+            estado[f"imp_{clave}_{n}_nombre"] = i.nombre
+            estado[f"imp_{clave}_{n}_tasa"] = _tasa_texto(i.tasa)
+            estado[f"imp_{clave}_{n}_sobre"] = i.sobre or SUBTOTAL
+            estado[f"imp_{clave}_{n}_efecto"] = EFECTO[i.retenido]
+        estado[f"imp_{clave}_filas"] = list(range(max(len(lista), 1)))
+        estado[f"imp_{clave}_siguiente"] = max(len(lista), 1)
+    return estado[f"imp_{clave}_filas"]
+
+
+def _siguiente(clave: str) -> int:
+    n = st.session_state[f"imp_{clave}_siguiente"]
+    st.session_state[f"imp_{clave}_siguiente"] = n + 1
+    return n
+
+
+def _olvidar_formulario(clave: str) -> None:
+    for k in [k for k in st.session_state if str(k).startswith(f"imp_{clave}_")]:
+        del st.session_state[k]

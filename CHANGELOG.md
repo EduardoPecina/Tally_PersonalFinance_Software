@@ -2,6 +2,14 @@
 
 Todos los cambios relevantes de TALLY se documentan aquí.
 
+## [0.24.1] — Sin publicar
+
+- **Perfiles de impuestos: ya se puede escribir sin batallar.** Los impuestos de un perfil se capturaban en una
+  tabla en la que había que dar clic en la celda para escribir; la casilla de la izquierda seleccionaba el renglón
+  (para borrarlo) y escondía el ➕, así que parecía que no dejaba escribir. Ahora cada impuesto es un renglón con
+  campos normales: nombre, tasa, «Sobre» (una lista con el subtotal y los impuestos de arriba: ya no hay que
+  escribirlo) y efecto; **Agregar otro impuesto** y el bote para quitar uno. Con explicación en cada campo («?»).
+
 ## [0.24.0] — Sin publicar
 
 - **Rubros contables: ves y decides de dónde sale cada número de tu Contabilidad técnica.** Nueva pestaña
