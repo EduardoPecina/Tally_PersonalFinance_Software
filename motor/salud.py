@@ -183,7 +183,7 @@ def _limites(libro: Libro, hoy: date) -> list[Hallazgo]:
                 hallazgos.append(Hallazgo(
                     f"limite:{c.id}:{hoy:%Y-%m}", REVISAR, "Tarjetas pasadas de su límite",
                     f"«{c.nombre}» debe {formatear(deuda)} y su límite es {formatear(a_pesos(c.limite_credito))}. "
-                    "¿Falta registrar un pago o cambió tu límite? (Cuentas → Editar).", "cuentas"))
+                    "¿Falta registrar un pago o cambió tu límite? (Cuentas → Administrar cuenta → Editar).", "cuentas"))
     return hallazgos
 
 
@@ -284,7 +284,7 @@ def _tarjetas_incompletas(libro: Libro) -> list[Hallazgo]:
             hallazgos.append(Hallazgo(
                 f"tarjeta:{c.id}:{'+'.join(falta)}", MEJORAR, "Tarjetas con datos incompletos",
                 f"A «{c.nombre}» le falta: {', '.join(falta)}. Sin eso no se calculan bien sus pagos, el mínimo, "
-                "los intereses ni tu plan de deudas (Cuentas → Editar; la tasa, en Deudas).",
+                "los intereses ni tu plan de deudas (Cuentas → Administrar cuenta → Editar; la tasa, en Deudas).",
                 "deudas" if falta == ["tasa de interés"] else "cuentas"))
     return hallazgos
 

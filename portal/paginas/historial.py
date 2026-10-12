@@ -126,7 +126,7 @@ def detalle_movimiento(operacion_id: str, tabla: str = TABLA) -> None:
                + (f" · modificado el {op.modificado_en:%d/%m/%Y %H:%M}" if op.modificado_en != op.creado_en else ""))
 
     if detalle.tipo is TipoOperacion.SALDO_INICIAL:
-        st.info("El saldo inicial se cambia desde **Cuentas → Saldo inicial**.")
+        st.info("El saldo inicial se cambia desde **Cuentas → Administrar cuenta → Saldo inicial**.")
         return
     _retiro_de_efectivo(op, tabla)
 

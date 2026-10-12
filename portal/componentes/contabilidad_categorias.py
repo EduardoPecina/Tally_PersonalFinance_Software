@@ -63,7 +63,7 @@ def _mapa() -> None:
             "| Reporte | Lo forman | Dónde se cambia |\n|---|---|---|\n"
             "| **Situación financiera** (lo que tienes, debes y vales) | Tus **cuentas**, según su tipo. Lo que es "
             "tuyo (patrimonio) es el saldo con el que empezaste más lo que has ganado menos lo que has gastado | "
-            "Cuentas → Editar (el tipo de cuenta) |\n"
+            "Cuentas → Administrar cuenta → Editar (el tipo de cuenta) |\n"
             "| **Resultados** (cuánto ganaste y gastaste) | Tus **subcategorías**, juntas en los rubros de abajo | "
             "Aquí |\n"
             "| **Flujo de efectivo** (por dónde entró y salió tu dinero) | *Tu día a día*: los rubros de abajo. "

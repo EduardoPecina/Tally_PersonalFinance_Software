@@ -16,6 +16,8 @@ from portal.paginas import estado_cuenta
 # Los bienes se agregan en Contabilidad Técnica y los préstamos en Deudas (necesitan sus datos).
 TIPOS = [t for t in TipoCuenta if t not in (TipoCuenta.BIEN, TipoCuenta.PRESTAMO)]
 SIN_CAMBIOS = "sin cambios"
+ABIERTA = "_cuentas_ventana"                 # (ADMINISTRAR o ELIMINAR, id de la cuenta) mientras la ventana está abierta
+ADMINISTRAR, ELIMINAR = "administrar", "eliminar"
 
 
 def _etiqueta_tipo(tipo: TipoCuenta) -> str:
@@ -119,14 +121,17 @@ def _tarjeta_de_cuenta(cuenta: Cuenta) -> None:
         if not cuenta.activa:
             detalle += " · eliminada (su historial se conserva)"
         izquierda.markdown(f"**{cuenta.nombre}**  \n:gray[{detalle}]")
-        ver, quitar = izquierda.columns(2)
-        if ver.button("Ver movimientos", icon=":material/receipt_long:", key=f"ver_{cuenta.id}", width="stretch"):
+        botones = izquierda.container(horizontal=True)   # del tamaño de su texto; si no caben, bajan de renglón
+        if botones.button("Ver movimientos", icon=":material/receipt_long:", key=f"ver_{cuenta.id}"):
             estado_cuenta.abrir(cuenta.id)
             st.rerun()
         if cuenta.activa:
-            if quitar.button("Eliminar", icon=":material/delete:", key=f"eliminar_{cuenta.id}", width="stretch"):
-                _dialogo_eliminar(cuenta.id)
-        elif quitar.button("Restaurar", icon=":material/restore:", key=f"restaurar_{cuenta.id}", width="stretch"):
+            botones.button("Administrar cuenta", icon=":material/settings:", key=f"administrar_{cuenta.id}",
+                           on_click=_abrir, args=(ADMINISTRAR, cuenta.id),
+                           help="Cambiar su nombre y sus datos, actualizar su saldo o su saldo inicial.")
+            botones.button("Eliminar", icon=":material/delete:", key=f"eliminar_{cuenta.id}",
+                           on_click=_abrir, args=(ELIMINAR, cuenta.id))
+        elif botones.button("Restaurar", icon=":material/restore:", key=f"restaurar_{cuenta.id}"):
             if ejecutar(lambda lib: cuentas.reactivar(lib, cuenta.id), exito=f"«{cuenta.nombre}» restaurada"):
                 st.rerun()
         if cuenta.tipo is TipoCuenta.BIEN and lib.bien(cuenta.id) is not None:
@@ -181,7 +186,7 @@ def _editar(cuenta: Cuenta) -> None:
             if ejecutar(lambda lib: cuentas.editar(lib, cuenta.id, nombre=nombre, institucion=institucion,
                                                    notas=notas, en_disponible=en_disponible, **credito),
                         exito="Cuenta actualizada"):
-                st.rerun()
+                _guardado()
 
 
 def _actualizar_saldo(cuenta: Cuenta) -> None:
@@ -223,7 +228,7 @@ def _actualizar_saldo(cuenta: Cuenta) -> None:
                 st.info("El saldo ya coincidía: no hubo nada que registrar.")
             elif resultado is not None:
                 avisar("Saldo actualizado")
-                st.rerun()
+                _guardado()
 
 
 def _saldo_inicial(cuenta: Cuenta) -> None:
@@ -243,7 +248,7 @@ def _saldo_inicial(cuenta: Cuenta) -> None:
         if st.form_submit_button("Guardar saldo inicial", type="primary"):
             cambiar = cuentas.cambiar_deuda_inicial if es_credito else cuentas.cambiar_saldo_inicial
             if ejecutar(lambda lib: cambiar(lib, cuenta.id, monto, fecha), exito="Saldo inicial actualizado"):
-                st.rerun()
+                _guardado()
 
 
 def eliminar(cuenta: Cuenta, clave: str) -> None:
@@ -291,14 +296,58 @@ def eliminar(cuenta: Cuenta, clave: str) -> None:
         if resultado:
             avisar(f"«{cuenta.nombre}» eliminada" + (". Su historial se conserva." if resultado == cuentas.GUARDADA
                                                        else "."))
-            st.session_state.pop("cuentas_elegida", None)
-            st.rerun()
+            _guardado()
 
 
-@st.dialog("Eliminar cuenta")
+def _abrir(accion: str, cuenta_id: str) -> None:
+    st.session_state[ABIERTA] = (accion, cuenta_id)
+
+
+def _cerrar() -> None:
+    st.session_state.pop(ABIERTA, None)
+
+
+def _guardado() -> None:
+    _cerrar()
+    st.rerun()
+
+
+def _de_la_ventana(cuenta_id: str) -> Cuenta | None:
+    cuenta = next((c for c in cuentas.listar(libro(), incluir_archivadas=True) if c.id == cuenta_id), None)
+    if cuenta is None:
+        _cerrar()
+        st.info("Esta cuenta ya no existe.")
+    return cuenta
+
+
+@st.dialog("Administrar cuenta", width="large", icon=":material/settings:", on_dismiss=_cerrar)
+def _dialogo_administrar(cuenta_id: str) -> None:
+    candado.en_ventana()
+    cuenta = _de_la_ventana(cuenta_id)
+    if cuenta is None:
+        return
+    detalle = _etiqueta_tipo(cuenta.tipo) + (f" · {cuenta.institucion}" if cuenta.institucion else "")
+    st.markdown(f"**{formato.md(cuenta.nombre)}**  \n:gray[{formato.md(detalle)}]")
+    if cuenta.tipo in (TipoCuenta.BIEN, TipoCuenta.PRESTAMO):
+        donde = "Contabilidad Técnica → Bienes" if cuenta.tipo is TipoCuenta.BIEN else "Deudas"
+        st.caption(f"Su valor, sus pagos y sus datos se manejan en **{donde}**.")
+        _editar(cuenta)
+        return
+    editar, actualizar, inicial = st.tabs(["Editar", "Actualizar saldo", "Saldo inicial"])
+    with editar:
+        _editar(cuenta)
+    with actualizar:
+        _actualizar_saldo(cuenta)
+    with inicial:
+        _saldo_inicial(cuenta)
+
+
+@st.dialog("Eliminar cuenta", on_dismiss=_cerrar)
 def _dialogo_eliminar(cuenta_id: str) -> None:
     candado.en_ventana()
-    eliminar(libro().cuenta(cuenta_id), f"dialogo_eliminar_{cuenta_id}")
+    cuenta = _de_la_ventana(cuenta_id)
+    if cuenta is not None:
+        eliminar(cuenta, f"dialogo_eliminar_{cuenta_id}")
 
 
 def mostrar() -> None:
@@ -326,28 +375,7 @@ def mostrar() -> None:
             for cuenta in del_tipo:
                 _tarjeta_de_cuenta(cuenta)
 
-    st.divider()
-    st.subheader("Administrar una cuenta")
-    ids = [c.id for c in lista]
-    elegida = st.selectbox("Cuenta", ids, format_func=lambda i: libro().cuenta(i).nombre, key="cuentas_elegida")
-    if elegida is None:
-        return
-    cuenta = libro().cuenta(elegida)
-    if cuenta.tipo in (TipoCuenta.BIEN, TipoCuenta.PRESTAMO):
-        donde = "Contabilidad Técnica → Bienes" if cuenta.tipo is TipoCuenta.BIEN else "Deudas"
-        st.caption(f"Su valor, sus pagos y sus datos se manejan en **{donde}**.")
-        editar, mas = st.tabs(["Editar", "Eliminar"])
-        with editar:
-            _editar(cuenta)
-        with mas:
-            eliminar(cuenta, f"pestana_eliminar_{cuenta.id}")
-        return
-    editar, actualizar, inicial, mas = st.tabs(["Editar", "Actualizar saldo", "Saldo inicial", "Eliminar"])
-    with editar:
-        _editar(cuenta)
-    with actualizar:
-        _actualizar_saldo(cuenta)
-    with inicial:
-        _saldo_inicial(cuenta)
-    with mas:
-        eliminar(cuenta, f"pestana_eliminar_{cuenta.id}")
+    # La ventana sigue abierta mientras esté anotada (se cierra al guardar o con la X).
+    abierta = st.session_state.get(ABIERTA)
+    if abierta:
+        (_dialogo_administrar if abierta[0] == ADMINISTRAR else _dialogo_eliminar)(abierta[1])

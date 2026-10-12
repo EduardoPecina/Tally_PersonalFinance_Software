@@ -15,7 +15,7 @@ USO_ALTO = 0.7      # a partir de aquí se avisa; la recomendación común es us
 def _situacion(estado: tarjetas.EstadoTarjeta) -> None:
     corte = estado.corte
     if estado.situacion == tarjetas.SIN_CORTE:
-        st.caption("Registra el **día de corte** (Cuentas → Editar) para ver cuánto pagar y hasta cuándo.")
+        st.caption("Registra el **día de corte** (Cuentas → Administrar cuenta → Editar) para ver cuánto pagar y hasta cuándo.")
     elif estado.situacion == tarjetas.AL_CORRIENTE:
         pagado = f" (pagaste {formato.dinero_md(corte.deuda_al_corte)})" if corte.deuda_al_corte else ""
         st.success(f"Al corriente: el corte del {formato.fecha(corte.fin)} ya está liquidado{pagado}.", icon="✅")
@@ -26,7 +26,7 @@ def _situacion(estado: tarjetas.EstadoTarjeta) -> None:
                      f"era el {formato.fecha(corte.fecha_limite_pago)}.", icon="🔴")
         elif estado.situacion == tarjetas.SIN_FECHA:
             st.warning(f"Paga **{monto}** del corte del {formato.fecha(corte.fin)}. Registra la regla de pago "
-                       "(Cuentas → Editar) para saber la fecha límite.", icon="⏳")
+                       "(Cuentas → Administrar cuenta → Editar) para saber la fecha límite.", icon="⏳")
         else:
             dias = estado.dias_para_pagar
             cuando = "hoy" if dias == 0 else "mañana" if dias == 1 else f"en {dias} días"
@@ -56,7 +56,7 @@ def mostrar(tarjeta: Cuenta) -> None:
                        "menos del 30 %.]")
     else:
         columnas[1].metric("Disponible", "—")
-        st.caption("Registra tu **línea de crédito** (Cuentas → Editar) para ver cuánto te queda disponible.")
+        st.caption("Registra tu **línea de crédito** (Cuentas → Administrar cuenta → Editar) para ver cuánto te queda disponible.")
     if estado.saldo_a_favor:
         st.caption(f"Saldo a favor: **{formato.dinero_md(estado.saldo_a_favor)}**")
 
