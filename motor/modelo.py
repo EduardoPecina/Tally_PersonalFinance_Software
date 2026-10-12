@@ -200,14 +200,16 @@ class Categoria:
 @dataclass(frozen=True, slots=True)
 class RubroContable:
     """Un renglón de la Contabilidad técnica que junta subcategorías: «Gastos financieros», «Ingresos por tu
-    trabajo»… (motor/rubros_contables.py). Los de TALLY (:data:`RUBROS_CONTABLES_BASE`) son fijos y no se guardan;
-    los que crea el usuario, sí."""
+    trabajo»… (motor/rubros_contables.py). Los de TALLY (:data:`RUBROS_CONTABLES_BASE`) vienen en el programa: solo
+    se guarda lo que el usuario les cambie (otro nombre, o que los borró). Los que crea el usuario se guardan
+    completos."""
 
     id: str
     nombre: str
     clase: ClaseCategoria  # INGRESO o GASTO
     orden: int = 0
     descripcion: str = ""
+    borrado: bool = False  # solo los de TALLY: el usuario lo borró (y lo puede recuperar)
 
 
 RC_TRABAJO, RC_INVERSIONES, RC_OTROS_INGRESOS = "rc-trabajo", "rc-inversiones", "rc-otros-ingresos"
@@ -226,6 +228,8 @@ RUBROS_CONTABLES_BASE = (
     RubroContable(RC_IMPUESTOS, "Impuestos", ClaseCategoria.GASTO, 2,
                   "Lo que pagas al gobierno: ISR, predial, tenencia…"),
 )
+# Donde cae lo que no está en otro rubro (como «Sin clasificación»): se pueden renombrar, no borrar.
+RUBROS_CONTABLES_FIJOS = frozenset({RC_OTROS_INGRESOS, RC_VIDA})
 
 
 @dataclass(frozen=True, slots=True)

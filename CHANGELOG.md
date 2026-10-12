@@ -2,6 +2,22 @@
 
 Todos los cambios relevantes de TALLY se documentan aquí.
 
+## [0.26.0] — Sin publicar
+
+- **Categorías › Contabilidad: los rubros de TALLY también se editan.** Antes solo los que creabas tú tenían
+  **Editar**; los seis de TALLY decían «De TALLY» y no se podían tocar. Ahora todos tienen su botón, como en
+  Clasificaciones:
+  - **Renombrar** cualquiera («Impuestos» → «Pagos al SAT»). Con su nombre original vuelve a ser como lo trae TALLY.
+  - **Borrar** Ingresos por tu trabajo, Ingresos por inversiones y rentas, Gastos financieros o Impuestos. Sus
+    subcategorías van a donde las acomodan las demás reglas (por su categoría, o a Gastos de vida / Otros ingresos).
+    **Gastos de vida** y **Otros ingresos** no se borran: ahí cae lo que no está en otro rubro.
+  - Si te arrepientes, **↩️ Rubros de TALLY que borraste → Recuperar** lo trae de vuelta con su nombre original.
+- Arreglado: después de **Acomodar todo de nuevo** (o de borrar o recuperar un rubro), las cajas seguían mostrando
+  las subcategorías de antes hasta salir y volver a entrar.
+- Arreglado: al borrar un rubro o una clasificación, el **Editar** de la siguiente caja se quedaba abierto solo (con
+  su botón de borrar a la mano).
+- Tus datos pasan al esquema 10 y los respaldos al formato 10. Una versión anterior de TALLY ya no los abre.
+
 ## [0.25.1] — Sin publicar
 
 - **Cuentas: botón ⚙️ Administrar cuenta en cada cuenta.** Ya no hay que bajar hasta «Administrar una cuenta» y

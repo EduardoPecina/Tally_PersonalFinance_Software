@@ -113,7 +113,7 @@ Campos:
 | Categoría | `Rubro` | Caja que agrupa (SALUD, TECNOLOGIA…). De gasto o de ingreso |
 | Subcategoría | `Categoria` | Lo que lleva cada partida (DENTISTA, GASOLINA…). Vive en un rubro de su misma clase |
 | Clasificación | `Grupo` | Para qué es el gasto (la "Clasif. Metas" del Excel): Necesidad, Compromisos, Estabilidad, Crecimiento, Disfrute, Antojos y Generosidad. Cada subcategoría está en una sola |
-| Rubro contable | `RubroContable` | En qué renglón de los estados financieros cae (`motor/rubros_contables.py`): Ingresos por tu trabajo, Ingresos por inversiones y rentas, Otros ingresos, Gastos de vida, Gastos financieros, Impuestos (fijos) y los del usuario. Cada subcategoría está en uno solo, de su misma clase |
+| Rubro contable | `RubroContable` | En qué renglón de los estados financieros cae (`motor/rubros_contables.py`): Ingresos por tu trabajo, Ingresos por inversiones y rentas, Otros ingresos, Gastos de vida, Gastos financieros, Impuestos (de TALLY: se renombran y se borran, menos Gastos de vida y Otros ingresos) y los del usuario. Cada subcategoría está en uno solo, de su misma clase |
 
 - Las partidas solo apuntan a subcategorías. Un rubro nunca tiene movimientos
   propios: sus totales son la suma de sus subcategorías.
@@ -126,7 +126,8 @@ Campos:
 - El rubro contable de una subcategoría es el que eligió el usuario (`Categoria.rubro_contable_id`) o, si no, el que
   TALLY le da: por palabras de su nombre, luego de su rubro, y si no Gastos de vida u Otros ingresos. Al crearla,
   si nada de eso la delata y el usuario movió a la mayoría de sus hermanas a un mismo rubro, va con ellas (y se
-  guarda). Solo agrupa: ningún total cambia.
+  guarda). Si el usuario borró el rubro de TALLY que le tocaba, sigue con la siguiente regla. Solo agrupa: ningún
+  total cambia.
 - Una subcategoría de ingreso puede marcarse como **principal** (p. ej.
   NOMINA). Así se detectan las quincenas.
 - Borrar una subcategoría con movimientos exige pasarlos a otra (fusión).

@@ -848,6 +848,37 @@ def test_rubros_contables_como_cajas_en_categorias(raiz, con_datos):
     assert "Rubro" in at.dataframe[3].value.columns                     # la Balanza dice dónde cae cada renglón
 
 
+def test_los_rubros_de_tally_se_editan_en_categorias(raiz, con_datos):
+    from motor import categorias
+    from motor import rubros_contables as rc
+    from motor.modelo import RC_FINANCIEROS, RC_IMPUESTOS, RC_VIDA
+
+    at = abrir(_pagina("categorias"))
+    sin_errores(at)
+    # Todos tienen su botón Editar, como en Clasificaciones (también los de TALLY).
+    assert all(any(b.key == f"rc_renombrar_{r.id}" for b in at.button) for r in rc.todos(sesion_en(raiz).libro))
+    assert not any(b.key == f"rc_borrar_{RC_VIDA}" for b in at.button)          # Gastos de vida no se borra
+    at.text_input(key=f"rc_nombre_{RC_IMPUESTOS}").input("Pagos al SAT").run()
+    next(b for b in at.button if b.key == f"rc_renombrar_{RC_IMPUESTOS}").click().run()
+    sin_errores(at)
+    assert sesion_en(raiz).libro.rubro_contable(RC_IMPUESTOS).nombre == "Pagos al SAT"
+
+    next(b for b in at.button if b.key == f"rc_borrar_{RC_IMPUESTOS}").click().run()
+    sin_errores(at)
+    lib = sesion_en(raiz).libro
+    assert [r.id for r in rc.borrados(lib)] == [RC_IMPUESTOS]
+    assert not any(m.key.startswith(f"rc_{RC_IMPUESTOS}_") for m in at.multiselect)
+    # Las cajas se arman de nuevo: IMPUESTOS (de FINANZAS) aparece en Gastos financieros y PREDIAL en Gastos de vida.
+    cajas = {r: next(m for m in at.multiselect if m.key.startswith(f"rc_{r}_")).value for r in (RC_FINANCIEROS, RC_VIDA)}
+    assert categorias.buscar(lib, "IMPUESTOS").id in cajas[RC_FINANCIEROS]
+    assert categorias.buscar(lib, "PREDIAL").id in cajas[RC_VIDA]
+    next(b for b in at.button if b.key == f"rc_recuperar_{RC_IMPUESTOS}").click().run()
+    sin_errores(at)
+    lib = sesion_en(raiz).libro
+    assert rc.borrados(lib) == [] and lib.rubro_contable(RC_IMPUESTOS).nombre == "Impuestos"
+    assert not any(b.key.startswith("rc_recuperar_") for b in at.button if b.key)
+
+
 def test_rubro_contable_al_crear_y_editar_una_subcategoria(raiz, con_datos):
     from motor import rubros_contables as rc
 

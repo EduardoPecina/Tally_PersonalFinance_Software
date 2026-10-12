@@ -68,7 +68,8 @@ COMO_HAGO = (
     ("Ver de dónde sale cada número de mi contabilidad",
      "**Categorías › Contabilidad**: un mapa de qué forma cada reporte y una caja por **rubro contable** (Gastos de "
      "vida, Gastos financieros, Impuestos…) con sus subcategorías. TALLY las acomoda solas; para mover una, agrégala en "
-     "otra caja. También puedes crear tus propios rubros. Ningún total cambia: solo cómo se agrupa.",
+     "otra caja. Con **Editar** renombras o borras un rubro (también los de TALLY) y puedes crear los tuyos. "
+     "Ningún total cambia: solo cómo se agrupa.",
      "categorias", "Ir a Categorías"),
     ("Encontrar errores en mis datos",
      "**Salud de tus datos**: movimientos que parecen duplicados, cuentas en negativo, fechas de otro año, tarjetas "

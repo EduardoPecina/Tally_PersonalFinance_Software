@@ -37,6 +37,8 @@ from motor.modelo import (
     Partida,
     Perfil,
     Rubro,
+    RUBROS_CONTABLES_BASE,
+    RUBROS_CONTABLES_FIJOS,
     RubroContable,
     TipoCuenta,
     TipoOperacion,
@@ -98,7 +100,8 @@ def categoria_a_dict(c: Categoria) -> dict:
 
 
 def rubro_contable_a_dict(r: RubroContable) -> dict:
-    return {"id": r.id, "nombre": r.nombre, "clase": r.clase.value, "orden": r.orden}
+    return {"id": r.id, "nombre": r.nombre, "clase": r.clase.value, "orden": r.orden,
+            **({"borrado": True} if r.borrado else {})}
 
 
 def cuenta_a_dict(c: Cuenta) -> dict:
@@ -174,7 +177,8 @@ def categoria_desde_dict(d: dict) -> Categoria:
 
 
 def rubro_contable_desde_dict(d: dict) -> RubroContable:
-    return RubroContable(id=d["id"], nombre=d["nombre"], clase=ClaseCategoria(d["clase"]), orden=d.get("orden", 0))
+    return RubroContable(id=d["id"], nombre=d["nombre"], clase=ClaseCategoria(d["clase"]), orden=d.get("orden", 0),
+                         borrado=d.get("borrado", False))
 
 
 def cuenta_desde_dict(d: dict) -> Cuenta:
@@ -474,9 +478,16 @@ def verificar_integridad(libro: Libro) -> list[str]:
         if rubro.clase is ClaseCategoria.SISTEMA:
             problemas.append(f"la categoría «{rubro.nombre}» no puede ser del sistema")
     contables = {r.id: r for r in libro.rubros_contables()}
+    base = {r.id: r for r in RUBROS_CONTABLES_BASE}
     for rubro in libro.rubros_contables_propios():
         if rubro.clase not in (ClaseCategoria.INGRESO, ClaseCategoria.GASTO):
             problemas.append(f"el rubro contable «{rubro.nombre}» debe ser de ingreso o de gasto")
+        elif rubro.id in base and rubro.clase is not base[rubro.id].clase:
+            problemas.append(f"el rubro contable «{rubro.nombre}» de TALLY cambió de tipo")
+        elif rubro.borrado and rubro.id not in base:
+            problemas.append(f"el rubro contable «{rubro.nombre}» está borrado pero no es de TALLY")
+        elif rubro.borrado and rubro.id in RUBROS_CONTABLES_FIJOS:
+            problemas.append(f"el rubro contable «{rubro.nombre}» no se puede borrar")
     for categoria in libro.categorias():
         if categoria.rubro_contable_id is not None:
             contable = contables.get(categoria.rubro_contable_id)
