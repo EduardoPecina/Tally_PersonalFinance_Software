@@ -210,7 +210,7 @@ def _tarjetas() -> None:
                                "gastes ahora va a tu siguiente corte.", icon="✅")
                 else:
                     st.caption("Nada por pagar del último corte." if corte else
-                               "Registra su día de corte (Cuentas → Editar) para calcular sus pagos.")
+                               "Registra su día de corte (Cuentas → Administrar cuenta → Editar) para calcular sus pagos.")
             else:
                 b.metric("Para no generar intereses", formato.dinero_metrica(minimo.para_no_generar_intereses))
                 c.metric("Pago mínimo estimado", formato.dinero_metrica(minimo.minimo),

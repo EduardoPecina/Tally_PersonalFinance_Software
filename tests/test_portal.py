@@ -684,14 +684,14 @@ def test_el_icono_violeta_se_llama_asi(raiz, con_datos):
 def test_eliminar_tarjeta_guarda_su_historial(raiz, con_datos):
     at = abrir(_pagina("cuentas"))
     sin_errores(at)
-    # Desde la pestaña Eliminar de «Administrar una cuenta» (el mismo contenido que la ventana del botón).
-    at.selectbox(key="cuentas_elegida").set_value(con_datos["tdc"]).run()
-    clave = f"pestana_eliminar_{con_datos['tdc']}"
+    next(b for b in at.button if b.key == f"eliminar_{con_datos['tdc']}").click().run()     # abre su ventana
+    clave = f"dialogo_eliminar_{con_datos['tdc']}"
     at.checkbox(key=f"{clave}_confirmar").check().run()
     next(b for b in at.button if b.key == f"{clave}_eliminar").click().run()
     sin_errores(at)
     lib = sesion_en(raiz).libro
     assert not lib.cuenta(con_datos["tdc"]).activa
+    assert not any(b.key == f"{clave}_eliminar" for b in at.button)            # la ventana se cerró
     assert any(op for op in lib.operaciones() if any(p.cuenta_id == con_datos["tdc"] for p in op.partidas))
     assert not any(b.key == f"ver_{con_datos['tdc']}" for b in at.button)       # ya no sale en la lista
 
@@ -699,6 +699,30 @@ def test_eliminar_tarjeta_guarda_su_historial(raiz, con_datos):
     next(b for b in at.button if b.key == f"restaurar_{con_datos['tdc']}").click().run()
     sin_errores(at)
     assert sesion_en(raiz).libro.cuenta(con_datos["tdc"]).activa
+
+
+def test_administrar_cuenta_desde_su_tarjeta(raiz, con_datos):
+    at = abrir(_pagina("cuentas"))
+    assert not any(s.value == "Administrar una cuenta" for s in at.subheader)    # ya no hay que bajar a elegirla
+    next(b for b in at.button if b.key == f"administrar_{con_datos['debito']}").click().run()
+    sin_errores(at)
+    assert [t.label for t in at.tabs] == ["Editar", "Actualizar saldo", "Saldo inicial"]
+    next(t for t in at.text_input if t.label == "Nombre" and t.value == "Débito Ficticio").set_value(
+        "Débito Renombrada")
+    next(b for b in at.button if b.label == "Guardar cambios").click().run()
+    sin_errores(at)
+    assert sesion_en(raiz).libro.cuenta(con_datos["debito"]).nombre == "Débito Renombrada"
+    assert not at.tabs                                                          # se cerró al guardar
+
+    next(b for b in at.button if b.key == f"administrar_{con_datos['ahorro']}").click().run()
+    next(n for n in at.number_input if n.label == "Saldo que dice tu banco").set_value(12_345.0)
+    next(r for r in at.radio if r.label == "¿Qué explica la diferencia?").set_value(
+        "Ajuste (no es ingreso ni gasto)")
+    next(b for b in at.button if b.label == "Actualizar saldo").click().run()
+    sin_errores(at)
+    from motor import cuentas as motor_cuentas
+    assert motor_cuentas.saldo(sesion_en(raiz).libro, con_datos["ahorro"]) == 12_345
+    assert not at.tabs
 
 
 def test_cuenta_eliminada_se_ve_sin_agregar_movimientos(raiz, con_datos):

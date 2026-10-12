@@ -2,6 +2,15 @@
 
 Todos los cambios relevantes de TALLY se documentan aquí.
 
+## [0.25.1] — Sin publicar
+
+- **Cuentas: botón ⚙️ Administrar cuenta en cada cuenta.** Ya no hay que bajar hasta «Administrar una cuenta» y
+  elegirla de una lista: junto a **Ver movimientos** y **Eliminar**, el botón abre una ventana con **Editar**,
+  **Actualizar saldo** y **Saldo inicial** de esa cuenta. Al guardar, la ventana se cierra; con la X o Esc, también.
+  **Eliminar** abre su propia ventana, como antes.
+- Los botones de cada cuenta miden lo que su texto: en pantallas angostas bajan de renglón en vez de cortarse.
+- Las ayudas que decían «Cuentas → Editar» ahora dicen «Cuentas → Administrar cuenta → Editar».
+
 ## [0.25.0] — Sin publicar
 
 - **Recordatorio de pago al fisco.** En cada perfil de impuestos (Impuestos › ⚙️ Configurar) hay una sección
