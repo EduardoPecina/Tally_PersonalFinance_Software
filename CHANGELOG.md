@@ -2,6 +2,32 @@
 
 Todos los cambios relevantes de TALLY se documentan aquí.
 
+## [0.24.0] — Sin publicar
+
+- **Rubros contables: ves y decides de dónde sale cada número de tu Contabilidad técnica.** Nueva pestaña
+  **Categorías › Contabilidad**, con la misma idea que Clasificaciones: una caja por rubro con sus subcategorías.
+  - Rubros de TALLY: **Ingresos por tu trabajo**, **Ingresos por inversiones y rentas**, **Otros ingresos**, **Gastos
+    de vida**, **Gastos financieros** (intereses, comisiones, anualidades: cuánto le pagas al banco) e **Impuestos**.
+    Puedes crear los tuyos, de ingreso o de gasto («Gastos del negocio», «Vivienda»…), renombrarlos y borrarlos.
+  - **TALLY acomoda cada subcategoría solo**: por su nombre (INTERESES… → Gastos financieros, PREDIAL → Impuestos,
+    NOMINA → trabajo), por el de su categoría (FINANZAS, INGRESOS INDEPENDIENTES…) o, si nada lo dice, en Gastos de
+    vida u Otros ingresos. Si moviste a la mayoría de las subcategorías de una categoría a un mismo rubro, las que
+    agregues ahí van con ellas. Al crear una subcategoría o una categoría, TALLY te dice dónde quedó.
+  - Para moverla, la agregas en otra caja (sale de donde estaba); con la ✕ regresa a donde la acomoda TALLY. Las que
+    moviste tú llevan ✋. También se cambia al editar la subcategoría, y «Que TALLY vuelva a acomodar todo» deshace
+    lo que moviste.
+  - Un mapa de **qué forma cada reporte y dónde se cambia**: la Situación financiera sale de tus cuentas (según su
+    tipo), los Resultados de tus subcategorías, el Flujo de ambos. Y cuánto llevas en el año en cada rubro.
+  - Explicaciones en cada parte (los «?»), pensadas para quien no es contador.
+- **Contabilidad técnica por rubro contable.** El **Estado de Resultados** muestra cada rubro con su subtotal y, dentro,
+  sus categorías (y subcategorías con «Ver cada subcategoría»). En el **Flujo de efectivo**, tu día a día va por rubro
+  («Pagaste: Impuestos»), como en el método directo de un contador. La **Balanza** tiene la columna **Rubro**: dónde
+  cae cada renglón (el grupo del balance de cada cuenta o el rubro de cada subcategoría). También en el Excel.
+  Mover una subcategoría de rubro no cambia ningún total: todo sigue cuadrando.
+- En las tablas de Gastos e Ingresos de Categorías, la columna **Rubro contable**.
+- Tus datos pasan al esquema 8 y los respaldos al formato 8 (los rubros que creas y lo que mueves). Una versión
+  anterior de TALLY ya no abre los datos: así no se pierde nada. Los respaldos anteriores se restauran igual.
+
 ## [0.23.6] — Sin publicar
 
 Listo para muchos años de datos. Medido con libros ficticios de unos 6 movimientos al día:

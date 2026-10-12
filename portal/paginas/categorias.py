@@ -1,4 +1,5 @@
-"""Categorías (las cajas), subcategorías (lo que lleva cada movimiento) y clasificaciones."""
+"""Categorías (las cajas), subcategorías (lo que lleva cada movimiento), clasificaciones y en qué rubro de tu
+Contabilidad técnica va cada una."""
 
 from __future__ import annotations
 
@@ -8,15 +9,19 @@ import pandas as pd
 import streamlit as st
 
 from motor import catalogo, categorias, reportes
+from motor import rubros_contables as rc
 from motor.errores import ErrorTally
 from motor.modelo import Categoria, ClaseCategoria, Rubro
 from motor.textos import clave
-from portal.componentes import formato, reglas
-from portal.componentes.sesion import ejecutar, libro, sesion
+from portal.componentes import contabilidad_categorias, formato, reglas
+from portal.componentes.sesion import aplicar, avisar, ejecutar, libro, sesion
 
 SIN_CLASIFICACION = "— Sin clasificación —"
 REGLA_NOMBRES = ("Los nombres se guardan en MAYÚSCULAS y sin acentos («Gastos médicos» → «GASTOS MEDICOS»). "
                  "No se puede agregar dos veces lo mismo, aunque cambien mayúsculas, acentos o espacios.")
+AYUDA_CONTABLE = ("En qué renglón de tu Contabilidad técnica cae (Estado de Resultados, Flujo y Balanza). TALLY lo "
+                  "elige solo por el nombre y la categoría; lo cambias aquí o en la pestaña Contabilidad. Solo cambia "
+                  "cómo se agrupa: ningún total cambia.")
 
 
 def _clasificaciones() -> dict[str | None, str]:
@@ -31,26 +36,31 @@ def _rubros(clase: ClaseCategoria) -> list[Rubro]:
     return [r for r in libro().rubros() if r.clase is clase]
 
 
-def _tabla(subcategorias: list[Categoria], usos: Counter, clase: ClaseCategoria, con_categoria: bool) -> None:
+def _tabla(subcategorias: list[Categoria], usos: Counter, clase: ClaseCategoria, con_categoria: bool,
+           contables: dict) -> None:
     lib = libro()
     nombres = _clasificaciones()
     datos = {
         "Categoría": [categorias.nombre_rubro(lib, c.id) for c in subcategorias],
         "Subcategoría": [c.nombre for c in subcategorias],
         "Clasificación": [nombres.get(c.grupo_id, SIN_CLASIFICACION) for c in subcategorias],
+        "Rubro contable": [contables[c.id].nombre for c in subcategorias],
         "Movimientos": [usos[c.id] for c in subcategorias],
         "Estado": ["Activa" if c.activa else "Archivada" for c in subcategorias],
         "Ingreso principal": ["Sí" if c.principal else "" for c in subcategorias],
     }
-    columnas = (["Categoría"] if con_categoria else []) + ["Subcategoría", "Clasificación", "Movimientos", "Estado"]
+    columnas = (["Categoría"] if con_categoria else []) + ["Subcategoría", "Clasificación", "Rubro contable",
+                                                           "Movimientos", "Estado"]
     if clase is ClaseCategoria.INGRESO:
         columnas.append("Ingreso principal")
-    st.dataframe(formato.pintar(pd.DataFrame(datos)), hide_index=True, width="stretch", column_order=columnas)
+    st.dataframe(formato.pintar(pd.DataFrame(datos)), hide_index=True, width="stretch", column_order=columnas,
+                 column_config={"Rubro contable": st.column_config.TextColumn(help=AYUDA_CONTABLE)})
 
 
 def _arbol(clase: ClaseCategoria) -> None:
     lib = libro()
     usos = _usos()
+    contables = rc.asignaciones(lib)
     rubros = _rubros(clase)
     propias = [c for c in lib.categorias() if c.clase is clase]
     st.caption(f"{len(rubros)} categorías · {len(propias)} subcategorías. {REGLA_NOMBRES}")
@@ -60,7 +70,7 @@ def _arbol(clase: ClaseCategoria) -> None:
         encontradas = [c for c in categorias.ordenadas(lib, propias)
                        if clave(buscado) in clave(c.nombre) or clave(buscado) in clave(categorias.nombre_rubro(lib, c.id))]
         if encontradas:
-            _tabla(encontradas, usos, clase, con_categoria=True)
+            _tabla(encontradas, usos, clase, con_categoria=True, contables=contables)
         else:
             st.info("No hay ninguna con ese nombre. Puedes agregarla abajo.")
     else:
@@ -68,7 +78,7 @@ def _arbol(clase: ClaseCategoria) -> None:
             contenido = categorias.ordenadas(lib, categorias.subcategorias(lib, rubro.id))
             with st.expander(f"**{rubro.nombre}** · {len(contenido)}"):
                 if contenido:
-                    _tabla(contenido, usos, clase, con_categoria=False)
+                    _tabla(contenido, usos, clase, con_categoria=False, contables=contables)
                 else:
                     st.caption("Sin subcategorías todavía.")
 
@@ -109,18 +119,27 @@ def _nueva_subcategoria(clase: ClaseCategoria, rubros: list[Rubro]) -> None:
         if st.form_submit_button("Agregar subcategoría", type="primary"):
             if rubro is None:
                 st.error("Elige en qué categoría va.")
-            elif ejecutar(lambda lib: categorias.crear(lib, nombre, rubro, grupo_id=grupo, principal=principal),
-                          exito=f"Subcategoría «{_vista_previa(nombre)}» agregada"):
-                st.rerun()
+            else:
+                nueva = aplicar(lambda lib: categorias.crear(lib, nombre, rubro, grupo_id=grupo, principal=principal))
+                if nueva is not None:
+                    avisar(f"Subcategoría «{nueva.nombre}» agregada. En tu contabilidad va en "
+                           f"«{rc.de(libro(), nueva.id).nombre}» (lo cambias en la pestaña Contabilidad).")
+                    st.rerun()
 
 
 def _nueva_categoria(clase: ClaseCategoria) -> None:
     with st.form(f"nuevo_rubro_{clase.value}", clear_on_submit=True, border=False):
         nombre = st.text_input("Nombre de la categoría", max_chars=40,
-                               help="Por ejemplo: GASTOS MEDICOS, TECNOLOGIA, MASCOTAS…")
+                               help="Por ejemplo: GASTOS MEDICOS, TECNOLOGIA, MASCOTAS… Es de "
+                                    f"{'ingreso' if clase is ClaseCategoria.INGRESO else 'gasto'} (estás en esa "
+                                    "pestaña). En tu Contabilidad técnica, TALLY acomoda sus subcategorías solo por "
+                                    "su nombre; las puedes mover en la pestaña Contabilidad.")
         if st.form_submit_button("Agregar categoría", type="primary"):
-            if ejecutar(lambda lib: categorias.crear_rubro(lib, nombre, clase),
-                        exito=f"Categoría «{_vista_previa(nombre)}» agregada"):
+            nueva = aplicar(lambda lib: categorias.crear_rubro(lib, nombre, clase))
+            if nueva is not None:
+                destino = libro().rubro_contable(rc.sugerencia(libro(), "", clase, nueva.id)[0]).nombre
+                avisar(f"Categoría «{nueva.nombre}» agregada. En tu contabilidad, lo que agregues en ella irá a "
+                       f"«{destino}» (salvo que su nombre diga otra cosa; lo cambias en la pestaña Contabilidad).")
                 st.rerun()
 
 
@@ -136,7 +155,7 @@ def _modificar(categoria: Categoria, rubros: list[Rubro]) -> None:
     clasificaciones = _clasificaciones()
     st.markdown(f"**{categorias.etiqueta(lib, categoria.id)}**")
     with st.form(f"editar_{categoria.id}", border=False):
-        izquierda, centro, derecha = st.columns(3)
+        izquierda, centro, derecha, contable = st.columns(4)
         nombre = izquierda.text_input("Nombre", value=categoria.nombre, max_chars=60)
         ids = [r.id for r in rubros]
         rubro = centro.selectbox("Categoría", ids, format_func=lambda i: lib.rubro(i).nombre,
@@ -144,13 +163,21 @@ def _modificar(categoria: Categoria, rubros: list[Rubro]) -> None:
         opciones = list(clasificaciones)
         grupo = derecha.selectbox("Clasificación", opciones, format_func=clasificaciones.get,
                                   index=opciones.index(categoria.grupo_id) if categoria.grupo_id in opciones else 0)
+        actual = rc.de(lib, categoria.id).id
+        contables = [r.id for r in rc.todos(lib, categoria.clase)]
+        elegido = contable.selectbox("Rubro contable", contables, index=contables.index(actual),
+                                     format_func=lambda i: lib.rubro_contable(i).nombre, help=AYUDA_CONTABLE)
         principal = None
         if categoria.clase is ClaseCategoria.INGRESO:
             principal = st.checkbox("Es mi ingreso principal", value=categoria.principal)
         if st.form_submit_button("Guardar cambios", type="primary"):
-            if ejecutar(lambda lib: categorias.editar(lib, categoria.id, nombre=nombre, rubro_id=rubro, grupo_id=grupo,
-                                                      principal=principal),
-                        exito="Subcategoría actualizada"):
+            def guardar(lib_):
+                categorias.editar(lib_, categoria.id, nombre=nombre, rubro_id=rubro, grupo_id=grupo,
+                                  principal=principal)
+                if elegido != actual:                      # si no lo tocó, que TALLY lo siga acomodando
+                    rc.asignar(lib_, categoria.id, elegido)
+
+            if ejecutar(guardar, exito="Subcategoría actualizada"):
                 st.rerun()
 
     izquierda, derecha = st.columns(2)
@@ -309,13 +336,15 @@ def mostrar() -> None:
     st.title("Categorías")
     st.caption("Las **categorías** son cajas que agrupan **subcategorías** (por ejemplo, SALUD agrupa DENTISTA y "
                "MEDICINAS Y FARMACIA). A cada movimiento le pones una subcategoría y los reportes suman por ambas.")
-    gastos, ingresos, clasificaciones, automaticas = st.tabs(["Gastos", "Ingresos", "Clasificaciones",
-                                                              "⚡ Reglas automáticas"])
+    gastos, ingresos, clasificaciones, contabilidad, automaticas = st.tabs(
+        ["Gastos", "Ingresos", "Clasificaciones", "Contabilidad", "⚡ Reglas automáticas"])
     with gastos:
         _arbol(ClaseCategoria.GASTO)
     with ingresos:
         _arbol(ClaseCategoria.INGRESO)
     with clasificaciones:
         _clasificaciones_editables()
+    with contabilidad:
+        contabilidad_categorias.mostrar()
     with automaticas:
         reglas.mostrar()

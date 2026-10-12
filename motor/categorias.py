@@ -14,6 +14,7 @@ from __future__ import annotations
 
 from dataclasses import replace
 
+from motor import rubros_contables
 from motor.errores import ErrorValidacion
 from motor.libro import Libro
 from motor.modelo import Categoria, ClaseCategoria, Grupo, Partida, Rubro
@@ -141,10 +142,11 @@ def crear(
         libro.grupo(grupo_id)
     _validar_principal(rubro.clase, principal)
     orden = max((c.orden for c in libro.categorias()), default=-1) + 1
-    return libro.guardar_categoria(
+    nueva = libro.guardar_categoria(
         Categoria(libro.nuevo_id(), nombre, rubro.clase, grupo_id=grupo_id, principal=principal, orden=orden,
                   rubro_id=rubro.id)
     )
+    return rubros_contables.al_crear(libro, nueva)          # en tu contabilidad, con sus hermanas si hace falta
 
 
 _SIN_CAMBIO = object()

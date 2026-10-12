@@ -37,6 +37,8 @@ from motor.modelo import (
     Perfil,
     Recurrente,
     Rubro,
+    RubroContable,
+    RUBROS_CONTABLES_BASE,
 )
 from motor.reglas import validar_operacion
 
@@ -65,6 +67,7 @@ class Libro:
         self._cierres: dict[str, CierreMes] = {}
         self._reglas: dict[str, Regla] = {}
         self._comprobantes: dict[str, Comprobante] = {}
+        self._rubros_contables: dict[str, RubroContable] = {}      # los del usuario (los de TALLY son fijos)
         # Archivos de comprobantes agregados y aún sin guardar: la persistencia los escribe en la misma transacción
         # que sus datos (o se descartan con el libro si algo falla).
         self._archivos_nuevos: dict[str, bytes] = {}
@@ -98,6 +101,7 @@ class Libro:
         cierres: list[CierreMes] = (),
         reglas: list[Regla] = (),
         comprobantes: list[Comprobante] = (),
+        rubros_contables: list[RubroContable] = (),
     ) -> Libro:
         """Reconstruye un libro ya guardado, tal cual (lo usa la persistencia)."""
         libro = cls(reloj=reloj)
@@ -116,6 +120,7 @@ class Libro:
         libro._cierres = {c.id: c for c in cierres}
         libro._reglas = {r.id: r for r in reglas}
         libro._comprobantes = {c.id: c for c in comprobantes}
+        libro._rubros_contables = {r.id: r for r in rubros_contables}
         libro.fiscal = fiscal or Fiscal()
         libro._secuencia = max([secuencia, *(op.secuencia for op in operaciones)])
         return libro
@@ -405,6 +410,37 @@ class Libro:
         if any(c.rubro_id == rubro_id for c in self._categorias.values()):
             raise ErrorValidacion("La categoría todavía tiene subcategorías.")
         del self._rubros[rubro_id]
+
+    def rubros_contables(self) -> list[RubroContable]:
+        """Los de TALLY y los del usuario: primero los de ingreso, cada clase en su orden."""
+        return sorted([*RUBROS_CONTABLES_BASE, *self._rubros_contables.values()],
+                      key=lambda r: (r.clase is not ClaseCategoria.INGRESO, r.orden, r.nombre.casefold()))
+
+    def rubros_contables_propios(self) -> list[RubroContable]:
+        """Solo los que creó el usuario (los que se guardan)."""
+        return [r for r in self.rubros_contables() if r.id in self._rubros_contables]
+
+    def rubro_contable(self, rubro_contable_id: str) -> RubroContable:
+        rubro = self._rubros_contables.get(rubro_contable_id) or next(
+            (r for r in RUBROS_CONTABLES_BASE if r.id == rubro_contable_id), None)
+        if rubro is None:
+            raise ErrorNoEncontrado("Ese rubro contable no existe.")
+        return rubro
+
+    def guardar_rubro_contable(self, rubro: RubroContable) -> RubroContable:
+        if any(r.id == rubro.id for r in RUBROS_CONTABLES_BASE):
+            raise ErrorValidacion("Los rubros contables de TALLY no se pueden cambiar.")
+        self._rubros_contables[rubro.id] = rubro
+        return rubro
+
+    def quitar_rubro_contable(self, rubro_contable_id: str) -> None:
+        """Lo borra; sus subcategorías vuelven a donde TALLY las acomoda solo."""
+        if rubro_contable_id not in self._rubros_contables:
+            self.rubro_contable(rubro_contable_id)
+            raise ErrorValidacion("Los rubros contables de TALLY no se pueden borrar.")
+        del self._rubros_contables[rubro_contable_id]
+        for c in [c for c in self._categorias.values() if c.rubro_contable_id == rubro_contable_id]:
+            self._categorias[c.id] = replace(c, rubro_contable_id=None)
 
     def grupo(self, grupo_id: str) -> Grupo:
         try:

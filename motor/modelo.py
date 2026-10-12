@@ -193,6 +193,39 @@ class Categoria:
     rubro_id: str | None = None
     # Ingreso secundario fijo (renta que cobras, honorarios de cada mes…): cuenta en el ingreso esperado.
     secundario: bool = False
+    # Rubro contable que eligió el usuario (motor/rubros_contables.py); None = el que TALLY elige solo.
+    rubro_contable_id: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class RubroContable:
+    """Un renglón de la Contabilidad técnica que junta subcategorías: «Gastos financieros», «Ingresos por tu
+    trabajo»… (motor/rubros_contables.py). Los de TALLY (:data:`RUBROS_CONTABLES_BASE`) son fijos y no se guardan;
+    los que crea el usuario, sí."""
+
+    id: str
+    nombre: str
+    clase: ClaseCategoria  # INGRESO o GASTO
+    orden: int = 0
+    descripcion: str = ""
+
+
+RC_TRABAJO, RC_INVERSIONES, RC_OTROS_INGRESOS = "rc-trabajo", "rc-inversiones", "rc-otros-ingresos"
+RC_VIDA, RC_FINANCIEROS, RC_IMPUESTOS = "rc-vida", "rc-financieros", "rc-impuestos"
+RUBROS_CONTABLES_BASE = (
+    RubroContable(RC_TRABAJO, "Ingresos por tu trabajo", ClaseCategoria.INGRESO, 0,
+                  "Lo que ganas trabajando: tu nómina y sus prestaciones, honorarios, tu negocio."),
+    RubroContable(RC_INVERSIONES, "Ingresos por inversiones y rentas", ClaseCategoria.INGRESO, 1,
+                  "Lo que te da tu dinero o tus bienes: intereses, dividendos, las rentas que cobras."),
+    RubroContable(RC_OTROS_INGRESOS, "Otros ingresos", ClaseCategoria.INGRESO, 2,
+                  "Lo demás: regalos, premios, devoluciones de impuestos, lo que vendes usado…"),
+    RubroContable(RC_VIDA, "Gastos de vida", ClaseCategoria.GASTO, 0,
+                  "Lo que cuesta vivir: comida, casa, transporte, salud, diversión… casi todo."),
+    RubroContable(RC_FINANCIEROS, "Gastos financieros", ClaseCategoria.GASTO, 1,
+                  "Lo que le pagas al banco por usar su dinero: intereses, comisiones y anualidades."),
+    RubroContable(RC_IMPUESTOS, "Impuestos", ClaseCategoria.GASTO, 2,
+                  "Lo que pagas al gobierno: ISR, predial, tenencia…"),
+)
 
 
 @dataclass(frozen=True, slots=True)

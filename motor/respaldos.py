@@ -44,9 +44,9 @@ from motor.serializacion import libro_desde_instantanea
 from motor.sesion import Sesion
 
 FORMATO = "tally-respaldo"
-VERSION_FORMATO = 7  # 2: categorías con subcategorías (TALLY 0.4). 3: títulos e inversiones a plazo (TALLY 0.7).
+VERSION_FORMATO = 8  # 2: categorías con subcategorías (TALLY 0.4). 3: títulos e inversiones a plazo (TALLY 0.7).
 # 4: bienes y su depreciación (TALLY 0.10). 5: préstamos (TALLY 0.11). 6: respaldos cifrados (TALLY 0.12).
-# 7: reglas de categorías y comprobantes con sus archivos (TALLY 0.23).
+# 7: reglas de categorías y comprobantes con sus archivos (TALLY 0.23). 8: rubros contables (TALLY 0.24).
 #                      Los anteriores se ponen al día al restaurar
 MANIFIESTO = "manifiesto.json"
 DATOS = "datos.json"

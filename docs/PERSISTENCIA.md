@@ -55,6 +55,9 @@ que los dos siempre buscan los datos en el mismo lugar.
   los respaldos: si se borra o se daña, TALLY lo ignora y lo rehace en la
   siguiente consulta.
 - Esquema 5 y respaldos de formato 5 desde TALLY 0.11: entidad `prestamo` (cómo se contrató cada préstamo).
+- Esquema 8 y respaldos de formato 8 desde TALLY 0.24: entidad `rubro_contable` (los rubros que crea el usuario;
+  los seis de TALLY son fijos y no se guardan) y `rubro_contable_id` en cada subcategoría (solo si el usuario la
+  movió; si no, TALLY la acomoda al leerla, `motor/rubros_contables.py`).
 - Esquema 7 y respaldos de formato 7 desde TALLY 0.23: entidades `regla` (reglas automáticas de categorías) y
   `comprobante` (los datos de cada archivo adjunto a un movimiento: nombre, tipo, tamaño y huella SHA-256). El
   archivo mismo va en la tabla `archivos` (`id`, `datos` BLOB) del mismo `tally.db`, y se escribe y se borra **en la
