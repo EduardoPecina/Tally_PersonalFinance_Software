@@ -284,7 +284,8 @@ def _caja(grupo, gastos: list[Categoria], version: int) -> None:
         cabeza.markdown(f"**{grupo.nombre}** · {len(dentro)} subcategoría(s)")
         if grupo.nombre in catalogo.DESCRIPCIONES:
             cabeza.caption(catalogo.DESCRIPCIONES[grupo.nombre])
-        with acciones.popover("Editar", width="stretch"):
+        # Con la clave de su clasificación: al borrar una, el «Editar» de la siguiente no se queda abierto.
+        with acciones.popover("Editar", width="stretch", key=f"editar_grupo_{grupo.id}"):
             nuevo = st.text_input("Nombre", value=grupo.nombre, key=f"grupo_{grupo.id}", max_chars=40)
             if st.button("Renombrar", key=f"renombrar_{grupo.id}", disabled=nuevo.strip() == grupo.nombre):
                 if ejecutar(lambda lib: categorias.renombrar_grupo(lib, grupo.id, nuevo),

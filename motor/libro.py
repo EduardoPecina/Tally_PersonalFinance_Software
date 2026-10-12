@@ -39,8 +39,11 @@ from motor.modelo import (
     Rubro,
     RubroContable,
     RUBROS_CONTABLES_BASE,
+    RUBROS_CONTABLES_FIJOS,
 )
 from motor.reglas import validar_operacion
+
+_CONTABLES_BASE = {r.id: r for r in RUBROS_CONTABLES_BASE}
 
 
 class Libro:
@@ -67,7 +70,8 @@ class Libro:
         self._cierres: dict[str, CierreMes] = {}
         self._reglas: dict[str, Regla] = {}
         self._comprobantes: dict[str, Comprobante] = {}
-        self._rubros_contables: dict[str, RubroContable] = {}      # los del usuario (los de TALLY son fijos)
+        # Los del usuario y lo que les cambió a los de TALLY (otro nombre, o borrado): los de TALLY vienen en el programa.
+        self._rubros_contables: dict[str, RubroContable] = {}
         # Archivos de comprobantes agregados y aún sin guardar: la persistencia los escribe en la misma transacción
         # que sus datos (o se descartan con el libro si algo falla).
         self._archivos_nuevos: dict[str, bytes] = {}
@@ -412,35 +416,70 @@ class Libro:
         del self._rubros[rubro_id]
 
     def rubros_contables(self) -> list[RubroContable]:
-        """Los de TALLY y los del usuario: primero los de ingreso, cada clase en su orden."""
-        return sorted([*RUBROS_CONTABLES_BASE, *self._rubros_contables.values()],
+        """Los de TALLY (sin los que borró el usuario) y los del usuario: primero los de ingreso, cada clase en su
+        orden."""
+        todos = (self._contable(i) for i in {**_CONTABLES_BASE, **self._rubros_contables})
+        return sorted([r for r in todos if not r.borrado],
                       key=lambda r: (r.clase is not ClaseCategoria.INGRESO, r.orden, r.nombre.casefold()))
 
     def rubros_contables_propios(self) -> list[RubroContable]:
-        """Solo los que creó el usuario (los que se guardan)."""
-        return [r for r in self.rubros_contables() if r.id in self._rubros_contables]
+        """Lo que se guarda: los que creó el usuario y lo que les cambió a los de TALLY (otro nombre, o borrado)."""
+        return list(self._rubros_contables.values())
+
+    def rubros_contables_borrados(self) -> list[RubroContable]:
+        """Los de TALLY que borró el usuario (se pueden recuperar)."""
+        return [r for r in map(self._contable, _CONTABLES_BASE) if r.borrado]
 
     def rubro_contable(self, rubro_contable_id: str) -> RubroContable:
-        rubro = self._rubros_contables.get(rubro_contable_id) or next(
-            (r for r in RUBROS_CONTABLES_BASE if r.id == rubro_contable_id), None)
-        if rubro is None:
+        rubro = self._contable(rubro_contable_id)
+        if rubro is None or rubro.borrado:
             raise ErrorNoEncontrado("Ese rubro contable no existe.")
         return rubro
 
+    def hay_rubro_contable(self, rubro_contable_id: str) -> bool:
+        rubro = self._rubros_contables.get(rubro_contable_id)
+        return not rubro.borrado if rubro else rubro_contable_id in _CONTABLES_BASE
+
     def guardar_rubro_contable(self, rubro: RubroContable) -> RubroContable:
-        if any(r.id == rubro.id for r in RUBROS_CONTABLES_BASE):
-            raise ErrorValidacion("Los rubros contables de TALLY no se pueden cambiar.")
+        base = _CONTABLES_BASE.get(rubro.id)
+        if base is not None:
+            if rubro.clase is not base.clase:
+                raise ErrorValidacion("Un rubro contable de TALLY no cambia de ingreso a gasto ni al revés.")
+            if rubro.nombre == base.nombre and not rubro.borrado:
+                self._rubros_contables.pop(rubro.id, None)          # como lo trae TALLY: no hay nada que guardar
+                return base
+            rubro = replace(base, nombre=rubro.nombre, borrado=rubro.borrado, descripcion="")
         self._rubros_contables[rubro.id] = rubro
-        return rubro
+        return self._contable(rubro.id)
 
     def quitar_rubro_contable(self, rubro_contable_id: str) -> None:
-        """Lo borra; sus subcategorías vuelven a donde TALLY las acomoda solo."""
-        if rubro_contable_id not in self._rubros_contables:
-            self.rubro_contable(rubro_contable_id)
-            raise ErrorValidacion("Los rubros contables de TALLY no se pueden borrar.")
-        del self._rubros_contables[rubro_contable_id]
+        """Lo borra; sus subcategorías vuelven a donde TALLY las acomoda solo. Uno de TALLY queda como borrado (se
+        puede recuperar); los fijos, donde cae lo que no está en otro rubro, no se borran."""
+        rubro = self.rubro_contable(rubro_contable_id)
+        if rubro_contable_id in RUBROS_CONTABLES_FIJOS:
+            raise ErrorValidacion(f"«{rubro.nombre}» no se puede borrar: ahí va lo que no está en otro rubro. "
+                                  "Sí lo puedes renombrar.")
+        if rubro_contable_id in _CONTABLES_BASE:
+            self.guardar_rubro_contable(replace(rubro, borrado=True))
+        else:
+            del self._rubros_contables[rubro_contable_id]
         for c in [c for c in self._categorias.values() if c.rubro_contable_id == rubro_contable_id]:
             self._categorias[c.id] = replace(c, rubro_contable_id=None)
+
+    def recuperar_rubro_contable(self, rubro_contable_id: str) -> RubroContable:
+        """Uno de TALLY que se había borrado vuelve con su nombre original."""
+        guardado = self._rubros_contables.get(rubro_contable_id)
+        if rubro_contable_id not in _CONTABLES_BASE or guardado is None or not guardado.borrado:
+            raise ErrorNoEncontrado("Ese rubro contable de TALLY no está borrado.")
+        del self._rubros_contables[rubro_contable_id]
+        return _CONTABLES_BASE[rubro_contable_id]
+
+    def _contable(self, rubro_contable_id: str) -> RubroContable | None:
+        """Tal como está (aunque esté borrado): uno de TALLY, con lo que le cambió el usuario."""
+        base, guardado = _CONTABLES_BASE.get(rubro_contable_id), self._rubros_contables.get(rubro_contable_id)
+        if base is None or guardado is None:
+            return base or guardado
+        return replace(base, nombre=guardado.nombre, borrado=guardado.borrado)
 
     def grupo(self, grupo_id: str) -> Grupo:
         try:

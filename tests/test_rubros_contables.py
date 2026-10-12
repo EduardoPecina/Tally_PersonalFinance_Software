@@ -9,7 +9,7 @@ from conftest import AHORA, D
 from motor import auditoria, categorias, cuentas, movimientos, respaldos
 from motor import contabilidad as cb
 from motor import rubros_contables as rc
-from motor.errores import ErrorDatos, ErrorValidacion
+from motor.errores import ErrorDatos, ErrorNoEncontrado, ErrorValidacion
 from motor.modelo import (RC_FINANCIEROS, RC_IMPUESTOS, RC_INVERSIONES, RC_OTROS_INGRESOS, RC_TRABAJO, RC_VIDA,
                           ClaseCategoria)
 from motor.serializacion import instantanea, libro_desde_instantanea
@@ -86,11 +86,76 @@ def test_rubros_propios(libro):
     papeleria = categorias.buscar(libro, "PAPELERIA").id
     rc.asignar(libro, papeleria, negocio.id)
     assert rc.renombrar(libro, negocio.id, "Mi negocio").nombre == "Mi negocio"
-    for prohibido in (lambda: rc.renombrar(libro, RC_VIDA, "Otra"), lambda: rc.eliminar(libro, RC_VIDA)):
-        with pytest.raises(ErrorValidacion, match="TALLY"):
-            prohibido()
     assert rc.eliminar(libro, negocio.id) == 1
     assert libro.categoria(papeleria).rubro_contable_id is None and donde(libro, "PAPELERIA") == RC_VIDA
+    assert rc.borrados(libro) == []                                   # los del usuario no se recuperan
+
+
+def test_los_de_tally_se_renombran(libro):
+    rc.renombrar(libro, RC_IMPUESTOS, "Pagos al SAT")
+    assert libro.rubro_contable(RC_IMPUESTOS).nombre == "Pagos al SAT" and donde(libro, "PREDIAL") == RC_IMPUESTOS
+    assert libro.rubro_contable(RC_IMPUESTOS).descripcion                # conserva su explicación
+    assert [r.nombre for r in libro.rubros_contables_propios()] == ["Pagos al SAT"]
+    with pytest.raises(ErrorValidacion, match="Ya hay"):
+        rc.renombrar(libro, RC_VIDA, "pagos al sat")
+    rc.renombrar(libro, RC_IMPUESTOS, "Impuestos")                    # su nombre original: no queda nada guardado
+    assert libro.rubros_contables_propios() == []
+    rc.renombrar(libro, RC_VIDA, "Mi día a día")                       # los fijos también se renombran
+    assert libro.rubro_contable(RC_VIDA).nombre == "Mi día a día"
+
+
+def test_los_de_tally_se_borran_y_se_recuperan(libro):
+    alimentos = categorias.buscar(libro, "ALIMENTOS").id
+    rc.asignar(libro, alimentos, RC_IMPUESTOS)                        # movida por el usuario
+    rc.renombrar(libro, RC_IMPUESTOS, "Pagos al SAT")
+    assert rc.eliminar(libro, RC_IMPUESTOS) == 4                     # PREDIAL, TENENCIA…, IMPUESTOS y ALIMENTOS
+    assert RC_IMPUESTOS not in [r.id for r in rc.todos(libro)]
+    assert [rc.nombre_de_tally(r) for r in rc.borrados(libro)] == ["Impuestos"]
+    # Sin Impuestos, siguen las demás reglas: por su categoría (FINANZAS → financieros) o a Gastos de vida.
+    assert donde(libro, "PREDIAL") == RC_VIDA and donde(libro, "IMPUESTOS") == RC_FINANCIEROS
+    assert libro.categoria(alimentos).rubro_contable_id is None and donde(libro, "ALIMENTOS") == RC_VIDA
+    with pytest.raises(ErrorNoEncontrado):
+        rc.asignar(libro, alimentos, RC_IMPUESTOS)
+    with pytest.raises(ErrorNoEncontrado):
+        rc.eliminar(libro, RC_IMPUESTOS)
+    r = cb.resultados(libro, [ANIO])
+    assert "Pagos al SAT" not in {x.seccion for x in r.gastos}
+
+    rc.crear(libro, "Impuestos", "gasto")                            # el nombre quedó libre
+    with pytest.raises(ErrorValidacion, match="Ya tienes"):
+        rc.recuperar(libro, RC_IMPUESTOS)
+    rc.renombrar(libro, rc.todos(libro, ClaseCategoria.GASTO)[-1].id, "Impuestos míos")
+    assert rc.recuperar(libro, RC_IMPUESTOS).nombre == "Impuestos"   # vuelve con su nombre original
+    assert rc.borrados(libro) == [] and donde(libro, "PREDIAL") == RC_IMPUESTOS
+    assert donde(libro, "ALIMENTOS") == RC_VIDA                       # lo que estaba movido no regresa solo
+
+
+@pytest.mark.parametrize("fijo", [RC_VIDA, RC_OTROS_INGRESOS])
+def test_gastos_de_vida_y_otros_ingresos_no_se_borran(libro, fijo):
+    with pytest.raises(ErrorValidacion, match="no se puede borrar"):
+        rc.eliminar(libro, fijo)
+    assert not rc.se_puede_borrar(libro.rubro_contable(fijo)) and rc.se_puede_borrar(
+        libro.rubro_contable(RC_TRABAJO))
+
+
+def test_lo_cambiado_a_los_de_tally_se_guarda_y_se_restaura(tmp_path):
+    s = Sesion(tmp_path / "Datos" / "tally.db", reloj=lambda: AHORA)
+    with s.cambio() as lib:
+        from motor import perfil
+
+        perfil.configurar(lib, "Usuario Ficticio")
+        rc.renombrar(lib, RC_TRABAJO, "Mi sueldo")
+        rc.eliminar(lib, RC_FINANCIEROS)
+    otra = Sesion(tmp_path / "Datos" / "tally.db", reloj=lambda: AHORA)
+    assert otra.libro.rubro_contable(RC_TRABAJO).nombre == "Mi sueldo"
+    assert [r.id for r in rc.borrados(otra.libro)] == [RC_FINANCIEROS]
+    respaldo = respaldos.crear(otra, tmp_path / "Respaldos")
+    with otra.cambio() as lib:
+        rc.recuperar(lib, RC_FINANCIEROS)
+        rc.renombrar(lib, RC_TRABAJO, "Ingresos por tu trabajo")
+    assert Sesion(tmp_path / "Datos" / "tally.db", reloj=lambda: AHORA).libro.rubros_contables_propios() == []
+    respaldos.restaurar(otra, respaldo, carpeta_seguridad=tmp_path / "Respaldos")
+    assert otra.libro.rubro_contable(RC_TRABAJO).nombre == "Mi sueldo" and rc.borrados(otra.libro)
 
 
 def test_restablecer(libro):
@@ -179,4 +244,25 @@ def test_un_rubro_contable_roto_se_detecta(libro):
         libro_desde_instantanea(datos)
     datos["categoria"][papeleria]["rubro_contable_id"] = RC_TRABAJO           # de ingreso, y PAPELERIA es gasto
     with pytest.raises(ErrorDatos, match="mismo tipo que su rubro contable"):
+        libro_desde_instantanea(datos)
+
+
+@pytest.mark.parametrize("guardado, error", [
+    ({"id": RC_VIDA, "nombre": "Gastos de vida", "clase": "gasto", "borrado": True}, "no se puede borrar"),
+    ({"id": RC_IMPUESTOS, "nombre": "Impuestos", "clase": "ingreso"}, "cambió de tipo"),
+    ({"id": "mio", "nombre": "Mío", "clase": "gasto", "borrado": True}, "no es de TALLY"),
+])
+def test_un_cambio_roto_a_los_de_tally_se_detecta(libro, guardado, error):
+    datos = instantanea(libro)
+    datos.setdefault("rubro_contable", {})[guardado["id"]] = guardado
+    with pytest.raises(ErrorDatos, match=error):
+        libro_desde_instantanea(datos)
+
+
+def test_lo_movido_a_uno_de_tally_borrado_no_se_puede_cargar(libro):
+    datos = instantanea(libro)
+    datos.setdefault("rubro_contable", {})[RC_IMPUESTOS] = {"id": RC_IMPUESTOS, "nombre": "Impuestos",
+                                                            "clase": "gasto", "borrado": True}
+    datos["categoria"][categorias.buscar(libro, "PREDIAL").id]["rubro_contable_id"] = RC_IMPUESTOS
+    with pytest.raises(ErrorDatos, match="rubro contable inexistente"):
         libro_desde_instantanea(datos)

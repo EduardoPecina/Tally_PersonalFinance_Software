@@ -51,6 +51,7 @@ def mostrar() -> None:
         _nuevo()
     with derecha:
         _restablecer()
+        _recuperar()
 
 
 # ------------------------------------------------------------------ qué forma cada reporte
@@ -121,12 +122,9 @@ def _caja(rubro: RubroContable, version: int, asignadas: dict[str, RubroContable
                         help=rubro.descripcion or "Un rubro que creaste tú.")
         if rubro.descripcion:
             cabeza.caption(rubro.descripcion)
-        if rc.es_de_tally(rubro):
-            acciones.caption("De TALLY", help="Los rubros de TALLY no se renombran ni se borran; sí puedes mover "
-                                              "sus subcategorías a otro rubro.")
-        else:
-            with acciones.popover("Editar", width="stretch"):
-                _editar(rubro)
+        # Con la clave de su rubro: al borrar uno, el «Editar» del siguiente no se queda abierto en su lugar.
+        with acciones.popover("Editar", width="stretch", key=f"rc_editar_{rubro.id}_{version}"):
+            _editar(rubro)
         por_categoria: dict[str, list[str]] = {}
         for i in dentro:
             nombre = lib.categoria(i).nombre + (" ✋" if lib.categoria(i).rubro_contable_id else "")
@@ -176,20 +174,37 @@ def _al_cambiar(rubro_id: str, clave_widget: str) -> None:
         st.session_state[f"_rc_error_{rubro_id}"] = str(error)
     if avisos:
         st.session_state[f"_rc_aviso_{rubro_id}"] = avisos
-    st.session_state["_rc_version"] = st.session_state.get("_rc_version", 0) + 1     # todas las cajas al día
+    _cajas_al_dia()
+
+
+def _cajas_al_dia() -> None:
+    """Las cajas se vuelven a armar con lo guardado (si no, un multiselect conserva lo que tenía)."""
+    st.session_state["_rc_version"] = st.session_state.get("_rc_version", 0) + 1
 
 
 # ------------------------------------------------------------------ los tuyos
 
 
 def _editar(rubro: RubroContable) -> None:
+    original = rc.nombre_de_tally(rubro)
+    if original and original != rubro.nombre:
+        st.caption(f"Rubro de TALLY; su nombre original es «{original}».")
+    elif original:
+        st.caption("Rubro de TALLY.")
     nuevo = st.text_input("Nombre", value=rubro.nombre, key=f"rc_nombre_{rubro.id}", max_chars=50)
     if st.button("Renombrar", key=f"rc_renombrar_{rubro.id}", disabled=nuevo.strip() == rubro.nombre):
         if ejecutar(lambda lib: rc.renombrar(lib, rubro.id, nuevo), exito="Rubro contable renombrado"):
+            _cajas_al_dia()
             st.rerun()
-    st.caption("Al borrarlo, sus subcategorías regresan a donde TALLY las acomoda. No se pierde nada.")
+    if not rc.se_puede_borrar(rubro):
+        st.caption("Este no se puede borrar: aquí va todo lo que no está en otro rubro (como «Sin clasificación» "
+                   "en Clasificaciones).")
+        return
+    st.caption("Al borrarlo, sus subcategorías regresan a donde TALLY las acomoda. No se pierde nada."
+               + (" Si te arrepientes, lo recuperas abajo." if original else ""))
     if st.button("Borrar rubro", key=f"rc_borrar_{rubro.id}"):
         if ejecutar(lambda lib: rc.eliminar(lib, rubro.id), exito="Rubro contable borrado"):
+            _cajas_al_dia()
             st.rerun()
 
 
@@ -208,6 +223,23 @@ def _nuevo() -> None:
                 st.rerun()
 
 
+def _recuperar() -> None:
+    """Los rubros de TALLY que borraste, para traerlos de vuelta."""
+    borrados = rc.borrados(libro())
+    if not borrados:
+        return
+    with st.container(border=True):
+        st.markdown("**↩️ Rubros de TALLY que borraste**",
+                    help="Vuelven con su nombre original y TALLY vuelve a acomodar ahí lo que les toca. Lo que "
+                         "moviste tú (✋) se queda donde lo pusiste.")
+        for rubro in borrados:
+            nombre = rc.nombre_de_tally(rubro)
+            if st.button(f"Recuperar «{nombre}»", key=f"rc_recuperar_{rubro.id}", icon=":material/undo:"):
+                if ejecutar(lambda lib, i=rubro.id: rc.recuperar(lib, i), exito=f"«{nombre}» recuperado"):
+                    _cajas_al_dia()
+                    st.rerun()
+
+
 def _restablecer() -> None:
     lib = libro()
     movidas = sum(bool(c.rubro_contable_id) for c in lib.categorias())
@@ -220,4 +252,5 @@ def _restablecer() -> None:
         if st.button("Acomodar todo de nuevo", key="rc_restablecer", disabled=not (movidas and confirmar)):
             if ejecutar(rc.restablecer):
                 avisar("Listo: TALLY volvió a acomodar todas tus subcategorías.", "↺")
+                _cajas_al_dia()
                 st.rerun()

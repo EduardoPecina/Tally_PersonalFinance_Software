@@ -2,13 +2,17 @@
 
 El Estado de Resultados, el «día a día» del Flujo de efectivo y la Balanza juntan tus subcategorías en rubros
 contables: **Ingresos por tu trabajo**, **Ingresos por inversiones y rentas**, **Otros ingresos**, **Gastos de vida**,
-**Gastos financieros** e **Impuestos** (los de TALLY, fijos), más los que crees tú (de ingreso o de gasto).
+**Gastos financieros** e **Impuestos** (los de TALLY), más los que crees tú (de ingreso o de gasto). Los de TALLY
+se pueden renombrar y borrar (y recuperar); **Gastos de vida** y **Otros ingresos** no se borran: ahí cae lo que no
+está en otro rubro.
 
 Cada subcategoría está en uno solo. Si no la has movido, TALLY la acomoda solo (:func:`automatico`):
 
 1. por su **nombre** («INTERESES DE TARJETAS» → Gastos financieros; «PREDIAL» → Impuestos; «NOMINA» → trabajo);
 2. por el nombre de su **categoría** (todo lo de FINANZAS → Gastos financieros; INGRESOS INDEPENDIENTES → trabajo);
 3. si nada de eso lo dice: Gastos de vida u Otros ingresos.
+
+Si borraste el rubro de TALLY que le tocaba (por ejemplo, Impuestos), sigue con la siguiente regla.
 
 Al **crear** una subcategoría que nada de eso delata, si moviste a la mayoría de sus hermanas a un mismo rubro, va
 con ellas (:func:`al_crear`): si pasaste casi todo HOGAR a tu rubro «Vivienda», una subcategoría nueva de HOGAR
@@ -33,6 +37,7 @@ from motor.modelo import (
     RC_TRABAJO,
     RC_VIDA,
     RUBROS_CONTABLES_BASE,
+    RUBROS_CONTABLES_FIJOS,
     Categoria,
     ClaseCategoria,
     RubroContable,
@@ -41,6 +46,7 @@ from motor.textos import clave, normalizar_nombre
 
 INICIAL = {ClaseCategoria.INGRESO: RC_OTROS_INGRESOS, ClaseCategoria.GASTO: RC_VIDA}
 BASE = frozenset(r.id for r in RUBROS_CONTABLES_BASE)
+_NOMBRES_DE_TALLY = {r.id: r.nombre for r in RUBROS_CONTABLES_BASE}
 
 # Por el nombre de la subcategoría, en este orden (la primera que coincide). Una palabra coincide si alguna palabra
 # del nombre empieza con ella («INTERES» → «INTERESES»); las de 3 letras o menos, solo completas («ISR»).
@@ -82,6 +88,21 @@ def es_de_tally(rubro: RubroContable) -> bool:
     return rubro.id in BASE
 
 
+def se_puede_borrar(rubro: RubroContable) -> bool:
+    """Todos menos Gastos de vida y Otros ingresos: ahí cae lo que no está en otro rubro."""
+    return rubro.id not in RUBROS_CONTABLES_FIJOS
+
+
+def nombre_de_tally(rubro: RubroContable) -> str | None:
+    """Cómo lo llama TALLY (si es de TALLY), aunque el usuario lo haya renombrado."""
+    return _NOMBRES_DE_TALLY.get(rubro.id)
+
+
+def borrados(libro: Libro) -> list[RubroContable]:
+    """Los de TALLY que borró el usuario."""
+    return libro.rubros_contables_borrados()
+
+
 # ------------------------------------------------------------------ dónde va cada subcategoría
 
 
@@ -89,12 +110,12 @@ def sugerencia(libro: Libro, nombre: str, clase: ClaseCategoria, rubro_id: str |
     """(rubro contable, por qué) para una subcategoría con ese nombre en esa categoría, sin ver a sus hermanas."""
     palabras_del_nombre = clave(nombre).split()
     for rubro_contable, palabras in _POR_NOMBRE.get(clase, ()):
-        if _dice(palabras_del_nombre, palabras):
+        if libro.hay_rubro_contable(rubro_contable) and _dice(palabras_del_nombre, palabras):
             return rubro_contable, POR_NOMBRE
     if rubro_id is not None:
         palabras_de_la_categoria = clave(libro.rubro(rubro_id).nombre).split()
         for rubro_contable, palabras in _POR_CATEGORIA.get(clase, ()):
-            if _dice(palabras_de_la_categoria, palabras):
+            if libro.hay_rubro_contable(rubro_contable) and _dice(palabras_de_la_categoria, palabras):
                 return rubro_contable, POR_CATEGORIA
     return INICIAL[clase], POR_OMISION
 
@@ -179,19 +200,31 @@ def crear(libro: Libro, nombre: str, clase: ClaseCategoria | str) -> RubroContab
 
 
 def renombrar(libro: Libro, rubro_contable_id: str, nombre: str) -> RubroContable:
+    """Los de TALLY también (con su nombre original vuelve a ser como lo trae TALLY)."""
     rubro = libro.rubro_contable(rubro_contable_id)
-    if es_de_tally(rubro):
-        raise ErrorValidacion("Los rubros contables de TALLY no se pueden renombrar.")
     nombre = normalizar_nombre(nombre)
     _nombre_libre(libro, nombre, excepto=rubro.id)
     return libro.guardar_rubro_contable(replace(rubro, nombre=nombre))
 
 
 def eliminar(libro: Libro, rubro_contable_id: str) -> int:
-    """Lo borra; sus subcategorías vuelven a donde TALLY las acomoda. Devuelve cuántas eran."""
-    cuantas = sum(c.rubro_contable_id == rubro_contable_id for c in libro.categorias())
+    """Lo borra; sus subcategorías vuelven a donde TALLY las acomoda (si era de TALLY, con las demás reglas: lo que
+    era Impuestos por su nombre va a donde diga su categoría, o a Gastos de vida). Uno de TALLY se puede recuperar.
+    Devuelve cuántas subcategorías tenía."""
+    cuantas = sum(r.id == rubro_contable_id for r in asignaciones(libro).values())
     libro.quitar_rubro_contable(rubro_contable_id)
     return cuantas
+
+
+def recuperar(libro: Libro, rubro_contable_id: str) -> RubroContable:
+    """Uno de TALLY que borraste vuelve con su nombre original, y TALLY vuelve a acomodar ahí lo que le toca."""
+    nombre = _NOMBRES_DE_TALLY.get(rubro_contable_id)
+    if nombre is None:
+        raise ErrorValidacion("Solo se recuperan los rubros contables de TALLY.")
+    if any(clave(r.nombre) == clave(nombre) for r in libro.rubros_contables()):
+        raise ErrorValidacion(f"Ya tienes un rubro contable «{nombre}»: renómbralo o bórralo para recuperar el de "
+                              "TALLY.")
+    return libro.recuperar_rubro_contable(rubro_contable_id)
 
 
 # ------------------------------------------------------------------ internos

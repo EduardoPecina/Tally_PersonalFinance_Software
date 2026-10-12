@@ -55,6 +55,9 @@ que los dos siempre buscan los datos en el mismo lugar.
   los respaldos: si se borra o se daña, TALLY lo ignora y lo rehace en la
   siguiente consulta.
 - Esquema 5 y respaldos de formato 5 desde TALLY 0.11: entidad `prestamo` (cómo se contrató cada préstamo).
+- Esquema 10 y respaldos de formato 10 desde TALLY 0.26: en `rubro_contable` también se guarda lo que el usuario
+  les cambia a los seis rubros de TALLY (con su mismo id: otro `nombre`, o `borrado: true`); los que no cambia no
+  se guardan. Gastos de vida y Otros ingresos no se borran.
 - Esquema 9 y respaldos de formato 9 desde TALLY 0.25: en cada perfil de impuestos, el recordatorio de pago al
   fisco (`subcategorias`, `registro`, `frecuencia`, `dia_limite`, `meses_despues`, `recordatorio_desde`) y el
   efecto `a_cargo` de cada impuesto; en `fiscal`, los periodos marcados como pagados (`pagados`).
