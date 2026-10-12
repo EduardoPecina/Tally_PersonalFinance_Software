@@ -238,6 +238,10 @@ def eliminar(libro: Libro, categoria_id: str, *, reasignar_a: str | None = None)
         libro.fiscal = replace(libro.fiscal, conceptos=tuple(
             replace(c, subcategorias=_sustituir(c.subcategorias, categoria_id, reasignar_a))
             for c in libro.fiscal.conceptos))
+    if any(categoria_id in p.subcategorias for p in libro.fiscal.perfiles):    # y los ingresos de un perfil
+        libro.fiscal = replace(libro.fiscal, perfiles=tuple(
+            replace(p, subcategorias=_sustituir(p.subcategorias, categoria_id, reasignar_a))
+            for p in libro.fiscal.perfiles))
     libro.quitar_categoria(categoria_id)
 
 

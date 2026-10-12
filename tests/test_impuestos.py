@@ -178,3 +178,135 @@ def test_conceptos_fuera_del_tope_total(libro, ctas, cat):
     assert r.tope == D(1_500) and r.fuera_del_tope == D(3_000)
     assert r.total == D(1_500) + D(3_000)              # el 15 % topa a los médicos, no a la colegiatura
     assert libro_desde_instantanea(instantanea(libro)).fiscal == libro.fiscal
+
+
+# ===================================================================== lo que pagas tú y los pagos al fisco
+
+RESICO_A_PERSONAS = (Impuesto("ISR", D("1.25"), a_cargo=True), Impuesto("IVA", D(16)))
+RESICO_A_EMPRESAS = (Impuesto("IVA", D(16)), Impuesto("ISR", D("1.25"), a_cargo=True),
+                     Impuesto("Retención ISR", D("1.25"), retenido=True),
+                     Impuesto("Retención IVA", DOS_TERCIOS, "IVA", retenido=True))
+
+
+def test_lo_que_pagas_tu_no_cambia_el_recibo():
+    perfil = PerfilImpuestos("p", "RESICO ficticio", RESICO_A_PERSONAS)
+    d = impuestos.calcular(perfil, 6_000)
+    assert (d.total, d.trasladados, d.a_cargo, d.retenidos) == (D("6960.00"), D("960.00"), D("75.00"), D(0))
+    assert impuestos.desde_total(perfil, 6_960).subtotal == D("6000.00")
+    assert impuestos.revisar(perfil, 6_000, {"IVA": D(960)}) == []          # el ISR no viene en el recibo
+
+
+def test_un_impuesto_no_es_retenido_y_a_tu_cargo(libro):
+    with pytest.raises(ErrorValidacion, match="a la vez"):
+        impuestos.guardar_perfil(libro, "Raro", [{"nombre": "ISR", "tasa": "1", "retenido": True, "a_cargo": True}])
+
+
+@pytest.mark.parametrize("frecuencia, dia, meses_despues, dia_limite, esperado", [
+    ("mensual", date(2026, 10, 12), 1, 17, (date(2026, 10, 1), date(2026, 10, 31), date(2026, 11, 17))),
+    ("bimestral", date(2026, 10, 12), 1, 17, (date(2026, 9, 1), date(2026, 10, 31), date(2026, 11, 17))),
+    ("trimestral", date(2026, 2, 3), 1, 20, (date(2026, 1, 1), date(2026, 3, 31), date(2026, 4, 20))),
+    ("anual", date(2026, 10, 12), 4, 30, (date(2026, 1, 1), date(2026, 12, 31), date(2027, 4, 30))),
+    ("mensual", date(2026, 1, 20), 1, 31, (date(2026, 1, 1), date(2026, 1, 31), date(2026, 2, 28))),
+])
+def test_periodo_y_fecha_limite(frecuencia, dia, meses_despues, dia_limite, esperado):
+    perfil = PerfilImpuestos("p", "Ficticio", (), frecuencia=frecuencia, dia_limite=dia_limite,
+                             meses_despues=meses_despues)
+    desde, hasta = impuestos.periodo(perfil, dia)
+    assert (desde, hasta, impuestos.limite(perfil, hasta)) == esperado
+
+
+@pytest.fixture
+def honorarios(libro, ctas, cat):
+    """Dos cobros ficticios de octubre, registrados con lo que llega a la cuenta (subtotal + IVA)."""
+    for dia in (10, 25):
+        movimientos.registrar_ingreso(libro, date(2026, 10, dia), ctas.debito, cat("HONORARIOS"), 6_960,
+                                      "Cliente ficticio")
+    return impuestos.guardar_perfil(libro, "RESICO ficticio", RESICO_A_PERSONAS, frecuencia="mensual",
+                                    subcategorias=[cat("HONORARIOS")], registro="recibido")
+
+
+def test_cuanto_pagar_al_fisco_por_lo_que_cobraste(libro, honorarios):
+    pago = impuestos.pago_del_periodo(libro, honorarios, date(2026, 10, 1), date(2026, 10, 31))
+    assert (pago.cobrado, pago.base, pago.limite, pago.estimado) == (D(13_920), D(12_000), date(2026, 11, 17), False)
+    assert [(i.nombre, i.a_pagar) for i in pago.impuestos] == [("ISR", D(150)), ("IVA", D(1_920))]
+    assert pago.total == D(2_070)
+    vacio = impuestos.pago_del_periodo(libro, honorarios, date(2026, 9, 1), date(2026, 9, 30))
+    assert vacio.total == 0 and not vacio.estimado
+
+
+def test_las_retenciones_se_restan_de_su_mismo_impuesto(libro, cat):
+    a_empresas = impuestos.guardar_perfil(libro, "RESICO a empresas", RESICO_A_EMPRESAS, frecuencia="mensual",
+                                          subcategorias=[cat("HONORARIOS")], registro="subtotal")
+    movimientos.registrar_ingreso(libro, date(2026, 10, 5), cuentas.crear(libro, "Banco 2", "debito").id,
+                                  cat("HONORARIOS"), 10_000, "Factura ficticia")
+    pago = impuestos.pago_del_periodo(libro, a_empresas, date(2026, 10, 1), date(2026, 10, 31))
+    assert {i.nombre: (i.causado, i.retenido, i.a_pagar) for i in pago.impuestos} == {
+        "IVA": (D(1_600), D("1066.67"), D("533.33")), "ISR": (D(125), D(125), D(0))}
+    assert pago.total == D("533.33") and pago.otras_retenciones == 0
+    # Sin el renglón de ISR a tu cargo, la retención de ISR no se resta del IVA: ya se pagó por ti.
+    sin_isr = impuestos.guardar_perfil(libro, "Sin ISR", PERFILES[RESICO], frecuencia="mensual",
+                                       subcategorias=[cat("HONORARIOS")], registro="subtotal")
+    pago = impuestos.pago_del_periodo(libro, sin_isr, date(2026, 10, 1), date(2026, 10, 31))
+    assert pago.total == D("533.33") and pago.otras_retenciones == D(125)
+
+
+def test_sin_ingresos_registrados_usa_tu_calendario(libro, ctas, cat):
+    from motor import recurrentes
+
+    recurrentes.crear(libro, "Honorarios ficticios", "ingreso", 6_000, ctas.debito, "quincenal", date(2026, 1, 15),
+                      categoria_id=cat("HONORARIOS"))
+    perfil = impuestos.guardar_perfil(libro, "Estimado", RESICO_A_PERSONAS, frecuencia="mensual",
+                                      subcategorias=[cat("HONORARIOS")], registro="subtotal")
+    pago = impuestos.pago_del_periodo(libro, perfil, date(2026, 10, 1), date(2026, 10, 31))
+    assert pago.estimado and pago.base == D(12_000) and pago.total == D(150 + 1_920)
+
+
+def test_el_recordatorio_va_desde_que_termina_el_periodo_hasta_que_lo_pagas(libro, honorarios):
+    assert impuestos.por_pagar(libro, date(2026, 10, 20)) == []                # octubre va en curso
+    (pago,) = impuestos.por_pagar(libro, date(2026, 11, 5))
+    assert (pago.total, pago.estado(date(2026, 11, 5))) == (D(2_070), impuestos.PENDIENTE)
+    assert pago.estado(date(2026, 11, 18)) == impuestos.VENCIDO
+    assert impuestos.por_pagar(libro, date(2026, 12, 18)) == []                # 30 días después de la fecha límite
+    impuestos.marcar_pagado(libro, pago.clave)
+    assert impuestos.por_pagar(libro, date(2026, 11, 5)) == []
+    assert impuestos.pagos_al_fisco(libro, honorarios, date(2026, 11, 5))[1].estado(date(2026, 11, 5)) == \
+        impuestos.PAGADO
+    impuestos.marcar_pagado(libro, pago.clave, False)
+    assert len(impuestos.por_pagar(libro, date(2026, 11, 5))) == 1
+    assert len(libro.operaciones()) == 2                                       # no registró nada solo
+    septiembre = impuestos.pagos_al_fisco(libro, honorarios, date(2026, 11, 5))[2]
+    assert (septiembre.total, septiembre.estado(date(2026, 11, 5))) == (0, impuestos.SIN_PAGO)   # no cobró nada
+
+
+def test_no_recuerda_pagos_que_vencieron_antes_de_configurarlo(libro, honorarios, cat):
+    from dataclasses import replace
+
+    tarde = replace(honorarios, recordatorio_desde=date(2026, 11, 20))         # lo configuraste después del 17
+    libro.fiscal = replace(libro.fiscal, perfiles=(tarde,))
+    assert impuestos.por_pagar(libro, date(2026, 11, 25)) == []
+    editado = impuestos.guardar_perfil(libro, "RESICO ficticio", RESICO_A_PERSONAS, frecuencia="mensual",
+                                       subcategorias=[cat("HONORARIOS")], perfil_id=tarde.id)
+    assert editado.recordatorio_desde == date(2026, 11, 20)                    # editarlo no lo reinicia
+
+
+def test_validaciones_del_recordatorio(libro, cat):
+    with pytest.raises(ErrorValidacion, match="sobre qué ingresos"):
+        impuestos.guardar_perfil(libro, "Sin ingresos", RESICO_A_PERSONAS, frecuencia="mensual")
+    with pytest.raises(ErrorValidacion, match="subcategorías de ingreso"):
+        impuestos.guardar_perfil(libro, "Con un gasto", RESICO_A_PERSONAS, frecuencia="mensual",
+                                 subcategorias=[cat("ALIMENTOS")])
+    with pytest.raises(ErrorValidacion, match="del 1 al 31"):
+        impuestos.guardar_perfil(libro, "Día raro", RESICO_A_PERSONAS, frecuencia="mensual",
+                                 subcategorias=[cat("HONORARIOS")], dia_limite=40)
+    sin = impuestos.guardar_perfil(libro, "Sin recordatorio", RESICO_A_PERSONAS)
+    assert sin.recordatorio_desde is None and impuestos.pagos_al_fisco(libro, sin, date(2026, 11, 5)) == []
+
+
+def test_el_recordatorio_se_guarda_y_sigue_a_su_subcategoria(libro, honorarios, cat):
+    from motor import categorias
+
+    impuestos.marcar_pagado(libro, f"{honorarios.id}:2026-10")
+    copia = libro_desde_instantanea(instantanea(libro))
+    assert copia.fiscal == libro.fiscal
+    categorias.eliminar(libro, cat("HONORARIOS"), reasignar_a=cat("FREELANCE"))
+    assert libro.fiscal.perfiles[0].subcategorias == (cat("FREELANCE"),)

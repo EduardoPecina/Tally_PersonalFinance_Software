@@ -9,15 +9,23 @@ qué parte del gasto se deduce (100 %, 40 %…), hasta cuánto al año y si deja
 haber un tope total para todos (un monto, o un % de tu ingreso del año). El reporte suma lo de cada año.
 
 **Perfiles de impuestos.** Un *perfil* son los impuestos de un tipo de recibo: cada uno con su nombre, su tasa, sobre
-qué se calcula (el subtotal u otro impuesto, como «2/3 del IVA») y si se suma (traslado) o se resta (retención).
-Con él se calcula un recibo desde el subtotal o desde lo que recibes, y se revisa uno que te dieron.
+qué se calcula (el subtotal u otro impuesto, como «2/3 del IVA») y si se suma (traslado), se resta (retención) o lo
+pagas tú directo al fisco (a tu cargo: no cambia el recibo, como el ISR del RESICO). Con él se calcula un recibo
+desde el subtotal o desde lo que recibes, y se revisa uno que te dieron.
+
+**Pagos al fisco.** Un perfil puede recordarte cuánto pagar y hasta cuándo: dices a qué ingresos aplica (sus
+subcategorías), cómo los registras (lo que te llega o el subtotal), cada cuándo pagas y la fecha límite. Por cada
+periodo, TALLY suma esos ingresos, calcula cada impuesto que te toca pagar (lo que trasladas y lo que es a tu cargo)
+menos lo que ya te retuvieron, y te lo recuerda en el Resumen. No registra nada: cuando pagas, lo registras tú (un
+gasto en IMPUESTOS) y lo marcas como pagado. Es una estimación: no resta el IVA de tus gastos ni otras deducciones.
 """
 
 from __future__ import annotations
 
 from collections import defaultdict
+import calendar
 from dataclasses import dataclass, field, replace
-from datetime import date
+from datetime import date, timedelta
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 
 from motor import categorias
@@ -216,15 +224,19 @@ def _cuenta(libro: Libro, op: Operacion) -> str | None:
 # ===================================================================== perfiles de impuestos
 
 
-def guardar_perfil(libro: Libro, nombre: str, impuestos, *, notas: str = "",
-                   perfil_id: str | None = None) -> PerfilImpuestos:
-    """``impuestos``: lista de ``Impuesto`` (o de dicts con nombre, tasa, sobre y retenido)."""
+def guardar_perfil(libro: Libro, nombre: str, impuestos, *, notas: str = "", perfil_id: str | None = None,
+                   subcategorias=(), registro: str = "recibido", frecuencia: str = "", dia_limite: int = 17,
+                   meses_despues: int = 1) -> PerfilImpuestos:
+    """``impuestos``: lista de ``Impuesto`` (o de dicts con nombre, tasa, sobre, retenido y a_cargo). Lo demás es el
+    recordatorio de pago al fisco (sin ``frecuencia``, no hay recordatorio)."""
     nombre = normalizar_nombre(nombre)
     lista = []
     for i in impuestos:
         if isinstance(i, dict):
             i = Impuesto(i.get("nombre", ""), leer_tasa(i.get("tasa", 0)), i.get("sobre", "") or "",
-                         bool(i.get("retenido", False)))
+                         bool(i.get("retenido", False)), bool(i.get("a_cargo", False)))
+        if i.retenido and i.a_cargo:
+            raise ErrorValidacion(f"«{i.nombre}» no puede ser retenido y a tu cargo a la vez.")
         if not str(i.nombre).strip():
             continue
         lista.append(replace(i, nombre=" ".join(str(i.nombre).split()), sobre=i.sobre.strip()))
@@ -240,7 +252,23 @@ def guardar_perfil(libro: Libro, nombre: str, impuestos, *, notas: str = "",
     fiscal = libro.fiscal
     if any(p.nombre.casefold() == nombre.casefold() and p.id != perfil_id for p in fiscal.perfiles):
         raise ErrorValidacion(f"Ya tienes un perfil llamado «{nombre}».")
-    perfil = PerfilImpuestos(perfil_id or libro.nuevo_id(), nombre, tuple(lista), notas.strip())
+    subcategorias = tuple(dict.fromkeys(subcategorias or ()))
+    for categoria_id in subcategorias:
+        if libro.categoria(categoria_id).clase is not ClaseCategoria.INGRESO:
+            raise ErrorValidacion("El recordatorio de pago al fisco va sobre subcategorías de ingreso.")
+    if frecuencia not in FRECUENCIAS_PAGO:
+        raise ErrorValidacion("Elige cada cuándo pagas estos impuestos.")
+    if registro not in REGISTRO:
+        raise ErrorValidacion("Elige cómo registras esos ingresos.")
+    if frecuencia and not subcategorias:
+        raise ErrorValidacion("Para recordarte el pago al fisco, elige sobre qué ingresos (sus subcategorías).")
+    if not 1 <= int(dia_limite) <= 31 or not 0 <= int(meses_despues) <= 12:
+        raise ErrorValidacion("La fecha límite es un día del 1 al 31, de 0 a 12 meses después del periodo.")
+    previo = next((p for p in fiscal.perfiles if p.id == perfil_id), None)
+    desde = (previo.recordatorio_desde if previo is not None and previo.frecuencia else libro.hoy()) \
+        if frecuencia else None
+    perfil = PerfilImpuestos(perfil_id or libro.nuevo_id(), nombre, tuple(lista), notas.strip(), subcategorias,
+                             registro, frecuencia, int(dia_limite), int(meses_despues), desde)
     perfiles = [p for p in fiscal.perfiles if p.id != perfil.id]
     posicion = next((n for n, p in enumerate(fiscal.perfiles) if p.id == perfil.id), len(perfiles))
     perfiles.insert(posicion, perfil)
@@ -260,11 +288,16 @@ class Desglose:
 
     @property
     def trasladados(self) -> Decimal:
-        return sum((v for i, v in self.lineas if not i.retenido), CERO)
+        return sum((v for i, v in self.lineas if not i.retenido and not i.a_cargo), CERO)
 
     @property
     def retenidos(self) -> Decimal:
         return sum((v for i, v in self.lineas if i.retenido), CERO)
+
+    @property
+    def a_cargo(self) -> Decimal:
+        """Lo que pagas tú directo al fisco (no está en el recibo)."""
+        return sum((v for i, v in self.lineas if i.a_cargo), CERO)
 
 
 def calcular(perfil: PerfilImpuestos, subtotal) -> Desglose:
@@ -277,7 +310,8 @@ def calcular(perfil: PerfilImpuestos, subtotal) -> Desglose:
         importe = redondear(sobre * i.tasa / 100)
         calculados[i.nombre.casefold()] = importe
         lineas.append((i, importe))
-    total = base + sum((v for i, v in lineas if not i.retenido), CERO) - sum((v for i, v in lineas if i.retenido), CERO)
+    total = (base + sum((v for i, v in lineas if not i.retenido and not i.a_cargo), CERO)
+             - sum((v for i, v in lineas if i.retenido), CERO))
     return Desglose(base, lineas, total)
 
 
@@ -288,7 +322,8 @@ def desde_total(perfil: PerfilImpuestos, total) -> Desglose:
     factor = Decimal(1)
     for i in perfil.impuestos:
         efectiva[i.nombre.casefold()] = (efectiva.get(i.sobre.casefold(), CERO) if i.sobre else Decimal(1)) * i.tasa / 100
-        factor += -efectiva[i.nombre.casefold()] if i.retenido else efectiva[i.nombre.casefold()]
+        if not i.a_cargo:                                   # lo que pagas tú no cambia lo que recibes
+            factor += -efectiva[i.nombre.casefold()] if i.retenido else efectiva[i.nombre.casefold()]
     if factor <= 0:
         raise ErrorValidacion("Con esos impuestos no se puede calcular el subtotal.")
     estimado = redondear(objetivo / factor)
@@ -301,7 +336,8 @@ def revisar(perfil: PerfilImpuestos, subtotal, reales: dict[str, Decimal], *,
     """Compara lo que dice un recibo con lo que debería ser. Lista vacía si cuadra (dentro de la tolerancia)."""
     esperado = calcular(perfil, subtotal)
     leidos = {k.casefold(): redondear(Decimal(str(v or 0))) for k, v in reales.items()}
-    diferencias = [(i, leidos.get(i.nombre.casefold(), CERO), v) for i, v in esperado.lineas]
+    diferencias = [(i, leidos.get(i.nombre.casefold(), CERO), v) for i, v in esperado.lineas
+                   if not i.a_cargo]                    # lo que pagas tú no viene en el recibo
     variacion = sum((abs(real - calc) for _, real, calc in diferencias), CERO)
     if variacion <= tolerancia:
         return []
@@ -314,3 +350,164 @@ def revisar(perfil: PerfilImpuestos, subtotal, reales: dict[str, Decimal], *,
         if i.sobre and real > 0 and leidos.get(i.sobre.casefold(), CERO) == 0:
             problemas.append(f"trae {i.nombre} pero no {i.sobre} (¿se capturó un impuesto en el lugar de otro?)")
     return [f"No cuadra (diferencia total {formatear(variacion)})", *problemas]
+
+
+# ===================================================================== pagos al fisco
+
+FRECUENCIAS_PAGO = {"": "No me lo recuerdes", "mensual": "Cada mes", "bimestral": "Cada 2 meses",
+                    "trimestral": "Cada 3 meses", "semestral": "Cada 6 meses", "anual": "Cada año"}
+_MESES_PAGO = {"mensual": 1, "bimestral": 2, "trimestral": 3, "semestral": 6, "anual": 12}
+REGISTRO = {"recibido": "Lo que me llega a la cuenta (ya con sus impuestos)",
+            "subtotal": "El monto antes de impuestos (el subtotal)"}
+DIAS_TRAS_EL_LIMITE = 30            # el aviso sigue (como vencido) hasta 30 días después de la fecha límite
+PENDIENTE, VENCIDO, PAGADO, EN_CURSO, SIN_PAGO = "pendiente", "vencido", "pagado", "en curso", "sin pago"
+_PALABRAS_DE_RETENCION = {"RETENCION", "RETENIDO", "RETENIDA", "RET", "DE", "DEL", "LA", "EL", "SOBRE"}
+
+
+@dataclass(frozen=True, slots=True)
+class ImpuestoAPagar:
+    """Un impuesto que te toca pagar en un periodo: lo que causó menos lo que ya te retuvieron de él."""
+
+    nombre: str
+    causado: Decimal
+    retenido: Decimal = CERO
+
+    @property
+    def a_pagar(self) -> Decimal:
+        return max(self.causado - self.retenido, CERO)
+
+
+@dataclass(frozen=True, slots=True)
+class PagoAlFisco:
+    perfil: PerfilImpuestos
+    desde: date
+    hasta: date
+    limite: date
+    cobrado: Decimal                  # lo que registraste (o esperas, si ``estimado``) en esos ingresos
+    base: Decimal                     # antes de impuestos
+    impuestos: list[ImpuestoAPagar]
+    otras_retenciones: Decimal        # retenciones que no se restan de ningún impuesto de aquí (p. ej. el ISR de
+    #                                   honorarios, sin un renglón «a tu cargo»): ya se pagaron por ti
+    estimado: bool                    # no registraste esos ingresos: con lo que esperas según tu calendario
+    pagado: bool                      # lo marcaste como pagado
+
+    @property
+    def total(self) -> Decimal:
+        return sum((i.a_pagar for i in self.impuestos), CERO)
+
+    @property
+    def clave(self) -> str:
+        return clave_de_pago(self.perfil, self.desde)
+
+    def estado(self, hoy: date) -> str:
+        if self.pagado:
+            return PAGADO
+        if hoy <= self.hasta:
+            return EN_CURSO
+        if self.total <= 0:                                  # terminó y no hay nada que pagar (no cobraste)
+            return SIN_PAGO
+        return VENCIDO if hoy > self.limite else PENDIENTE
+
+
+def clave_de_pago(perfil: PerfilImpuestos, desde: date) -> str:
+    return f"{perfil.id}:{desde:%Y-%m}"
+
+
+def periodo(perfil: PerfilImpuestos, dia: date) -> tuple[date, date]:
+    """El periodo (mes, bimestre, trimestre… del año calendario) que incluye ``dia``."""
+    meses = _MESES_PAGO[perfil.frecuencia]
+    primero = (dia.month - 1) // meses * meses + 1
+    ultimo = primero + meses - 1
+    return date(dia.year, primero, 1), date(dia.year, ultimo, calendar.monthrange(dia.year, ultimo)[1])
+
+
+def limite(perfil: PerfilImpuestos, hasta: date) -> date:
+    """El día ``dia_limite`` del mes que cae ``meses_despues`` meses después de que termina el periodo (el último
+    día del mes si es más corto: el 31 en febrero es el 28 o 29)."""
+    indice = hasta.year * 12 + hasta.month - 1 + perfil.meses_despues
+    anio, mes = divmod(indice, 12)
+    return date(anio, mes + 1, min(perfil.dia_limite, calendar.monthrange(anio, mes + 1)[1]))
+
+
+def pago_del_periodo(libro: Libro, perfil: PerfilImpuestos, desde: date, hasta: date) -> PagoAlFisco:
+    """Cuánto le toca pagar al fisco por los ingresos de ``desde`` a ``hasta``."""
+    from motor import recurrentes
+
+    ingresos = set(perfil.subcategorias)
+    centavos = sum(-p.importe for op in libro.operaciones(desde, hasta) for p in op.partidas_de_categoria()
+                   if p.categoria_id in ingresos)
+    estimado = False
+    if not centavos:                                     # sin ingresos registrados: lo que dice tu calendario
+        centavos = sum(recurrentes.monto_en(r, dia) for r in libro.recurrentes()
+                       if r.activa and r.tipo is TipoOperacion.INGRESO and r.categoria_id in ingresos
+                       for dia in recurrentes.fechas(r, desde, hasta))
+        estimado = bool(centavos)
+    cobrado = a_pesos(centavos)
+    desglose = calcular(perfil, max(cobrado, CERO))
+    if cobrado > 0 and perfil.registro == "recibido":
+        try:
+            desglose = desde_total(perfil, cobrado)
+        except ErrorValidacion:                          # un perfil raro: se toma como subtotal
+            pass
+    impuestos, otras = _a_pagar(desglose)
+    return PagoAlFisco(perfil, desde, hasta, limite(perfil, hasta), cobrado, desglose.subtotal, impuestos, otras,
+                       estimado, clave_de_pago(perfil, desde) in libro.fiscal.pagados)
+
+
+def _a_pagar(desglose: Desglose) -> tuple[list[ImpuestoAPagar], Decimal]:
+    """Lo que trasladas o es a tu cargo, menos lo que ya te retuvieron *de ese mismo impuesto*: una retención resta
+    del impuesto sobre el que se calcula (la de 2/3 del IVA, del IVA) o del que se llama igual sin «Retención»
+    (Retención ISR → ISR). Una retención que no corresponde a nada de aquí ya se pagó por ti: no se resta de
+    otro."""
+    propios = {i.nombre.casefold(): [i.nombre, v, CERO] for i, v in desglose.lineas if not i.retenido}
+    otras = CERO
+    for i, v in desglose.lineas:
+        if not i.retenido:
+            continue
+        destino = i.sobre.casefold() if i.sobre.casefold() in propios else _mismo_impuesto(i.nombre, propios)
+        if destino is None:
+            otras += v
+        else:
+            propios[destino][2] += v
+    return [ImpuestoAPagar(n, c, r) for n, c, r in propios.values()], otras
+
+
+def _mismo_impuesto(retencion: str, propios: dict) -> str | None:
+    from motor.textos import clave
+
+    nucleo = set(clave(retencion).split()) - _PALABRAS_DE_RETENCION
+    if not nucleo:
+        return None
+    return next((k for k, (nombre, *_) in propios.items() if nucleo <= set(clave(nombre).split())), None)
+
+
+def pagos_al_fisco(libro: Libro, perfil: PerfilImpuestos, hoy: date, cuantos: int = 12) -> list[PagoAlFisco]:
+    """Los últimos ``cuantos`` periodos (del más reciente al más antiguo), incluido el que va en curso."""
+    if not perfil.frecuencia:
+        return []
+    pagos, dia = [], hoy
+    for _ in range(cuantos):
+        desde, hasta = periodo(perfil, dia)
+        pagos.append(pago_del_periodo(libro, perfil, desde, hasta))
+        dia = desde - timedelta(days=1)
+    return pagos
+
+
+def por_pagar(libro: Libro, hoy: date | None = None) -> list[PagoAlFisco]:
+    """Lo que te toca pagar al fisco: periodos ya terminados, sin marcar como pagados, desde que termina el periodo
+    hasta ``DIAS_TRAS_EL_LIMITE`` días después de la fecha límite. Por fecha límite."""
+    hoy = hoy or libro.hoy()
+    pendientes = []
+    for perfil in libro.fiscal.perfiles:
+        for pago in pagos_al_fisco(libro, perfil, hoy, cuantos=4):
+            if (pago.estado(hoy) in (PENDIENTE, VENCIDO) and pago.total > 0
+                    and hoy <= pago.limite + timedelta(days=DIAS_TRAS_EL_LIMITE)
+                    and (perfil.recordatorio_desde is None or pago.limite >= perfil.recordatorio_desde)):
+                pendientes.append(pago)
+    return sorted(pendientes, key=lambda p: (p.limite, p.perfil.nombre.casefold()))
+
+
+def marcar_pagado(libro: Libro, clave: str, pagado: bool = True) -> None:
+    """«Ya lo pagué» (o deshacerlo). No registra ningún movimiento: el pago lo registras tú."""
+    pagados = [c for c in libro.fiscal.pagados if c != clave] + ([clave] if pagado else [])
+    libro.fiscal = replace(libro.fiscal, pagados=tuple(pagados[-200:]))

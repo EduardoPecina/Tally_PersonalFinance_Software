@@ -55,6 +55,9 @@ que los dos siempre buscan los datos en el mismo lugar.
   los respaldos: si se borra o se daña, TALLY lo ignora y lo rehace en la
   siguiente consulta.
 - Esquema 5 y respaldos de formato 5 desde TALLY 0.11: entidad `prestamo` (cómo se contrató cada préstamo).
+- Esquema 9 y respaldos de formato 9 desde TALLY 0.25: en cada perfil de impuestos, el recordatorio de pago al
+  fisco (`subcategorias`, `registro`, `frecuencia`, `dia_limite`, `meses_despues`, `recordatorio_desde`) y el
+  efecto `a_cargo` de cada impuesto; en `fiscal`, los periodos marcados como pagados (`pagados`).
 - Esquema 8 y respaldos de formato 8 desde TALLY 0.24: entidad `rubro_contable` (los rubros que crea el usuario;
   los seis de TALLY son fijos y no se guardan) y `rubro_contable_id` en cada subcategoría (solo si el usuario la
   movió; si no, TALLY la acomoda al leerla, `motor/rubros_contables.py`).

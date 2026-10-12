@@ -2,6 +2,34 @@
 
 Todos los cambios relevantes de TALLY se documentan aquí.
 
+## [0.25.0] — Sin publicar
+
+- **Recordatorio de pago al fisco.** En cada perfil de impuestos (Impuestos › ⚙️ Configurar) hay una sección
+  **🔔 Recordatorio de pago al fisco** (opcional):
+  - **cada cuándo** pagas esos impuestos (cada mes, 2, 3 o 6 meses, o cada año);
+  - **sobre qué ingresos** (las subcategorías donde los registras: HONORARIOS, VENTAS…);
+  - **cómo los registras**: lo que te llega a la cuenta (TALLY saca de ahí el monto antes de impuestos) o el
+    subtotal;
+  - la **fecha límite**: el día del mes y cuántos meses después del periodo (en México, el 17 del mes siguiente).
+
+  Al terminar cada periodo, **el Resumen te dice cuánto pagar y hasta cuándo**, con el desglose («Paga a más tardar
+  el 17 de noviembre: $2,070 al fisco · ISR $150 · IVA $1,920, por lo que cobraste en octubre»). Si pasa la fecha
+  límite, el aviso se pone en rojo. **TALLY no registra nada**: cuando pagues, lo registras como gasto en IMPUESTOS
+  y das clic en **Ya lo pagué**. Si en un periodo no registraste esos ingresos, usa lo que esperas según tu
+  Calendario (y lo dice). Solo te recuerda los pagos que vencen desde que lo configuraste.
+- **Nueva pestaña Impuestos › 📅 Pagos al fisco**: por cada perfil con recordatorio, los últimos 12 periodos con lo
+  cobrado, lo que es antes de impuestos, cada impuesto, lo que toca pagar, la fecha límite y si ya lo pagaste; ahí
+  también se marca (o desmarca) un periodo como pagado.
+- **Nuevo efecto «Lo pagas tú aparte»** para los impuestos que pagas directo al fisco, como el ISR del RESICO
+  cuando le cobras a una persona. No cambia lo que recibes en un recibo; en el cálculo del recibo aparece aparte y
+  no se pide al revisar uno.
+- En **📅 Pagos al fisco**, un periodo sin ingresos dice **Nada que pagar** (no «Venció»).
+- **Lo que toca pagar** es lo que trasladas (el IVA que cobraste) y lo que es a tu cargo, menos lo que ya te
+  retuvieron *de ese mismo impuesto* (la retención de 2/3 del IVA se resta del IVA; «Retención ISR», del ISR). Es
+  una estimación: no resta el IVA de tus gastos ni otras deducciones.
+- Ejemplos nuevos: RESICO a una persona y RESICO a una empresa con su ISR a tu cargo.
+- Tus datos pasan al esquema 9 y los respaldos al formato 9. Una versión anterior de TALLY ya no los abre.
+
 ## [0.24.1] — Sin publicar
 
 - **Perfiles de impuestos: ya se puede escribir sin batallar.** Los impuestos de un perfil se capturaban en una

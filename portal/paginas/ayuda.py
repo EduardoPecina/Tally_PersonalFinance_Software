@@ -58,8 +58,10 @@ COMO_HAGO = (
      "**Cierre de mes**: lo que entró y salió, contra tus presupuestos, lo que faltó registrar y qué hacer el mes "
      "que sigue. Se descarga en Excel.", "cierre", "Ir a Cierre de mes"),
     ("Mis impuestos",
-     "**Impuestos**: tus gastos deducibles del año (tú eliges qué cuenta y con qué topes, para cualquier país) y el "
-     "cálculo o la revisión de un recibo o factura.", "impuestos", "Ir a Impuestos"),
+     "**Impuestos**: tus gastos deducibles del año (tú eliges qué cuenta y con qué topes, para cualquier país), el "
+     "cálculo o la revisión de un recibo o factura y el **recordatorio de pago al fisco**: en tu perfil de impuestos "
+     "dices cada cuándo pagas, sobre qué ingresos y la fecha límite, y el Resumen te dice cuánto pagar y hasta "
+     "cuándo.", "impuestos", "Ir a Impuestos"),
     ("Corregir o borrar un movimiento",
      "**Historial**: busca el movimiento, selecciónalo (casilla a la izquierda) y usa Editar o Eliminar. Todo queda "
      "en la bitácora.", "historial", "Ir al Historial"),
