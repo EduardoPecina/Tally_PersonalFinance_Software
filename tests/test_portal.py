@@ -780,6 +780,71 @@ def test_clasificaciones_como_cajas_con_sus_subcategorias(raiz, con_datos):
     assert sesion_en(raiz).libro.categoria(snacks).grupo_id == grupo["Disfrute"]
 
 
+def test_rubros_contables_como_cajas_en_categorias(raiz, con_datos):
+    from motor import rubros_contables as rc
+    from motor.modelo import RC_FINANCIEROS, RC_VIDA
+
+    s = sesion_en(raiz)
+    alimentos = next(c.id for c in s.libro.categorias() if c.nombre == "ALIMENTOS")
+    at = abrir(_pagina("categorias"))
+    sin_errores(at)
+
+    def caja(rubro_id):                     # la clave lleva una versión que cambia tras cada ajuste
+        return next(m for m in at.multiselect if m.key.startswith(f"rc_{rubro_id}_"))
+
+    assert alimentos in caja(RC_VIDA).value and alimentos not in caja(RC_FINANCIEROS).value
+    # Agregarla en otro rubro la mueve (sale de donde estaba).
+    caja(RC_FINANCIEROS).select(alimentos).run()
+    sin_errores(at)
+    assert rc.de(sesion_en(raiz).libro, alimentos).id == RC_FINANCIEROS
+    assert alimentos in caja(RC_FINANCIEROS).value and alimentos not in caja(RC_VIDA).value
+    # Con la ✕ regresa a donde la acomoda TALLY.
+    caja(RC_FINANCIEROS).unselect(alimentos).run()
+    assert sesion_en(raiz).libro.categoria(alimentos).rubro_contable_id is None
+    assert alimentos in caja(RC_VIDA).value
+    # Quitar una que TALLY ya pone ahí: se queda y se explica.
+    caja(RC_VIDA).unselect(alimentos).run()
+    assert any("se queda aquí" in i.value for i in at.info) and alimentos in caja(RC_VIDA).value
+
+    # Un rubro propio, de gasto.
+    next(t for t in at.text_input if t.label == "Nombre" and t.placeholder.startswith("Ej. Gastos del negocio")) \
+        .input("Vivienda ficticia")
+    boton(at, "Agregar rubro").click().run()
+    sin_errores(at)
+    (vivienda,) = sesion_en(raiz).libro.rubros_contables_propios()
+    assert vivienda.nombre == "Vivienda ficticia" and vivienda.clase.value == "gasto"
+    caja(vivienda.id).select(alimentos).run()
+    assert rc.de(sesion_en(raiz).libro, alimentos).id == vivienda.id
+
+    # En Contabilidad técnica, el Estado de Resultados ya va por rubro.
+    at.switch_page(_pagina("contabilidad")).run()
+    sin_errores(at)
+    conceptos = [c.strip() for c in at.dataframe[1].value["Concepto"]]
+    assert "Vivienda ficticia" in conceptos and "Ingresos por tu trabajo" in conceptos
+    assert "Rubro" in at.dataframe[3].value.columns                     # la Balanza dice dónde cae cada renglón
+
+
+def test_rubro_contable_al_crear_y_editar_una_subcategoria(raiz, con_datos):
+    from motor import rubros_contables as rc
+
+    at = abrir(_pagina("categorias"))
+    finanzas = next(r.id for r in sesion_en(raiz).libro.rubros() if r.nombre == "FINANZAS")
+    at.selectbox[0].set_value(finanzas)                                   # «Dentro de la categoría» (Gastos)
+    next(t for t in at.text_input if t.label == "Nombre de la subcategoría").input("Cargo por pago tardío")
+    boton(at, "Agregar subcategoría").click().run()
+    sin_errores(at)
+    assert any("«Gastos financieros»" in t.value for t in at.toast)        # por su categoría
+    nueva = next(c for c in sesion_en(raiz).libro.categorias() if c.nombre == "CARGO POR PAGO TARDIO")
+
+    at.selectbox(key="elegida_gasto").set_value(nueva.id).run()
+    contable = next(x for x in at.selectbox if x.label == "Rubro contable")
+    assert contable.value == "rc-financieros"
+    contable.set_value("rc-impuestos")
+    boton(at, "Guardar cambios").click().run()
+    sin_errores(at)
+    assert rc.de(sesion_en(raiz).libro, nueva.id).id == "rc-impuestos"
+
+
 def test_titulos_en_una_cuenta_de_inversion(raiz, monkeypatch):
     import json
 

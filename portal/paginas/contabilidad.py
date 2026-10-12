@@ -15,13 +15,16 @@ from motor import contabilidad as cb
 from portal.componentes import bienes as bienes_ui
 from portal.componentes import exportar, formato
 from portal.componentes.sesion import libro
+from portal.navegacion import enlace
 
 # Fondo de los renglones de título y total (con transparencia: se ve bien en tema claro y oscuro).
 FONDOS = {"titulo": "background-color: rgba(107, 83, 241, 0.10); font-weight: 700",
           "grupo": "font-weight: 600",
+          "subgrupo": "font-weight: 500",
           "subtotal": "background-color: rgba(128, 128, 128, 0.10); font-weight: 600",
           "total": "background-color: rgba(107, 83, 241, 0.18); font-weight: 700"}
 SANGRIA = "  "
+SANGRIAS = {"renglon": 1, "subgrupo": 1, "detalle": 2}     # cuántas sangrías lleva cada clase de renglón
 TIP = "Da clic en un renglón para ver de qué movimientos sale."
 
 
@@ -54,7 +57,8 @@ def mostrar() -> None:
             "inversiones, lo que te deben, tus bienes), **Pasivo** lo que debes (tarjetas) y **Patrimonio** lo que "
             "de verdad es tuyo: Activo − Pasivo.\n"
             "- **Estado de Resultados**: una película del periodo. Cuánto ganaste, cuánto gastaste y cuánto te "
-            "quedó. Una compra con tarjeta ya es gasto aunque la pagues después. Los **cambios de valor** (tus "
+            "quedó, por **rubro contable** (Ingresos por tu trabajo, Gastos de vida, Gastos financieros, "
+            "Impuestos…). Una compra con tarjeta ya es gasto aunque la pagues después. Los **cambios de valor** (tus "
             "inversiones, la depreciación de tus bienes) van aparte: no es dinero que entró o salió.\n"
             "- **Flujo de Efectivo**: por dónde entró y salió el dinero de tus cuentas de débito, ahorro y "
             "efectivo. Aquí la compra con tarjeta aparece hasta que **pagas** la tarjeta.\n"
@@ -112,7 +116,7 @@ def _variacion(valores: tuple[Decimal, ...]) -> str:
 
 def _estado(clave: str, columnas: list[str], filas: list[Fila], *, lectura: bool = False) -> None:
     """El estado financiero como tabla; al dar clic en un renglón, debajo aparece su detalle."""
-    datos = {"Concepto": [(SANGRIA if f[0] == "renglon" else "") + f[1] for f in filas]}
+    datos = {"Concepto": [SANGRIA * SANGRIAS.get(f[0], 0) + f[1] for f in filas]}
     for i, nombre in enumerate(columnas):
         datos[nombre] = ["" if f[0] == "titulo" and not any(f[2]) else _dinero(f[2][i]) for f in filas]
     if len(columnas) > 1:
@@ -230,6 +234,7 @@ def _resultados(r: cb.Resultados) -> None:
     c.metric("Resultado del periodo", formato.dinero_metrica(r.resultado()[0]), delta=_delta(r.resultado()))
     detalle = st.toggle("Ver cada subcategoría", key="conta_resultados_sub")
     _estado("conta_sel_resultados", _columnas_periodo(r.periodos), _filas_resultados(r, detalle=detalle))
+    _rubros_contables()
     st.caption("**Resultado del día a día**: lo que te quedó de lo que ganaste menos lo que gastaste. Los **cambios "
                "de valor** van aparte: rendimientos de tus inversiones (cuando cuadras con el valor oficial), "
                "depreciación y plusvalía de tus bienes, y lo que ganaste o perdiste al venderlos. Los saldos "
@@ -237,17 +242,22 @@ def _resultados(r: cb.Resultados) -> None:
 
 
 def _filas_resultados(r: cb.Resultados, *, detalle: bool) -> list[Fila]:
+    """Ingresos y gastos por rubro contable (Categorías › Contabilidad), luego por categoría y, con ``detalle``, por
+    subcategoría."""
     filas: list[Fila] = []
     n = len(r.periodos)
     for titulo, renglones, total in (("INGRESOS", r.ingresos, r.total_ingresos()),
                                      ("GASTOS", r.gastos, r.total_gastos())):
         filas.append(("titulo", titulo, total, "", r.origen(renglones)))
-        for grupo in dict.fromkeys(x.grupo for x in renglones):
-            del_grupo = [x for x in renglones if x.grupo == grupo]
-            filas.append(("grupo" if detalle else "renglon", grupo, cb._sumar_renglones(del_grupo, n), "",
-                          r.origen(del_grupo)))
-            if detalle:
-                filas += [("renglon", x.nombre, x.importes, "", x.origen) for x in del_grupo]
+        for seccion in dict.fromkeys(x.seccion for x in renglones):
+            de_seccion = [x for x in renglones if x.seccion == seccion]
+            filas.append(("grupo", seccion, cb._sumar_renglones(de_seccion, n), "", r.origen(de_seccion)))
+            for grupo in dict.fromkeys(x.grupo for x in de_seccion):
+                del_grupo = [x for x in de_seccion if x.grupo == grupo]
+                filas.append(("subgrupo" if detalle else "renglon", grupo, cb._sumar_renglones(del_grupo, n), "",
+                              r.origen(del_grupo)))
+                if detalle:
+                    filas += [("detalle", x.nombre, x.importes, "", x.origen) for x in del_grupo]
         filas.append(("subtotal", f"Total {titulo.lower()}", total, "", r.origen(renglones)))
     filas.append(("total", "RESULTADO DE TU DÍA A DÍA", r.dia_a_dia(), "", r.origen(r.ingresos + r.gastos)))
     cambios = [x for x in r.cambios_de_valor if any(x.importes)]
@@ -259,6 +269,17 @@ def _filas_resultados(r: cb.Resultados, *, detalle: bool) -> list[Fila]:
         filas.append(("renglon", r.ajustes.nombre, r.ajustes.importes, "", r.ajustes.origen))
     filas.append(("total", "RESULTADO DEL PERIODO", r.resultado(), "", None))
     return filas
+
+
+def _rubros_contables() -> None:
+    """De dónde salen los rubros (Gastos de vida, Impuestos…) y dónde se cambian."""
+    izquierda, derecha = st.columns([3, 1], vertical_alignment="center")
+    izquierda.caption(
+        "Los **rubros contables** (Ingresos por tu trabajo, Gastos de vida, Gastos financieros, Impuestos…) juntan "
+        "tus subcategorías. TALLY acomoda cada una sola por su nombre y su categoría; tú puedes moverlas o crear tus "
+        "propios rubros en **Categorías › Contabilidad**. Mover una no cambia ningún total: solo cómo se agrupa.")
+    with derecha:
+        enlace("categorias", "Ver o cambiar los rubros", "🏷️")
 
 
 # --------------------------------------------------------- flujo de efectivo
@@ -275,7 +296,9 @@ def _flujo(f: cb.Flujo) -> None:
     if not f.cuadra:
         st.error("El flujo no cuadra con tus saldos: revisa la bitácora o restaura un respaldo.")
     st.caption("Cuenta como efectivo: " + (", ".join(f.cuentas) or "ninguna cuenta todavía") + ". Positivo = "
-               "entró, negativo = salió. Pasar dinero entre esas cuentas no cambia tu efectivo.")
+               "entró, negativo = salió. Pasar dinero entre esas cuentas no cambia tu efectivo. **Tu día a día** va "
+               "por rubro contable, como lo presenta un contador (cobros por tu trabajo, pagos de impuestos…); el "
+               "detalle por categoría está en el Estado de Resultados.")
     if f.gasto_con_tarjeta[0]:
         st.info(f"Gastaste {formato.dinero_md(f.gasto_con_tarjeta[0])} con tarjeta de crédito en el periodo: ya es "
                 "gasto en el Estado de Resultados, pero aquí aparece hasta que pagas la tarjeta. Por eso el "
@@ -312,7 +335,8 @@ def _balanza(b: cb.Balanza, contra: cb.Balanza | None = None) -> None:
     tabla = _tabla_balanza(vista, vista_contra)
     renglones = ([x.cuenta for x in cb.comparar_balanzas(vista, vista_contra)] if vista_contra
                  else vista.cuentas)
-    columnas = [c for c in tabla.columns if c not in ("Naturaleza", "Cuenta", "Origen / Aplicación", "Lectura")]
+    columnas = [c for c in tabla.columns if c not in ("Naturaleza", "Rubro", "Cuenta", "Origen / Aplicación",
+                                                       "Lectura")]
     mostrada, config = formato.tabla_en_pesos(tabla, columnas, fijar="Cuenta")
     config[CAMBIO] = st.column_config.TextColumn(
         alignment="right", help="Saldo final menos saldo inicial de este mismo periodo, en el sentido de la cuenta "
@@ -325,6 +349,10 @@ def _balanza(b: cb.Balanza, contra: cb.Balanza | None = None) -> None:
         config[DIFERENCIA] = st.column_config.TextColumn(
             alignment="right", help="Este periodo menos el anterior: positivo si ahora tienes, debes, ganas o "
                                     "gastas más.")
+    config["Rubro"] = st.column_config.TextColumn(
+        help="Dónde cae cada renglón en tus estados. Una cuenta, en su grupo del Estado de Situación, según su tipo "
+             "(débito → Efectivo y bancos, tarjeta → Tarjetas de crédito…). Una subcategoría, en su rubro contable "
+             "del Estado de Resultados (lo cambias en Categorías › Contabilidad).")
     config["Origen / Aplicación"] = st.column_config.TextColumn(
         help="Solo en cuentas de balance. Origen: de ahí salieron recursos (bajó un activo, o creció una deuda o "
              "tu patrimonio). Aplicación: ahí se usaron (creció un activo o bajó una deuda).")
@@ -348,7 +376,7 @@ def _balanza(b: cb.Balanza, contra: cb.Balanza | None = None) -> None:
 
 
 def _exportable(filas: list[Fila], columnas: list[str]) -> pd.DataFrame:
-    datos = {"Concepto": [f[1] for f in filas]}
+    datos = {"Concepto": [SANGRIA * SANGRIAS.get(f[0], 0) + f[1] for f in filas]}
     for i, nombre in enumerate(columnas):
         datos[nombre] = [float(f[2][i]) if f[2] and (f[0] != "titulo" or any(f[2])) else None for f in filas]
     return pd.DataFrame(datos)
@@ -371,6 +399,7 @@ def _tabla_balanza(b: cb.Balanza, contra: cb.Balanza | None = None) -> pd.DataFr
     sumas = b.sumas()
     datos = {
         "Naturaleza": [c.naturaleza for c in cuentas] + [""],
+        "Rubro": [c.rubro for c in cuentas] + [""],
         "Cuenta": [c.nombre for c in cuentas] + ["SUMAS IGUALES"],
         "Saldo inicial deudor": [deudor(c.inicial) for c in cuentas] + [float(sumas.get("inicial_deudor", 0))],
         "Saldo inicial acreedor": [acreedor(c.inicial) for c in cuentas] + [float(sumas.get("inicial_acreedor", 0))],

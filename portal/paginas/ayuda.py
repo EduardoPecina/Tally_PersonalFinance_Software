@@ -63,6 +63,11 @@ COMO_HAGO = (
     ("Corregir o borrar un movimiento",
      "**Historial**: busca el movimiento, selecciónalo (casilla a la izquierda) y usa Editar o Eliminar. Todo queda "
      "en la bitácora.", "historial", "Ir al Historial"),
+    ("Ver de dónde sale cada número de mi contabilidad",
+     "**Categorías › Contabilidad**: un mapa de qué forma cada reporte y una caja por **rubro contable** (Gastos de "
+     "vida, Gastos financieros, Impuestos…) con sus subcategorías. TALLY las acomoda solas; para mover una, agrégala en "
+     "otra caja. También puedes crear tus propios rubros. Ningún total cambia: solo cómo se agrupa.",
+     "categorias", "Ir a Categorías"),
     ("Encontrar errores en mis datos",
      "**Salud de tus datos**: movimientos que parecen duplicados, cuentas en negativo, fechas de otro año, tarjetas "
      "con datos incompletos… Cada cosa dice dónde se arregla.", "salud", "Ir a Salud de tus datos"),
@@ -94,6 +99,8 @@ PALABRAS = (
                   "comprobante."),
     ("Regla automática", "«Si la descripción dice esto, va a esta subcategoría»: así TALLY acomoda solo lo que "
                          "importas o registras."),
+    ("Rubro contable", "Un renglón de tus estados financieros que junta subcategorías: «Gastos financieros» junta "
+                       "intereses, comisiones y anualidades. Lo ves y lo cambias en Categorías › Contabilidad."),
 )
 
 

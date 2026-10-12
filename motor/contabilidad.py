@@ -10,7 +10,9 @@ Convención (la de cualquier contabilidad): una partida positiva va al **Debe** 
   cobrar → Activo (por cobrar): cuando te pagan, la cuenta queda en ceros (se compensa). Bienes (casa, auto,
   laptop) → Activo (bienes), a su costo, menos su depreciación acumulada, más o menos su plusvalía por avalúos.
   Tarjeta de crédito → **Pasivo** a corto plazo.
-- Subcategorías de ingreso y de gasto → **Resultados** (cada subcategoría es una subcuenta de su categoría).
+- Subcategorías de ingreso y de gasto → **Resultados** (cada subcategoría es una subcuenta de su categoría), juntas
+  en **rubros contables** (Ingresos por tu trabajo, Gastos de vida, Gastos financieros, Impuestos… y los del usuario;
+  motor/rubros_contables.py). Cambiar una subcategoría de rubro solo cambia cómo se agrupa: nada deja de cuadrar.
 - «SALDO INICIAL» → **Patrimonio** con el que empezaste a usar TALLY. «AJUSTE DE SALDO» → resultado (diferencias).
 - Patrimonio = patrimonio inicial + resultados acumulados. Por la partida doble, Activo = Pasivo + Patrimonio
   siempre (si no, hay un error y el reporte lo dice).
@@ -35,7 +37,7 @@ from dataclasses import dataclass, field, replace
 from datetime import date, timedelta
 from decimal import Decimal
 
-from motor import bienes, prestamos, reportes
+from motor import bienes, prestamos, reportes, rubros_contables
 from motor.consultas import ETIQUETA_TIPO_OPERACION
 from motor.dinero import a_centavos, a_pesos, formatear
 from motor.libro import Libro
@@ -71,6 +73,7 @@ RENDIMIENTOS_INVERSION = "Rendimientos y cambios de valor de tus inversiones"
 DEPRECIACION = "Depreciación de tus bienes"
 PLUSVALIA = "Plusvalía (o minusvalía) por avalúos"
 VENTA_BIENES = "Ganancia o pérdida al vender bienes"
+CAMBIOS_DE_VALOR = "Cambios de valor"
 
 DEPRECIADO, AVALUADO = "depreciacion", "plusvalia"
 
@@ -145,6 +148,7 @@ def movimientos(libro: Libro, origen: Origen | None) -> list[Movimiento]:
     if origen.calculado:
         return _calculados(libro, origen)
     efectivo = {c.id for c in libro.cuentas() if es_efectivo(c)} if origen.flujo is not None else set()
+    contable = rubros_contables.asignaciones(libro) if origen.flujo is not None else {}
     filas = []
     for op in libro.operaciones(origen.desde, origen.hasta):
         if origen.flujo is not None:
@@ -152,8 +156,8 @@ def movimientos(libro: Libro, origen: Origen | None) -> list[Movimiento]:
                 continue
             seccion, nombre = origen.flujo
             propias = [p for p in op.partidas if p.cuenta_id not in efectivo
-                       and (seccion is None or _concepto_de_flujo(libro, p)[0] == seccion)
-                       and (nombre is None or _concepto_de_flujo(libro, p)[1] == nombre)]
+                       and (seccion is None or _concepto_de_flujo(libro, p, contable)[0] == seccion)
+                       and (nombre is None or _concepto_de_flujo(libro, p, contable)[1] == nombre)]
             centavos = -sum(p.importe for p in propias)
             otras = [p for p in op.partidas if p.cuenta_id in efectivo]
         else:
@@ -323,6 +327,7 @@ class Renglon:
     nombre: str
     importes: tuple[Decimal, ...]
     origen: Origen | None = field(default=None, compare=False)
+    seccion: str = ""                   # en Resultados: el rubro contable (Gastos de vida, Impuestos…)
 
 
 @dataclass(frozen=True, slots=True)
@@ -442,11 +447,13 @@ class Resultados:
 
 
 def resultados(libro: Libro, periodos: list[tuple[date, date]]) -> Resultados:
-    """Ingresos y gastos por categoría y subcategoría (los reembolsos restan del gasto) en cada periodo."""
+    """Ingresos y gastos por rubro contable, categoría y subcategoría (los reembolsos restan del gasto) en cada
+    periodo."""
     n = len(periodos)
-    ingresos: dict[tuple[str, str], list[int]] = defaultdict(lambda: [0] * n)
-    gastos: dict[tuple[str, str], list[int]] = defaultdict(lambda: [0] * n)
-    ids: dict[tuple[str, str], set[str]] = defaultdict(set)
+    contable = rubros_contables.asignaciones(libro)
+    ingresos: dict[tuple[str, str, str], list[int]] = defaultdict(lambda: [0] * n)
+    gastos: dict[tuple[str, str, str], list[int]] = defaultdict(lambda: [0] * n)
+    ids: dict[tuple[str, str, str], set[str]] = defaultdict(set)
     rendimientos, ajustes, ventas = [0] * n, [0] * n, [0] * n
     depreciacion, plusvalia = [Decimal(0)] * n, [Decimal(0)] * n
     for i, (desde, hasta) in enumerate(periodos):
@@ -454,7 +461,8 @@ def resultados(libro: Libro, periodos: list[tuple[date, date]]) -> Resultados:
             inversion = _es_rendimiento_de_inversion(libro, op)
             for p in op.partidas_de_categoria():
                 categoria = libro.categoria(p.categoria_id)
-                clave = (reportes._nombre_rubro(libro, categoria.id), categoria.nombre)
+                rubro = contable.get(categoria.id)
+                clave = (rubro.id if rubro else "", reportes._nombre_rubro(libro, categoria.id), categoria.nombre)
                 if p.categoria_id == CATEGORIA_AJUSTE:
                     ajustes[i] -= p.importe
                 elif p.categoria_id == CATEGORIA_BIENES:
@@ -487,22 +495,26 @@ def resultados(libro: Libro, periodos: list[tuple[date, date]]) -> Resultados:
     ]
     return Resultados(
         tuple(periodos),
-        _renglones(INGRESO, ingresos, ids, Origen(desde, hasta, -1, inversion=False)),
-        _renglones(GASTO, gastos, ids, Origen(desde, hasta, 1)),
+        _renglones(libro, INGRESO, ingresos, ids, Origen(desde, hasta, -1, inversion=False)),
+        _renglones(libro, GASTO, gastos, ids, Origen(desde, hasta, 1)),
         cambios,
         Renglon(GASTO, "", AJUSTES, tuple(a_pesos(v) for v in ajustes),
                 Origen(desde, hasta, -1, categorias=frozenset({CATEGORIA_AJUSTE}))))
 
 
-def _renglones(naturaleza: str, valores: dict[tuple[str, str], list[int]], ids: dict, base: Origen) -> list[Renglon]:
-    """Ordenados por el total de su categoría y luego por el suyo, de mayor a menor."""
-    por_grupo: dict[str, int] = defaultdict(int)
-    for (grupo, _), v in valores.items():
-        por_grupo[grupo] += v[0]
+def _renglones(libro: Libro, naturaleza: str, valores: dict[tuple[str, str, str], list[int]], ids: dict,
+               base: Origen) -> list[Renglon]:
+    """En el orden de sus rubros contables; dentro, por el total de su categoría y luego por el suyo, de mayor a
+    menor."""
+    rubros = {r.id: (i, r.nombre) for i, r in enumerate(libro.rubros_contables())}
+    por_grupo: dict[tuple[str, str], int] = defaultdict(int)
+    for (rubro, grupo, _), v in valores.items():
+        por_grupo[(rubro, grupo)] += v[0]
     orden = sorted((k for k, v in valores.items() if any(v)),
-                   key=lambda k: (-por_grupo[k[0]], k[0], -valores[k][0], k[1]))
-    return [Renglon(naturaleza, g, n, tuple(a_pesos(x) for x in valores[(g, n)]),
-                    replace(base, categorias=frozenset(ids[(g, n)]))) for g, n in orden]
+                   key=lambda k: (rubros.get(k[0], (10**6, ""))[0], -por_grupo[k[:2]], k[1], -valores[k][0], k[2]))
+    return [Renglon(naturaleza, g, n, tuple(a_pesos(x) for x in valores[(r, g, n)]),
+                    replace(base, categorias=frozenset(ids[(r, g, n)])), rubros.get(r, (0, ""))[1])
+            for r, g, n in orden]
 
 
 # ------------------------------------------------------- flujo de efectivo
@@ -548,6 +560,7 @@ class Flujo:
 def flujo(libro: Libro, periodos: list[tuple[date, date]]) -> Flujo:
     """Cuánto efectivo había, cuánto entró y salió (y por qué) y cuánto quedó, en cada periodo."""
     efectivo = {c.id for c in libro.cuentas() if es_efectivo(c)}
+    contable = rubros_contables.asignaciones(libro)
     lineas: dict[tuple[str, str], list[int]] = defaultdict(lambda: [0] * len(periodos))
     tarjeta = [0] * len(periodos)
     for i, (desde, hasta) in enumerate(periodos):
@@ -560,11 +573,13 @@ def flujo(libro: Libro, periodos: list[tuple[date, date]]) -> Flujo:
             for p in op.partidas:
                 if p.cuenta_id in efectivo:
                     continue
-                lineas[_concepto_de_flujo(libro, p)][i] -= p.importe      # lo que la contrapartida da o recibe
+                lineas[_concepto_de_flujo(libro, p, contable)][i] -= p.importe   # lo que la contrapartida da o recibe
     desde, hasta = periodos[0]
+    orden_rubros = {f"{q}: {r.nombre}": i for i, r in enumerate(libro.rubros_contables()) for q in _QUE.values()}
     renglones = [Renglon(s, s, n, tuple(a_pesos(x) for x in v), Origen(desde, hasta, flujo=(s, n)))
                  for (s, n), v in sorted(lineas.items(),
-                                         key=lambda kv: (SECCIONES_FLUJO.index(kv[0][0]), -abs(kv[1][0]), kv[0][1]))
+                                         key=lambda kv: (SECCIONES_FLUJO.index(kv[0][0]),
+                                                         orden_rubros.get(kv[0][1], 10**6), -abs(kv[1][0]), kv[0][1]))
                  if any(v)]
     inicial = tuple(a_pesos(sum(libro.saldo_centavos(c, d - timedelta(days=1)) for c in efectivo))
                     for d, _ in periodos)
@@ -573,15 +588,21 @@ def flujo(libro: Libro, periodos: list[tuple[date, date]]) -> Flujo:
     return Flujo(tuple(periodos), inicial, renglones, final, nombres, tuple(a_pesos(t) for t in tarjeta))
 
 
-def _concepto_de_flujo(libro: Libro, p) -> tuple[str, str]:
+_QUE = {ClaseCategoria.INGRESO: "Cobraste", ClaseCategoria.GASTO: "Pagaste"}
+
+
+def _concepto_de_flujo(libro: Libro, p, contable: dict | None = None) -> tuple[str, str]:
+    """(sección, concepto). Tu día a día va por rubro contable («Pagaste: Gastos financieros»), como en un flujo de
+    efectivo por el método directo; ``contable`` es :func:`rubros_contables.asignaciones` (para no calcularlo en
+    cada partida)."""
     if p.categoria_id is not None:
         if p.categoria_id == CATEGORIA_SALDO_INICIAL:
             return FLUJO_AJUSTES, "Saldo inicial de cuentas nuevas"
         if p.categoria_id in (CATEGORIA_AJUSTE, CATEGORIA_BIENES):
             return FLUJO_AJUSTES, AJUSTES
         categoria = libro.categoria(p.categoria_id)
-        que = "Cobraste" if categoria.clase is ClaseCategoria.INGRESO else "Pagaste"
-        return DIA_A_DIA, f"{que}: {reportes._nombre_rubro(libro, categoria.id)}"
+        rubro = (contable or {}).get(categoria.id) or rubros_contables.de(libro, categoria.id)
+        return DIA_A_DIA, f"{_QUE[categoria.clase]}: {rubro.nombre}"
     cuenta = libro.cuenta(p.cuenta_id)
     if cuenta.tipo is TipoCuenta.CREDITO:
         return FLUJO_TARJETAS, cuenta.nombre
@@ -608,6 +629,7 @@ class CuentaBalanza:
     debe: Decimal
     haber: Decimal
     origen: Origen | None = field(default=None, compare=False)
+    rubro: str = ""             # dónde cae: grupo del balance (Efectivo y bancos…) o rubro contable (Impuestos…)
 
     @property
     def final(self) -> Decimal:
@@ -680,17 +702,18 @@ class Balanza:
                 and s.get("final_deudor", 0) == s.get("final_acreedor", 0))
 
     def por_categoria(self) -> Balanza:
-        """Las subcuentas (subcategorías) sumadas en su cuenta (categoría)."""
-        juntas: dict[tuple[str, str], list] = {}
+        """Las subcuentas (subcategorías) sumadas en su cuenta (categoría), dentro de su rubro contable: una categoría
+        con subcategorías en dos rubros (FINANZAS: intereses e impuestos) sale una vez en cada uno."""
+        juntas: dict[tuple[str, str, str], list] = {}
         for c in self.cuentas:
-            clave = (c.naturaleza, c.categoria or c.nombre)
+            clave = (c.naturaleza, c.rubro, c.categoria or c.nombre)
             previo = juntas.setdefault(clave, [Decimal(0), Decimal(0), Decimal(0), []])
             previo[0] += c.inicial
             previo[1] += c.debe
             previo[2] += c.haber
             previo[3].append(c.origen)
-        return Balanza(self.desde, self.hasta, [CuentaBalanza(n, nombre, "", i, d, h, unir(o))
-                                                for (n, nombre), (i, d, h, o) in juntas.items()])
+        return Balanza(self.desde, self.hasta, [CuentaBalanza(n, nombre, "", i, d, h, unir(o), rubro)
+                                                for (n, rubro, nombre), (i, d, h, o) in juntas.items()])
 
 
 _ORDEN_NATURALEZA = (ACTIVO, PASIVO, PATRIMONIO, INGRESO, GASTO)
@@ -711,17 +734,17 @@ class Comparada:
 def comparar_balanzas(actual: Balanza, anterior: Balanza) -> list[Comparada]:
     """Los renglones de ``actual`` con el saldo final de cada cuenta en ``anterior``. Las cuentas que solo tuvieron
     saldo o movimientos en el otro periodo (un gasto que este año no hubo) se agregan en ceros, en su grupo."""
-    previos = {(c.naturaleza, c.nombre): c for c in anterior.cuentas}
-    vistos = {(c.naturaleza, c.nombre) for c in actual.cuentas}
-    faltan = [CuentaBalanza(c.naturaleza, c.nombre, c.categoria, Decimal(0), Decimal(0), Decimal(0))
-              for c in anterior.cuentas if (c.naturaleza, c.nombre) not in vistos]
+    previos = {(c.naturaleza, c.rubro, c.nombre): c for c in anterior.cuentas}
+    vistos = {(c.naturaleza, c.rubro, c.nombre) for c in actual.cuentas}
+    faltan = [CuentaBalanza(c.naturaleza, c.nombre, c.categoria, Decimal(0), Decimal(0), Decimal(0), rubro=c.rubro)
+              for c in anterior.cuentas if (c.naturaleza, c.rubro, c.nombre) not in vistos]
     filas = []
     for naturaleza in _ORDEN_NATURALEZA:
         filas += [c for c in actual.cuentas if c.naturaleza == naturaleza]
         filas += [c for c in faltan if c.naturaleza == naturaleza]
     filas += [c for c in actual.cuentas if c.naturaleza not in _ORDEN_NATURALEZA]
-    return [Comparada(c, previos[(c.naturaleza, c.nombre)].natural if (c.naturaleza, c.nombre) in previos
-                      else Decimal(0)) for c in filas]
+    return [Comparada(c, previos[(c.naturaleza, c.rubro, c.nombre)].natural
+                      if (c.naturaleza, c.rubro, c.nombre) in previos else Decimal(0)) for c in filas]
 
 
 def balanza(libro: Libro, desde: date, hasta: date) -> Balanza:
@@ -732,6 +755,8 @@ def balanza(libro: Libro, desde: date, hasta: date) -> Balanza:
     como asientos calculados.
     """
     antes = desde - timedelta(days=1)
+    contable = rubros_contables.asignaciones(libro)
+    de_cuenta = {c.id: clasificar_cuenta(c, libro, hasta) for c in libro.cuentas()}
     inicial: dict[tuple, int] = defaultdict(int)
     debe: dict[tuple, int] = defaultdict(int)
     haber: dict[tuple, int] = defaultdict(int)
@@ -739,7 +764,7 @@ def balanza(libro: Libro, desde: date, hasta: date) -> Balanza:
     previos = 0
     for op in libro.operaciones(hasta=hasta):
         for p in op.partidas:
-            clave = _clave_balanza(libro, p)
+            clave = _clave_balanza(libro, p, contable, de_cuenta)
             origenes.setdefault(clave, _origen_balanza(p, desde, hasta))
             if op.fecha <= antes:
                 if clave[0] in (INGRESO, GASTO):
@@ -770,41 +795,47 @@ def balanza(libro: Libro, desde: date, hasta: date) -> Balanza:
         d0, d1 = a_centavos(v0.depreciacion), a_centavos(v1.depreciacion)
         r0, r1 = a_centavos(v0.revaluacion), a_centavos(v1.revaluacion)
         if d0 or d1:
-            asentar((ACTIVO, f"Depreciación acumulada · {nombre}", ""), -d0, -(d1 - d0),
+            asentar((ACTIVO, f"Depreciación acumulada · {nombre}", "", BIENES), -d0, -(d1 - d0),
                     Origen(desde, hasta, 1, cuentas=ids, calculado=DEPRECIADO))
-            asentar((GASTO, DEPRECIACION, ""), d0, d1 - d0, Origen(desde, hasta, 1, cuentas=ids, calculado=DEPRECIADO))
+            asentar((GASTO, DEPRECIACION, "", CAMBIOS_DE_VALOR), d0, d1 - d0,
+                    Origen(desde, hasta, 1, cuentas=ids, calculado=DEPRECIADO))
         if r0 or r1:
-            asentar((ACTIVO, f"Plusvalía por avalúos · {nombre}", ""), r0, r1 - r0,
+            asentar((ACTIVO, f"Plusvalía por avalúos · {nombre}", "", BIENES), r0, r1 - r0,
                     Origen(desde, hasta, 1, cuentas=ids, calculado=AVALUADO))
-            asentar((INGRESO, PLUSVALIA, ""), -r0, -(r1 - r0),
+            asentar((INGRESO, PLUSVALIA, "", CAMBIOS_DE_VALOR), -r0, -(r1 - r0),
                     Origen(desde, hasta, 1, cuentas=ids, calculado=AVALUADO))
     if previos:
-        inicial[(PATRIMONIO, RESULTADOS_PREVIOS, "")] += previos
-        origenes[(PATRIMONIO, RESULTADOS_PREVIOS, "")] = _origen_resultados(libro, None, antes)
+        inicial[(PATRIMONIO, RESULTADOS_PREVIOS, "", PATRIMONIO)] += previos
+        origenes[(PATRIMONIO, RESULTADOS_PREVIOS, "", PATRIMONIO)] = _origen_resultados(libro, None, antes)
     claves = set(inicial) | set(debe) | set(haber)
     orden_cuentas = {c.nombre: i for i, c in enumerate(libro.cuentas())}
+    orden_rubros = {r.nombre: i for i, r in enumerate(libro.rubros_contables())}
     filas = [CuentaBalanza(k[0], k[1], k[2], a_pesos(inicial[k]), a_pesos(debe[k]), a_pesos(haber[k]),
-                           origenes.get(k)) for k in claves if inicial[k] or debe[k] or haber[k]]
+                           origenes.get(k), k[3]) for k in claves if inicial[k] or debe[k] or haber[k]]
     filas.sort(key=lambda c: (_ORDEN_NATURALEZA.index(c.naturaleza),
-                              orden_cuentas.get(c.nombre.split(" · ")[-1], 10**6), c.categoria, c.nombre))
+                              orden_cuentas.get(c.nombre.split(" · ")[-1], 10**6) if c.naturaleza not in (
+                                  INGRESO, GASTO) else orden_rubros.get(c.rubro, 10**6),
+                              c.categoria, c.nombre))
     return Balanza(desde, hasta, filas)
 
 
-def _clave_balanza(libro: Libro, p) -> tuple[str, str, str]:
-    """(naturaleza, nombre, categoría)."""
+def _clave_balanza(libro: Libro, p, contable: dict, de_cuenta: dict) -> tuple[str, str, str, str]:
+    """(naturaleza, nombre, categoría, rubro): el rubro es el grupo del balance de una cuenta (``de_cuenta``, de
+    :func:`clasificar_cuenta`) o el rubro contable de una subcategoría (``contable``)."""
     if p.cuenta_id is not None:
-        cuenta = libro.cuenta(p.cuenta_id)
-        return clasificar_cuenta(cuenta)[0], cuenta.nombre, ""
+        naturaleza, grupo = de_cuenta[p.cuenta_id]
+        return naturaleza, libro.cuenta(p.cuenta_id).nombre, "", grupo
     if p.categoria_id == CATEGORIA_SALDO_INICIAL:
-        return PATRIMONIO, PATRIMONIO_INICIAL, ""
+        return PATRIMONIO, PATRIMONIO_INICIAL, "", PATRIMONIO
     if p.categoria_id == CATEGORIA_AJUSTE:
-        return GASTO, AJUSTES, ""
+        return GASTO, AJUSTES, "", AJUSTES
     if p.categoria_id == CATEGORIA_BIENES:
-        return GASTO, VENTA_BIENES, ""
+        return GASTO, VENTA_BIENES, "", CAMBIOS_DE_VALOR
     categoria = libro.categoria(p.categoria_id)
     rubro = reportes._nombre_rubro(libro, categoria.id)
     naturaleza = INGRESO if categoria.clase is ClaseCategoria.INGRESO else GASTO
-    return naturaleza, f"{rubro} › {categoria.nombre}", rubro
+    contable_ = contable.get(categoria.id) or rubros_contables.de(libro, categoria.id)
+    return naturaleza, f"{rubro} › {categoria.nombre}", rubro, contable_.nombre
 
 
 def _origen_balanza(p, desde: date, hasta: date) -> Origen:

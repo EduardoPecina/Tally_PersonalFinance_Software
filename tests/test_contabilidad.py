@@ -50,14 +50,15 @@ def test_estado_de_resultados_separa_el_dia_a_dia_de_las_inversiones(libro, dato
     assert r.dia_a_dia() == (D(19_300), D(18_500))
     assert r.rendimientos_inversion == (D(150), D(0))              # el ajuste al valor oficial, aparte
     assert r.resultado() == (D(19_450), D(18_500))                 # igual al «Resultado del año» del balance
-    assert [(x.grupo, x.nombre) for x in r.gastos] == [("ALIMENTACION", "ALIMENTOS")]
+    assert [(x.seccion, x.grupo, x.nombre) for x in r.gastos] == [("Gastos de vida", "ALIMENTACION", "ALIMENTOS")]
+    assert [x.seccion for x in r.ingresos] == ["Ingresos por tu trabajo"]
 
 
 def test_flujo_de_efectivo_metodo_directo(libro, datos):
     f = cb.flujo(libro, [ESTE_ANIO, ANIO_PASADO])
     assert f.cuadra and f.inicial == (D(28_500), D(0)) and f.final == (D(43_500), D(28_500))
     lineas = {(r.naturaleza, r.nombre): r.importes for r in f.renglones}
-    assert lineas[(cb.DIA_A_DIA, "Cobraste: SUELDO Y PRESTACIONES")] == (D(20_000), D(20_000))
+    assert lineas[(cb.DIA_A_DIA, "Cobraste: Ingresos por tu trabajo")] == (D(20_000), D(20_000))
     assert lineas[(cb.FLUJO_INVERSIONES, "Inversión Ficticia")] == (D(-5_000), D(0))
     assert lineas[(cb.FLUJO_TARJETAS, "Tarjeta Ficticia")] == (D(0), D(-1_500))   # el gasto salió al pagar
     assert lineas[(cb.FLUJO_AJUSTES, "Saldo inicial de cuentas nuevas")] == (D(0), D(10_000))

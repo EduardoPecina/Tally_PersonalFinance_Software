@@ -37,6 +37,7 @@ from motor.modelo import (
     Partida,
     Perfil,
     Rubro,
+    RubroContable,
     TipoCuenta,
     TipoOperacion,
     TipoOperacionValor,
@@ -44,7 +45,7 @@ from motor.modelo import (
 
 # Tipos de entidad, en el orden en que se cargan.
 ENTIDADES = ("perfil", "grupo", "rubro", "categoria", "cuenta", "operacion", "valor", "plazo", "bien",
-             "prestamo", "recurrente", "meta", "fiscal", "cierre", "regla", "comprobante")
+             "prestamo", "recurrente", "meta", "fiscal", "cierre", "regla", "comprobante", "rubro_contable")
 ID_PERFIL = "perfil"
 ID_FISCAL = "fiscal"
 
@@ -92,7 +93,12 @@ def categoria_a_dict(c: Categoria) -> dict:
         "id": c.id, "nombre": c.nombre, "clase": c.clase.value, "grupo_id": c.grupo_id,
         "activa": c.activa, "principal": c.principal, "orden": c.orden, "rubro_id": c.rubro_id,
         **({"secundario": True} if c.secundario else {}),
+        **({"rubro_contable_id": c.rubro_contable_id} if c.rubro_contable_id else {}),
     }
+
+
+def rubro_contable_a_dict(r: RubroContable) -> dict:
+    return {"id": r.id, "nombre": r.nombre, "clase": r.clase.value, "orden": r.orden}
 
 
 def cuenta_a_dict(c: Cuenta) -> dict:
@@ -163,8 +169,12 @@ def categoria_desde_dict(d: dict) -> Categoria:
         id=d["id"], nombre=d["nombre"], clase=ClaseCategoria(d["clase"]), grupo_id=d.get("grupo_id"),
         activa=d.get("activa", True), principal=d.get("principal", False), orden=d.get("orden", 0),
         rubro_id=d.get("rubro_id"),   # los datos anteriores a la 0.4 no tienen rubros (motor/catalogo.py)
-        secundario=d.get("secundario", False),
+        secundario=d.get("secundario", False), rubro_contable_id=d.get("rubro_contable_id"),
     )
+
+
+def rubro_contable_desde_dict(d: dict) -> RubroContable:
+    return RubroContable(id=d["id"], nombre=d["nombre"], clase=ClaseCategoria(d["clase"]), orden=d.get("orden", 0))
 
 
 def cuenta_desde_dict(d: dict) -> Cuenta:
@@ -400,6 +410,7 @@ def instantanea(libro: Libro, memoria: Memoria | None = None) -> Instantanea:
         "cierre": {c.id: cierre_a_dict(c) for c in libro.cierres()},
         "regla": {r.id: regla_a_dict(r) for r in libro.reglas()},
         "comprobante": {c.id: comprobante_a_dict(c) for c in libro.comprobantes()},
+        "rubro_contable": {r.id: rubro_contable_a_dict(r) for r in libro.rubros_contables_propios()},
     }
 
 
@@ -428,6 +439,7 @@ def libro_desde_instantanea(
             cierres=[cierre_desde_dict(d) for d in datos.get("cierre", {}).values()],
             reglas=[regla_desde_dict(d) for d in datos.get("regla", {}).values()],
             comprobantes=[comprobante_desde_dict(d) for d in datos.get("comprobante", {}).values()],
+            rubros_contables=[rubro_contable_desde_dict(d) for d in datos.get("rubro_contable", {}).values()],
             secuencia=secuencia,
             reloj=reloj,
         )
@@ -449,7 +461,17 @@ def verificar_integridad(libro: Libro) -> list[str]:
     for rubro in rubros.values():
         if rubro.clase is ClaseCategoria.SISTEMA:
             problemas.append(f"la categoría «{rubro.nombre}» no puede ser del sistema")
+    contables = {r.id: r for r in libro.rubros_contables()}
+    for rubro in libro.rubros_contables_propios():
+        if rubro.clase not in (ClaseCategoria.INGRESO, ClaseCategoria.GASTO):
+            problemas.append(f"el rubro contable «{rubro.nombre}» debe ser de ingreso o de gasto")
     for categoria in libro.categorias():
+        if categoria.rubro_contable_id is not None:
+            contable = contables.get(categoria.rubro_contable_id)
+            if contable is None:
+                problemas.append(f"la subcategoría «{categoria.nombre}» apunta a un rubro contable inexistente")
+            elif contable.clase is not categoria.clase:
+                problemas.append(f"la subcategoría «{categoria.nombre}» no es del mismo tipo que su rubro contable")
         if categoria.grupo_id is not None and categoria.grupo_id not in grupos:
             problemas.append(f"la subcategoría «{categoria.nombre}» apunta a una clasificación inexistente")
         if categoria.rubro_id is not None:
