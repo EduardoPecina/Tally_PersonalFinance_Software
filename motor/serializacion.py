@@ -302,7 +302,13 @@ def fiscal_a_dict(f: Fiscal) -> dict:
                        "notas": c.notas, "fuera_del_tope": c.fuera_del_tope} for c in f.conceptos],
         "perfiles": [{"id": p.id, "nombre": p.nombre, "notas": p.notas,
                       "impuestos": [{"nombre": i.nombre, "tasa": str(i.tasa), "sobre": i.sobre,
-                                     "retenido": i.retenido} for i in p.impuestos]} for p in f.perfiles],
+                                     "retenido": i.retenido, **({"a_cargo": True} if i.a_cargo else {})}
+                                    for i in p.impuestos],
+                      **({"subcategorias": list(p.subcategorias), "registro": p.registro,
+                          "frecuencia": p.frecuencia, "dia_limite": p.dia_limite, "meses_despues": p.meses_despues,
+                          "recordatorio_desde": _iso(p.recordatorio_desde) if p.recordatorio_desde else None}
+                         if p.frecuencia or p.subcategorias else {})} for p in f.perfiles],
+        **({"pagados": list(f.pagados)} if f.pagados else {}),
     }
 
 
@@ -315,9 +321,15 @@ def fiscal_desde_dict(d: dict) -> Fiscal:
                         for c in d.get("conceptos", [])),
         perfiles=tuple(PerfilImpuestos(p["id"], p["nombre"],
                                        tuple(Impuesto(i["nombre"], Decimal(i["tasa"]), i.get("sobre", ""),
-                                                      i.get("retenido", False)) for i in p.get("impuestos", [])),
-                                       p.get("notas", "")) for p in d.get("perfiles", [])),
+                                                      i.get("retenido", False), i.get("a_cargo", False))
+                                             for i in p.get("impuestos", [])),
+                                       p.get("notas", ""), tuple(p.get("subcategorias", ())),
+                                       p.get("registro", "recibido"), p.get("frecuencia", ""),
+                                       int(p.get("dia_limite", 17)), int(p.get("meses_despues", 1)),
+                                       _fecha(p["recordatorio_desde"]) if p.get("recordatorio_desde") else None)
+                       for p in d.get("perfiles", [])),
         tope_total=d.get("tope_total"), tope_porcentaje=_decimal(d.get("tope_porcentaje")), notas=d.get("notas", ""),
+        pagados=tuple(d.get("pagados", ())),
     )
 
 

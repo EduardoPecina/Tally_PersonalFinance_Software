@@ -1696,7 +1696,8 @@ def test_impuestos_deducibles_y_recibo_hechos_a_mano_y_borrables(raiz, con_datos
             Impuesto("Retención IVA", Dec(2) / Dec(3) * 100, "IVA", retenido=True)])
     at = abrir(_pagina("impuestos"))
     sin_errores(at)
-    assert [t.label for t in at.tabs][:3] == ["🧾 Gastos deducibles", "🧮 Calcular y revisar un recibo", "⚙️ Configurar"]
+    assert [t.label for t in at.tabs][:4] == ["🧾 Gastos deducibles", "🧮 Calcular y revisar un recibo",
+                                              "📅 Pagos al fisco", "⚙️ Configurar"]
     assert not any(k.key and "plantilla" in k.key for k in at.selectbox)            # sin plantillas
     next(t for t in at.text_input if t.label == "Nombre").input("Médicos")
     next(m for m in at.multiselect if m.label == "Subcategorías que cuentan").set_value([dentista])
@@ -1724,6 +1725,76 @@ def test_impuestos_deducibles_y_recibo_hechos_a_mano_y_borrables(raiz, con_datos
     next(b for b in at.button if b.key == "imp_quitar_deducibles").click().run()
     sin_errores(at)
     assert sesion_en(raiz).libro.fiscal.conceptos == ()
+
+
+def test_perfil_de_impuestos_con_renglones_normales(raiz, con_datos):
+    """Antes era una tabla editable que confundía (había que dar clic en la celda; la casilla seleccionaba el
+    renglón y escondía el ➕). Ahora cada impuesto es un renglón con campos normales."""
+    from decimal import Decimal as Dec
+
+    at = abrir(_pagina("impuestos"))
+    at.text_input(key="imp_nuevo_nombre_perfil").input("RESICO ficticio")
+    at.text_input(key="imp_nuevo_0_nombre").input("IVA")
+    at.text_input(key="imp_nuevo_0_tasa").input("16")
+    at.button(key="imp_nuevo_agregar").click().run()
+    sin_errores(at)
+    at.text_input(key="imp_nuevo_1_nombre").input("Retención IVA")
+    at.text_input(key="imp_nuevo_1_tasa").input("2/3").run()
+    assert at.selectbox(key="imp_nuevo_1_sobre").options == ["(el subtotal)", "IVA"]   # el de arriba, sin escribirlo
+    at.selectbox(key="imp_nuevo_1_sobre").set_value("IVA")
+    at.selectbox(key="imp_nuevo_1_efecto").set_value("Se retiene (se resta)")
+    at.button(key="imp_nuevo_guardar").click().run()
+    sin_errores(at)
+    (perfil,) = sesion_en(raiz).libro.fiscal.perfiles
+    assert perfil.nombre == "RESICO ficticio"
+    assert [(i.nombre, i.tasa.quantize(Dec("0.01")), i.sobre, i.retenido) for i in perfil.impuestos] == [
+        ("IVA", Dec("16.00"), "", False), ("Retención IVA", Dec("66.67"), "IVA", True)]
+    assert at.text_input(key="imp_nuevo_nombre_perfil").value == ""                   # el formulario se limpia
+
+    # Al editarlo aparecen sus renglones; se puede quitar uno.
+    assert at.text_input(key=f"imp_{perfil.id}_1_nombre").value == "Retención IVA"
+    at.button(key=f"imp_{perfil.id}_1_quitar").click().run()
+    at.button(key=f"imp_{perfil.id}_guardar").click().run()
+    sin_errores(at)
+    assert [i.nombre for i in sesion_en(raiz).libro.fiscal.perfiles[0].impuestos] == ["IVA"]
+
+
+def test_recordatorio_de_pago_al_fisco(raiz, con_datos):
+    from motor import impuestos
+    from motor.modelo import Impuesto
+
+    s = sesion_en(raiz)
+    hoy = s.libro.hoy()
+    mes_pasado = hoy.replace(day=1) - timedelta(days=1)
+    with s.cambio() as lib:
+        honorarios = next(c.id for c in lib.categorias() if c.nombre == "HONORARIOS")
+        movimientos.registrar_ingreso(lib, mes_pasado.replace(day=10), con_datos["debito"], honorarios, 10_000,
+                                      "Cliente ficticio")
+        perfil_ = impuestos.guardar_perfil(lib, "RESICO ficticio", [Impuesto("ISR", Decimal("1.25"), a_cargo=True),
+                                                                    Impuesto("IVA", Decimal(16))])
+    # Se configura desde el formulario del perfil.
+    at = abrir(_pagina("impuestos"))
+    at.selectbox(key=f"imp_{perfil_.id}_frecuencia").set_value("mensual").run()
+    at.multiselect(key=f"imp_{perfil_.id}_subcategorias").set_value([honorarios])
+    at.radio(key=f"imp_{perfil_.id}_registro").set_value("subtotal")
+    at.number_input(key=f"imp_{perfil_.id}_meses").set_value(2)
+    at.button(key=f"imp_{perfil_.id}_guardar").click().run()
+    sin_errores(at)
+    guardado = sesion_en(raiz).libro.fiscal.perfiles[0]
+    assert (guardado.frecuencia, guardado.subcategorias, guardado.registro) == ("mensual", (honorarios,), "subtotal")
+
+    # El Resumen lo recuerda; «Ya lo pagué» solo deja de recordarlo.
+    at = abrir()
+    (aviso,) = [w.value.replace("\\$", "$") for w in at.warning if "al fisco" in w.value]
+    assert "$1,725.00 al fisco" in aviso and "ISR $125.00 · IVA $1,600.00" in aviso
+    at.button(key=f"fisco_pagado_{perfil_.id}:{mes_pasado:%Y-%m}").click().run()
+    sin_errores(at)
+    assert not [w for w in at.warning if "al fisco" in w.value]
+    assert len(sesion_en(raiz).libro.operaciones()) == 7                     # no registró nada
+
+    at.switch_page(_pagina("impuestos")).run()
+    tabla = next(d.value for d in at.dataframe if "A pagar" in d.value.columns)
+    assert list(tabla["Estado"])[:2] == ["En curso", "Pagado ✓"] and list(tabla["A pagar"])[1] == "$1,725.00"
 
 
 def test_impuestos_con_un_deducible_que_apunta_a_una_subcategoria_borrada(raiz, con_datos):

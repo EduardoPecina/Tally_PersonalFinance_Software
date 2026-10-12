@@ -12,7 +12,7 @@ from portal.componentes import estado, formato, graficas, por_recuperar
 from portal.componentes import tarjeta as estado_tarjeta
 from portal.componentes.sesion import libro
 from portal.navegacion import enlace
-from portal.paginas import ayuda, calendario, presupuestos, salud
+from portal.paginas import ayuda, calendario, impuestos, presupuestos, salud
 
 PERSONALIZADO = "personalizado"
 PERIODOS = {**reportes.PERIODOS, PERSONALIZADO: "Elegir fechas"}
@@ -150,6 +150,7 @@ def mostrar() -> None:
         return
 
     _avisos()
+    impuestos.aviso_en_el_resumen()
     _recordar_cierre()
     salud.aviso_en_el_resumen()
     ayuda.tarjeta_en_el_resumen()

@@ -440,6 +440,7 @@ class Impuesto:
     tasa: Decimal                        # en %
     sobre: str = ""                      # "" = sobre el subtotal; o el nombre de otro impuesto (p. ej. 2/3 del IVA)
     retenido: bool = False               # True: se resta (retención); False: se suma (traslado)
+    a_cargo: bool = False                # True: lo pagas tú directo al fisco; no cambia el recibo (ISR del RESICO)
 
 
 @dataclass(frozen=True, slots=True)
@@ -450,6 +451,13 @@ class PerfilImpuestos:
     nombre: str
     impuestos: tuple[Impuesto, ...]
     notas: str = ""
+    # Recordatorio de pago al fisco (motor/impuestos.py, «Pagos al fisco»). Sin frecuencia, no hay recordatorio.
+    subcategorias: tuple[str, ...] = ()  # los ingresos a los que aplica (HONORARIOS, FREELANCE…)
+    registro: str = "recibido"           # cómo registras esos ingresos: "recibido" (con impuestos) o "subtotal"
+    frecuencia: str = ""                 # "", mensual, bimestral, trimestral, semestral o anual
+    dia_limite: int = 17                 # el día del mes en que vence
+    meses_despues: int = 1               # cuántos meses después de que termina el periodo (1 = el mes siguiente)
+    recordatorio_desde: date | None = None   # cuándo lo configuraste: solo se avisan pagos que vencen desde entonces
 
 
 @dataclass(frozen=True, slots=True)
@@ -475,3 +483,4 @@ class Fiscal:
     tope_total: int | None = None          # centavos al año, para todos los deducibles juntos
     tope_porcentaje: Decimal | None = None  # % de tu ingreso del año
     notas: str = ""
+    pagados: tuple[str, ...] = ()          # pagos al fisco que marcaste como pagados («perfil_id:2026-10»)
