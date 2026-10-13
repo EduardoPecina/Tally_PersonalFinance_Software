@@ -156,6 +156,29 @@ def test_historial_filtra_y_conserva_filtros(con_datos):
     assert at.dataframe[0].value.shape[0] == 6
 
 
+def test_historial_las_subcategorias_siguen_al_tipo(raiz, con_datos):
+    from motor import categorias
+    from motor.modelo import ClaseCategoria
+
+    lib = sesion_en(raiz).libro
+    clase = {categorias.etiqueta(lib, c.id): c.clase for c in lib.categorias()}       # las opciones, por su etiqueta
+    at = abrir(_pagina("historial"))
+    subcategorias = at.multiselect(key="_w_historial_categorias")
+    assert {clase[o] for o in subcategorias.options} == {ClaseCategoria.GASTO, ClaseCategoria.INGRESO,
+                                                              ClaseCategoria.SISTEMA}       # sin tipos: todas
+    despensa = categorias.buscar(lib, "DESPENSA").id
+    subcategorias.set_value([despensa]).run()
+    at.multiselect(key="_w_historial_tipos").set_value(["ingreso"]).run()        # solo ingresos
+    sin_errores(at)
+    subcategorias = at.multiselect(key="_w_historial_categorias")
+    assert {clase[o] for o in subcategorias.options} == {ClaseCategoria.INGRESO}
+    assert subcategorias.value == []                                 # DESPENSA (de gasto) ya no aplica
+    assert set(at.dataframe[0].value["Tipo"]) == {"Ingreso"}
+    at.multiselect(key="_w_historial_tipos").set_value(["transferencia"]).run()
+    sin_errores(at)
+    assert at.multiselect(key="_w_historial_categorias").disabled   # las transferencias no llevan subcategoría
+
+
 def test_con_decadas_de_datos_los_filtros_de_fecha_llegan_al_primer_movimiento(raiz, con_datos):
     """El calendario solo deja ir 10 años atrás si no se le dice otra cosa."""
     s = sesion_en(raiz)

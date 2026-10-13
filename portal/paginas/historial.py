@@ -21,7 +21,6 @@ CON_SIGNO = (TipoOperacion.AJUSTE, TipoOperacion.RENDIMIENTO, TipoOperacion.SALD
 def _filtros() -> dict:
     lib = libro()
     todas_cuentas = {c.id: c.nombre for c in cuentas.listar(lib, incluir_archivadas=True)}
-    todas_categorias = {c.id: categorias.etiqueta(lib, c.id) for c in categorias.ordenadas(lib, lib.categorias())}
 
     texto = estado.control(FILTROS, "texto", "", lambda k: st.text_input(
         "Buscar", key=k, placeholder="Descripción, notas, cuenta, categoría o subcategoría…"))
@@ -30,11 +29,17 @@ def _filtros() -> dict:
         sel_cuentas = estado.control(FILTROS, "cuentas", [], lambda k: st.multiselect(
             "Cuentas", list(todas_cuentas), format_func=todas_cuentas.get, key=k, placeholder="Todas"))
     with col2:
-        sel_categorias = estado.control(FILTROS, "categorias", [], lambda k: st.multiselect(
-            "Subcategorías", list(todas_categorias), format_func=todas_categorias.get, key=k, placeholder="Todas"))
-    with col3:
         sel_tipos = estado.control(FILTROS, "tipos", [], lambda k: st.multiselect(
             "Tipos", list(TipoOperacion), format_func=ETIQUETA_TIPO_OPERACION.get, key=k, placeholder="Todos"))
+    # Las subcategorías siguen a los tipos: con «Ingreso», solo las de ingreso; sin tipos, todas.
+    de_los_tipos = {c.id: categorias.etiqueta(lib, c.id) for c in categorias.para_filtrar(lib, sel_tipos)}
+    _solo_de_los_tipos(de_los_tipos)
+    with col3:
+        sel_categorias = estado.control(FILTROS, "categorias", [], lambda k: st.multiselect(
+            "Subcategorías", list(de_los_tipos), format_func=de_los_tipos.get, key=k, disabled=not de_los_tipos,
+            placeholder=("Todas" if not sel_tipos else "Todas las de ese tipo" if de_los_tipos
+                         else "No aplica: las transferencias no llevan subcategoría"),
+            help="Solo las que corresponden a los tipos que elegiste." if sel_tipos else None))
     col1, col2, col3, col4 = st.columns([2, 2, 2, 2], vertical_alignment="bottom")
     with col1:
         desde = estado.control(FILTROS, "desde", None, lambda k: st.date_input(
@@ -54,9 +59,19 @@ def _filtros() -> dict:
             st.rerun()
     # Quitar de los filtros lo que ya no existe (p. ej. una categoría borrada).
     sel_cuentas = [c for c in sel_cuentas if c in todas_cuentas]
-    sel_categorias = [c for c in sel_categorias if c in todas_categorias]
+    sel_categorias = [c for c in sel_categorias if c in de_los_tipos]
     return {"texto": texto, "cuentas": sel_cuentas, "categorias": sel_categorias, "tipos": sel_tipos,
             "desde": desde, "hasta": hasta, "orden": orden}
+
+
+def _solo_de_los_tipos(opciones: dict) -> None:
+    """Si cambiaste los tipos, quita de las subcategorías elegidas las que ya no corresponden (antes de dibujar el
+    control: Streamlit no deja cambiarlo después)."""
+    clave = f"_w_{FILTROS}_categorias"
+    elegidas = st.session_state.get(clave, estado.recordado(FILTROS, "categorias", []))
+    validas = [c for c in elegidas if c in opciones]
+    if validas != elegidas:
+        st.session_state[clave] = estado.recordar(FILTROS, "categorias", validas)
 
 
 def mostrar() -> None:

@@ -2,6 +2,17 @@
 
 Todos los cambios relevantes de TALLY se documentan aquí.
 
+## [0.27.2] — Sin publicar
+
+- **Historial: las subcategorías siguen al tipo de movimiento.** Al filtrar por **Ingreso**, la lista de
+  Subcategorías ofrecía también las de gasto. Ahora:
+  - Gasto o Reembolso: solo subcategorías de gasto; Ingreso o Rendimiento: solo de ingreso; Ajuste y Saldo inicial:
+    las suyas; con varios tipos, las de todos; sin tipo elegido, todas.
+  - Transferencias y pagos de tarjeta no llevan subcategoría: el filtro dice «No aplica».
+  - Si ya habías elegido subcategorías que no son del tipo nuevo, se quitan solas.
+  - **Tipos** pasa antes de **Subcategorías** (primero eliges el tipo).
+  - Siguen apareciendo las subcategorías archivadas, porque tienen historial.
+
 ## [0.27.1] — Sin publicar
 
 - **Categorías: abrir una categoría ya no tarda.** Desde los botones ⚙️ Administrar (0.26.1), abrir o cerrar una

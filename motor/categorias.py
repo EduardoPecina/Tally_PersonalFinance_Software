@@ -17,10 +17,25 @@ from dataclasses import replace
 from motor import rubros_contables
 from motor.errores import ErrorValidacion
 from motor.libro import Libro
-from motor.modelo import Categoria, ClaseCategoria, Grupo, Partida, Rubro
+from motor.modelo import (
+    CATEGORIA_AJUSTE,
+    CATEGORIA_BIENES,
+    CATEGORIA_SALDO_INICIAL,
+    Categoria,
+    ClaseCategoria,
+    Grupo,
+    Partida,
+    Rubro,
+    TipoOperacion,
+)
 from motor.textos import clave, estandarizar, normalizar_nombre  # noqa: F401 - normalizar_nombre se reexporta
 
 SEPARADOR = " › "
+# Qué subcategorías lleva cada tipo de movimiento (motor/reglas.py lo valida); las transferencias, ninguna.
+_CLASE_DEL_TIPO = {TipoOperacion.GASTO: ClaseCategoria.GASTO, TipoOperacion.REEMBOLSO: ClaseCategoria.GASTO,
+                   TipoOperacion.INGRESO: ClaseCategoria.INGRESO, TipoOperacion.RENDIMIENTO: ClaseCategoria.INGRESO}
+_DEL_SISTEMA = {TipoOperacion.AJUSTE: (CATEGORIA_AJUSTE, CATEGORIA_BIENES),
+                TipoOperacion.SALDO_INICIAL: (CATEGORIA_SALDO_INICIAL,)}
 
 # ------------------------------------------------------------ clasificaciones
 
@@ -247,16 +262,23 @@ def eliminar(libro: Libro, categoria_id: str, *, reasignar_a: str | None = None)
 
 def para_tipo(libro: Libro, tipo) -> list[Categoria]:
     """Subcategorías activas que se pueden elegir para un tipo de movimiento, ordenadas por categoría."""
-    from motor.modelo import TipoOperacion
-
-    tipo = TipoOperacion(tipo)
-    if tipo in (TipoOperacion.GASTO, TipoOperacion.REEMBOLSO):
-        clase = ClaseCategoria.GASTO
-    elif tipo in (TipoOperacion.INGRESO, TipoOperacion.RENDIMIENTO):
-        clase = ClaseCategoria.INGRESO
-    else:
+    clase = _CLASE_DEL_TIPO.get(TipoOperacion(tipo))
+    if clase is None:
         return []
     return ordenadas(libro, [c for c in libro.categorias() if c.clase is clase and c.activa])
+
+
+def para_filtrar(libro: Libro, tipos) -> list[Categoria]:
+    """Las subcategorías que pueden tener movimientos de esos tipos, para filtrar (también las archivadas y las del
+    sistema: los ajustes y los saldos iniciales usan las suyas). Las transferencias no llevan ninguna. Sin tipos:
+    todas."""
+    tipos = {TipoOperacion(t) for t in tipos}
+    todas = ordenadas(libro, libro.categorias())
+    if not tipos:
+        return todas
+    clases = {_CLASE_DEL_TIPO[t] for t in tipos if t in _CLASE_DEL_TIPO}
+    del_sistema = {c for t in tipos for c in _DEL_SISTEMA.get(t, ())}
+    return [c for c in todas if c.clase in clases or c.id in del_sistema]
 
 
 def ordenadas(libro: Libro, lista: list[Categoria]) -> list[Categoria]:

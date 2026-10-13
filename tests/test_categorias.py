@@ -201,6 +201,26 @@ def test_archivar_categoria(libro, ctas, cat):
     movimientos.registrar_ingreso(libro, date(2026, 7, 1), ctas.debito, cat("Bonos"), 100)
 
 
+@pytest.mark.parametrize("tipos, clases, sistema", [
+    ([], {ClaseCategoria.GASTO, ClaseCategoria.INGRESO, ClaseCategoria.SISTEMA}, None),
+    (["gasto"], {ClaseCategoria.GASTO}, set()),
+    (["reembolso"], {ClaseCategoria.GASTO}, set()),
+    (["ingreso", "rendimiento"], {ClaseCategoria.INGRESO}, set()),
+    (["ajuste"], {ClaseCategoria.SISTEMA}, {"sistema-ajuste", "sistema-bienes"}),
+    (["saldo_inicial"], {ClaseCategoria.SISTEMA}, {"sistema-saldo-inicial"}),
+    (["transferencia", "pago_tarjeta"], set(), set()),
+    (["gasto", "ajuste"], {ClaseCategoria.GASTO, ClaseCategoria.SISTEMA}, {"sistema-ajuste", "sistema-bienes"}),
+])
+def test_para_filtrar_solo_las_subcategorias_del_tipo(libro, cat, tipos, clases, sistema):
+    categorias.archivar(libro, cat("BONOS"))
+    elegibles = categorias.para_filtrar(libro, tipos)
+    assert {c.clase for c in elegibles} == clases
+    if sistema is not None:
+        assert {c.id for c in elegibles if c.clase is ClaseCategoria.SISTEMA} == sistema
+    if ClaseCategoria.INGRESO in clases:
+        assert cat("BONOS") in {c.id for c in elegibles}             # las archivadas también tienen historial
+
+
 def test_una_subcategoria_esta_en_una_sola_clasificacion(libro, cat):
     grupo = {g.nombre: g.id for g in libro.grupos()}
     snacks = cat("SNACKS Y ANTOJOS")
