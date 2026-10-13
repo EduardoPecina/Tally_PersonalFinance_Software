@@ -2,6 +2,19 @@
 
 Todos los cambios relevantes de TALLY se documentan aquí.
 
+## [0.27.0] — Sin publicar
+
+- **Los pagos al fisco salen en tu Calendario.** Si tu perfil de impuestos tiene **🔔 Recordatorio de pago al
+  fisco**, lo que te toca pagar aparece en **Calendario › 📅 Próximos 30 días** en su fecha límite (🧾 «Pago al fisco:
+  RESICO…», con «ISR e IVA de lo que cobraste en septiembre»), y **cuenta en cómo quedaría tu dinero** día con día, en
+  «Sale en 30 días» y en «hasta tu próximo pago» del Resumen.
+  - Un periodo que ya terminó: con lo que registraste (o estimado con tu Calendario si no registraste nada).
+  - El que va en curso, si su fecha límite cae en los próximos 30 días: **estimado** con lo que llevas cobrado más
+    lo que esperas cobrar según tus ingresos fijos (sin contar dos veces lo que ya cobraste).
+  - Nueva sección **🧾 Pagos al fisco** abajo de la tabla, con **Ya lo pagué** (como en el Resumen). TALLY sigue sin
+    registrar nada: el pago lo registras tú como gasto en IMPUESTOS.
+  - Solo los que vencen desde que configuraste el recordatorio, y no los que no tienen nada que pagar.
+
 ## [0.26.1] — Sin publicar
 
 - **Categorías: botones ⚙️ Administrar dentro de cada caja.** Ya no hay que bajar hasta «Modificar» y elegir de una

@@ -1887,6 +1887,36 @@ def test_recordatorio_de_pago_al_fisco(raiz, con_datos):
     assert list(tabla["Estado"])[:2] == ["En curso", "Pagado ✓"] and list(tabla["A pagar"])[1] == "$1,725.00"
 
 
+def test_pagos_al_fisco_en_el_calendario(raiz, con_datos):
+    from motor import impuestos
+    from motor.modelo import Impuesto
+
+    s = sesion_en(raiz)
+    hoy = s.libro.hoy()
+    mes_pasado = hoy.replace(day=1) - timedelta(days=1)
+    with s.cambio() as lib:
+        honorarios = next(c.id for c in lib.categorias() if c.nombre == "HONORARIOS")
+        movimientos.registrar_ingreso(lib, mes_pasado.replace(day=10), con_datos["debito"], honorarios, 10_000,
+                                      "Cliente ficticio")
+        impuestos.guardar_perfil(lib, "RESICO ficticio", [Impuesto("ISR", Decimal("1.25"), a_cargo=True),
+                                                          Impuesto("IVA", Decimal(16))], frecuencia="mensual",
+                                 subcategorias=[honorarios], registro="subtotal", dia_limite=hoy.day)   # vence hoy
+    at = abrir(_pagina("calendario"))
+    sin_errores(at)
+    tabla = at.dataframe[0].value
+    fila = tabla[tabla["Qué"].str.contains("Pago al fisco")]
+    assert len(fila) == 1 and "1,725.00" in fila.iloc[0]["Importe"] and fila.iloc[0]["Cuenta"] == "—"
+    assert fila.iloc[0]["Estado"] == "⏳ Pendiente" and "ISR e IVA" in fila.iloc[0]["Detalle"]
+    assert any("Pago al fisco: RESICO ficticio" in m.value for m in at.markdown)
+
+    next(b for b in at.button if (b.key or "").startswith("cal_fisco_")).click().run()     # «Ya lo pagué»
+    sin_errores(at)
+    tabla = at.dataframe[0].value
+    assert tabla[tabla["Qué"].str.contains("Pago al fisco")].iloc[0]["Estado"] == "✅ Pagado"
+    assert not any((b.key or "").startswith("cal_fisco_") for b in at.button)
+    assert len(sesion_en(raiz).libro.operaciones()) == 7                     # no registró nada
+
+
 def test_impuestos_con_un_deducible_que_apunta_a_una_subcategoria_borrada(raiz, con_datos):
     """Datos que quedaron así antes del arreglo (TALLY 0.17.0): la página abre y ya no ofrece la que no existe."""
     from dataclasses import replace

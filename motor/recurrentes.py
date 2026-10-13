@@ -51,7 +51,7 @@ TIPOS = (TipoOperacion.GASTO, TipoOperacion.INGRESO, TipoOperacion.TRANSFERENCIA
 DIAS_DE_GRACIA = 7          # un pago hasta 7 días antes o después cuenta para esa fecha
 DIAS_ATRAS = 14             # en el calendario se ven los pagos de las últimas 2 semanas (pagados o vencidos)
 PAGADO, PENDIENTE, VENCIDO = "pagado", "pendiente", "vencido"
-RECURRENTE, TARJETA, PRESTAMO = "recurrente", "tarjeta", "prestamo"
+RECURRENTE, TARJETA, PRESTAMO, FISCO = "recurrente", "tarjeta", "prestamo", "fisco"
 
 
 # ===================================================================== crear, editar, borrar
@@ -301,7 +301,7 @@ def registrar(libro: Libro, recurrente_id: str, fecha: date, monto=None, *, cuen
 class Evento:
     fecha: date
     nombre: str
-    clase: str                    # RECURRENTE, TARJETA o PRESTAMO
+    clase: str                    # RECURRENTE, TARJETA, PRESTAMO o FISCO
     centavos: int                 # + entra, − sale (en la cuenta del evento)
     cuenta_id: str
     estado: str                   # PAGADO, PENDIENTE o VENCIDO
@@ -310,6 +310,8 @@ class Evento:
     destino_id: str | None = None
     detalle: str = ""
     suscripcion: bool = False
+    clave: str = ""               # un pago al fisco: su periodo (motor/impuestos.py: «Ya lo pagué»)
+    en_curso: bool = False        # un pago al fisco de un periodo que no ha terminado (estimado)
 
 
 def calendario(libro: Libro, hoy: date | None = None, dias: int = 30) -> list[Evento]:
@@ -331,6 +333,7 @@ def calendario(libro: Libro, hoy: date | None = None, dias: int = 30) -> list[Ev
                                   FRECUENCIAS[r.frecuencia], r.suscripcion))
     eventos += _tarjetas(libro, hoy, desde, hasta)
     eventos += _prestamos(libro, hoy, hasta)
+    eventos += _fisco(libro, hoy, desde, hasta)
     orden = {VENCIDO: 0, PENDIENTE: 1, PAGADO: 2}
     return sorted(eventos, key=lambda e: (e.fecha, orden[e.estado], e.nombre.casefold()))
 
@@ -396,6 +399,27 @@ def _prestamos(libro: Libro, hoy: date, hasta: date) -> list[Evento]:
     return eventos
 
 
+def _fisco(libro: Libro, hoy: date, desde: date, hasta: date) -> list[Evento]:
+    """Lo que te toca pagarle al fisco (motor/impuestos.py), en su fecha límite. Pagado: si lo marcaste con «Ya lo
+    pagué» (TALLY no lo busca en tus movimientos)."""
+    from motor import impuestos
+
+    eventos = []
+    for pago in impuestos.proximos(libro, desde, hasta, hoy):
+        en_curso = hoy <= pago.hasta
+        estado = PAGADO if pago.pagado else (VENCIDO if pago.limite < hoy else PENDIENTE)
+        nombres = [i.nombre for i in pago.impuestos if i.a_pagar]
+        que = nombres[-1] if len(nombres) == 1 else (                     # «ISR e IVA», «IVA y PREDIAL»
+            f"{', '.join(nombres[:-1])} {'e' if nombres[-1].casefold().startswith(('i', 'hi')) else 'y'} "
+            f"{nombres[-1]}")
+        detalle = (f"Estimado: {que} de {pago.periodo_texto} (lo que llevas más lo que esperas cobrar)" if en_curso
+                   else f"{que} de lo que cobraste en {pago.periodo_texto}"
+                   + (" (estimado con tu Calendario)" if pago.estimado else ""))
+        eventos.append(Evento(pago.limite, f"Pago al fisco: {pago.perfil.nombre}", FISCO, -a_centavos(pago.total), "",
+                              estado, detalle=detalle, clave=pago.clave, en_curso=en_curso))
+    return eventos
+
+
 # ===================================================================== flujo
 
 
@@ -426,7 +450,7 @@ def efecto(libro: Libro, e: Evento) -> int:
     paga en el pago de la tarjeta, que sí cuenta."""
     if e.estado == PAGADO:
         return 0
-    if e.clase in (TARJETA, PRESTAMO):
+    if e.clase in (TARJETA, PRESTAMO, FISCO):
         return e.centavos
     disponible = libro.cuenta(e.cuenta_id).en_disponible
     if e.destino_id:

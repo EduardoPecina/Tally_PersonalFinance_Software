@@ -214,12 +214,7 @@ AVISO_ESTIMACION = ("Es una estimación con tus tasas: no resta el IVA de tus ga
 
 
 def _periodo_texto(pago: impuestos.PagoAlFisco) -> str:
-    if pago.desde.month == pago.hasta.month:
-        return formato.mes(pago.desde.year, pago.desde.month).lower()
-    if pago.desde.month == 1 and pago.hasta.month == 12:
-        return str(pago.desde.year)
-    cortos = formato.MESES_CORTOS
-    return f"{cortos[pago.desde.month - 1]}–{cortos[pago.hasta.month - 1]} {pago.desde.year}"
+    return pago.periodo_texto
 
 
 def _desglose_texto(pago: impuestos.PagoAlFisco) -> str:
@@ -259,7 +254,8 @@ def _pagos_al_fisco() -> None:
         return
     st.caption("Lo que te toca pagar en cada periodo con lo que registraste en esos ingresos: lo que trasladas (el IVA "
                "que cobraste) y lo que es a tu cargo, menos lo que ya te retuvieron. TALLY no registra nada: cuando "
-               "pagues, regístralo como gasto en IMPUESTOS y márcalo como pagado. " + AVISO_ESTIMACION)
+               "pagues, regístralo como gasto en IMPUESTOS y márcalo como pagado. También sale en tu **Calendario** "
+               "y cuenta en cómo quedaría tu dinero en 30 días. " + AVISO_ESTIMACION)
     for perfil in con_recordatorio:
         pagos = impuestos.pagos_al_fisco(lib, perfil, hoy)
         st.subheader(perfil.nombre, help=_describir(perfil))

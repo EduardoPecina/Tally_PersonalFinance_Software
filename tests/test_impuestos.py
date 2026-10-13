@@ -289,6 +289,55 @@ def test_no_recuerda_pagos_que_vencieron_antes_de_configurarlo(libro, honorarios
     assert editado.recordatorio_desde == date(2026, 11, 20)                    # editarlo no lo reinicia
 
 
+def test_el_pago_al_fisco_sale_en_el_calendario_y_en_el_flujo(libro, ctas, honorarios):
+    from motor import recurrentes
+
+    hoy = date(2026, 11, 5)
+    (evento,) = [e for e in recurrentes.calendario(libro, hoy) if e.clase == recurrentes.FISCO]
+    assert (evento.fecha, evento.centavos, evento.estado, evento.en_curso) == (
+        date(2026, 11, 17), -207_000, recurrentes.PENDIENTE, False)
+    assert evento.nombre == "Pago al fisco: RESICO ficticio"
+    assert evento.detalle == "ISR e IVA de lo que cobraste en octubre 2026"
+    con = recurrentes.flujo(libro, hoy)
+    assert recurrentes.efecto(libro, evento) == -207_000 and con.sale >= 207_000
+    assert dict(con.dias)[date(2026, 11, 16)] - dict(con.dias)[date(2026, 11, 17)] == 207_000   # baja el día límite
+
+    impuestos.marcar_pagado(libro, evento.clave)                                 # «Ya lo pagué»
+    (pagado,) = [e for e in recurrentes.calendario(libro, hoy) if e.clase == recurrentes.FISCO]
+    assert pagado.estado == recurrentes.PAGADO and recurrentes.efecto(libro, pagado) == 0
+    assert recurrentes.flujo(libro, hoy).final == con.final + 207_000
+    assert len(libro.operaciones()) == 2                                       # no registró nada
+
+
+def test_el_periodo_en_curso_se_estima_con_lo_que_falta_cobrar(libro, ctas, cat):
+    from motor import recurrentes
+
+    r = recurrentes.crear(libro, "Honorarios ficticios", "ingreso", 6_960, ctas.debito, "quincenal",
+                          date(2026, 1, 15), categoria_id=cat("HONORARIOS"))
+    recurrentes.registrar(libro, r.id, date(2026, 10, 15))                    # ya cobró la primera quincena
+    impuestos.guardar_perfil(libro, "RESICO ficticio", RESICO_A_PERSONAS, frecuencia="mensual",
+                             subcategorias=[cat("HONORARIOS")], registro="recibido")
+    eventos = [e for e in recurrentes.calendario(libro, date(2026, 10, 20)) if e.clase == recurrentes.FISCO]
+    # Septiembre ya terminó y no registró nada: se estima con el Calendario (y ya venció el 17 de octubre).
+    # Octubre va en curso: lo cobrado (15) más lo que falta (31), sin contar dos veces la quincena del 15.
+    assert [(e.fecha, e.centavos, e.estado, e.en_curso) for e in eventos] == [
+        (date(2026, 10, 17), -207_000, recurrentes.VENCIDO, False),
+        (date(2026, 11, 17), -207_000, recurrentes.PENDIENTE, True)]
+    assert eventos[0].detalle.endswith("(estimado con tu Calendario)")
+    assert eventos[1].detalle.startswith("Estimado: ISR e IVA de octubre 2026")
+    # La tabla de Pagos al fisco (sin ``hoy``) sigue mostrando solo lo registrado del periodo en curso.
+    perfil = libro.fiscal.perfiles[0]
+    assert impuestos.pago_del_periodo(libro, perfil, date(2026, 10, 1), date(2026, 10, 31)).cobrado == D(6_960)
+
+
+def test_sin_recordatorio_no_sale_en_el_calendario(libro, ctas, cat):
+    from motor import recurrentes
+
+    movimientos.registrar_ingreso(libro, date(2026, 10, 10), ctas.debito, cat("HONORARIOS"), 6_960, "Cobro")
+    impuestos.guardar_perfil(libro, "Solo para calcular", RESICO_A_PERSONAS)          # sin «cada cuándo»
+    assert not [e for e in recurrentes.calendario(libro, date(2026, 11, 5)) if e.clase == recurrentes.FISCO]
+
+
 def test_validaciones_del_recordatorio(libro, cat):
     with pytest.raises(ErrorValidacion, match="sobre qué ingresos"):
         impuestos.guardar_perfil(libro, "Sin ingresos", RESICO_A_PERSONAS, frecuencia="mensual")
