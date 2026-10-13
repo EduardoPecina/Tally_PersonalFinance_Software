@@ -56,7 +56,8 @@ COMO_HAGO = (
      "calculado con tus gastos esenciales.", "metas", "Ir a Metas de ahorro"),
     ("Ver cómo me fue en el mes",
      "**Cierre de mes**: lo que entró y salió, contra tus presupuestos, lo que faltó registrar y qué hacer el mes "
-     "que sigue. Se descarga en Excel.", "cierre", "Ir a Cierre de mes"),
+     "que sigue. Se descarga en Excel. Con **⚙️ Ajustar**, junto a los gastos hormiga, eliges qué es un gasto chico "
+     "para ti y qué subcategorías no cuentan.", "cierre", "Ir a Cierre de mes"),
     ("Mis impuestos",
      "**Impuestos**: tus gastos deducibles del año (tú eliges qué cuenta y con qué topes, para cualquier país), el "
      "cálculo o la revisión de un recibo o factura y el **recordatorio de pago al fisco**: en tu perfil de impuestos "

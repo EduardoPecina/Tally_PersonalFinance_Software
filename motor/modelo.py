@@ -82,6 +82,11 @@ class Perfil:
     estrategia_deudas: str = ""        # avalancha o bola_de_nieve
     salud_ignorados: tuple[str, ...] = ()   # hallazgos de la revisión de salud marcados «Está bien así» (salud.py)
     guia_oculta: bool = False          # la guía de primeros pasos ya no sale en el Resumen (guia.py)
+    # Gastos hormiga del Cierre de mes (cierre.py), a tu gusto:
+    hormiga_tope: int | None = None    # centavos: «chico» es menos de esto; None = automático (el 1 % de tus gastos)
+    hormiga_fuera: tuple[str, ...] = ()  # subcategorías que nunca cuentan como hormiga (metro, casetas…)
+    hormiga_veces: int = 15            # te avisa si tuviste esta cantidad o más (0 = no por esto)…
+    hormiga_porcentaje: int = 10       # …o si juntos suman este % de tus gastos o más (0 = no por esto)
 
 
 @dataclass(frozen=True, slots=True)

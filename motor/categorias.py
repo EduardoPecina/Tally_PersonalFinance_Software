@@ -223,7 +223,7 @@ def eliminar(libro: Libro, categoria_id: str, *, reasignar_a: str | None = None)
     Si tiene movimientos, hay que indicar a qué subcategoría (del mismo tipo)
     pasan; en la práctica es juntarlas. Los pagos recurrentes y los gastos
     deducibles que la usaban pasan a esa otra (o se quedan sin ella). Sus reglas automáticas también pasan a
-    la otra (o se borran).
+    la otra (o se borran). Si no contaba como gasto hormiga, la otra tampoco.
     """
     categoria = _editable(libro, categoria_id)
     if reasignar_a is not None:
@@ -257,6 +257,9 @@ def eliminar(libro: Libro, categoria_id: str, *, reasignar_a: str | None = None)
         libro.fiscal = replace(libro.fiscal, perfiles=tuple(
             replace(p, subcategorias=_sustituir(p.subcategorias, categoria_id, reasignar_a))
             for p in libro.fiscal.perfiles))
+    if libro.perfil is not None and categoria_id in libro.perfil.hormiga_fuera:   # y si no cuenta como hormiga
+        libro.perfil = replace(libro.perfil,
+                               hormiga_fuera=_sustituir(libro.perfil.hormiga_fuera, categoria_id, reasignar_a))
     libro.quitar_categoria(categoria_id)
 
 

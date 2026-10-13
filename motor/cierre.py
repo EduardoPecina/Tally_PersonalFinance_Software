@@ -3,8 +3,8 @@ qué no y qué hacer el mes siguiente.
 
 - **Veredicto**: cuánto entró, cuánto salió y cuánto ahorraste, contra tu meta de ahorro, el mes anterior y tu
   promedio de los 3 meses previos.
-- **A dónde se fue**: cada categoría contra su promedio, los gastos hormiga (muchos gastos chicos) y las
-  suscripciones que te cobraron.
+- **A dónde se fue**: cada categoría contra su promedio, los gastos hormiga (muchos gastos chicos; qué es «chico» y
+  qué no cuenta lo eliges tú) y las suscripciones que te cobraron.
 - **Presupuestos, ingresos fijos, deudas, metas y patrimonio** de ese mes.
 - **Para cerrar bien**: lo que falta registrar (pagos del calendario, cargos que no te han devuelto, el pago de una
   tarjeta).
@@ -31,7 +31,10 @@ from motor.modelo import CierreMes, ClaseCategoria, Operacion, TipoCuenta, TipoO
 
 CERO = Decimal("0.00")
 # Umbrales en proporción a tus gastos del mes (redondeados), para que valgan igual en pesos, euros o soles:
-HORMIGA = Decimal("0.01")              # un gasto «hormiga»: menos del 1 % de lo que gastas al mes (≈ $100 de $11,000)
+HORMIGA = Decimal("0.01")              # un gasto «hormiga»: menos del 1 % de lo que gastas al mes (≈ $100 de $11,000),
+                                       # o el monto que tú elijas (ajustar_hormiga)
+HORMIGA_VECES = 15                     # el Cierre te lo recomienda si tuviste 15 o más…
+HORMIGA_PORCENTAJE = 10                # …o si juntos suman el 10 % de tus gastos o más
 SUBE_PORCENTAJE = Decimal(20)          # una categoría «subió» si gastaste 20 % más que tu promedio…
 SUBE_MINIMO = Decimal("0.02")          # …y al menos el 2 % de tus gastos del mes más (≈ $200 de $11,000)
 INTERESES = ("INTERESES DE TARJETAS", "INTERESES DE PRESTAMOS", "COMISIONES BANCARIAS", "ANUALIDADES")
@@ -102,11 +105,32 @@ class Rubro:
 
 
 @dataclass(frozen=True, slots=True)
+class AjustesHormiga:
+    """Qué cuenta como gasto hormiga y cuándo te lo recomienda el Cierre (los cambias en el Cierre de mes)."""
+
+    tope: Decimal | None = None        # «chico»: menos de esto; None = automático (el 1 % de tus gastos del mes)
+    fuera: tuple[str, ...] = ()        # subcategorías que nunca cuentan (metro, casetas…)
+    veces: int = HORMIGA_VECES         # te avisa si tuviste esta cantidad o más (0 = no por esto)…
+    porcentaje: int = HORMIGA_PORCENTAJE  # …o si juntos suman este % de tus gastos o más (0 = no por esto)
+
+    @property
+    def automatico(self) -> bool:
+        return self.tope is None
+
+
+@dataclass(frozen=True, slots=True)
 class Hormiga:
     umbral: Decimal                    # «chico»: menos de esto
     veces: int
     total: Decimal
     ejemplos: list[tuple[str, int, Decimal]]     # (descripción, veces, total), los que más suman
+    ajustes: AjustesHormiga = AjustesHormiga()
+
+    def merece_aviso(self, gastos: Decimal) -> bool:
+        """Si son tantos, o suman tanto de tus gastos, que vale una recomendación."""
+        a = self.ajustes
+        return self.veces > 0 and ((a.veces > 0 and self.veces >= a.veces)
+                                   or (a.porcentaje > 0 and gastos > 0 and self.total * 100 >= gastos * a.porcentaje))
 
 
 @dataclass(frozen=True, slots=True)
@@ -215,7 +239,7 @@ def reporte(libro: Libro, anio: int, mes: int, hoy: date | None = None) -> Repor
     datos = dict(
         anio=anio, mes=mes, desde=desde, hasta=hasta, en_curso=hasta >= hoy, numeros=numeros, anterior=anterior_,
         promedio=promedio, meta_ahorro=libro.perfil.meta_ahorro if libro.perfil else 10, rubros=rubros,
-        hormiga=_hormiga(libro, desde, hasta, monedas.redondo(numeros.gastos * HORMIGA)), suscripciones=_suscripciones(libro, desde, hasta),
+        hormiga=_hormiga(libro, desde, hasta, numeros.gastos), suscripciones=_suscripciones(libro, desde, hasta),
         presupuestos=reportes.presupuestos(libro, desde, hasta), ingresos_fijos=_ingresos_fijos(libro, desde, hasta, hoy),
         deudas=_deudas(libro, desde, hasta), intereses=_intereses(libro, desde, hasta),
         metas=_metas(libro, desde, hasta), fondo_meses=fondo.meses_cubiertos,
@@ -254,21 +278,71 @@ def _rubros(libro: Libro, desde: date, hasta: date, previos: list[tuple[date, da
                   (promedios[nombre] / n).quantize(Decimal("0.01")) if n else None, minimo) for nombre in nombres]
 
 
-def _hormiga(libro: Libro, desde: date, hasta: date, umbral: Decimal) -> Hormiga:
+def _hormiga(libro: Libro, desde: date, hasta: date, gastos: Decimal) -> Hormiga:
+    ajustes = ajustes_hormiga(libro)
+    umbral = ajustes.tope if ajustes.tope is not None else umbral_automatico(gastos)
+    fuera = set(ajustes.fuera)
     montos: dict[str, list[Decimal]] = defaultdict(list)
     nombres: dict[str, str] = {}                      # cómo se escribió (se agrupa sin mayúsculas)
     for op in libro.operaciones(desde, hasta):
         if op.tipo is not TipoOperacion.GASTO:
             continue
         partidas = [p for p in op.partidas_de_categoria() if libro.categoria(p.categoria_id).clase is ClaseCategoria.GASTO]
-        monto = a_pesos(sum(p.importe for p in partidas))
-        if partidas and 0 < monto < umbral:
-            nombre = " ".join(op.descripcion.split()) or libro.categoria(partidas[0].categoria_id).nombre
+        if not partidas or not 0 < a_pesos(sum(p.importe for p in partidas)) < umbral:
+            continue                                  # «chico» se mide con toda la compra, aunque la repartas
+        cuentan = [p for p in partidas if p.categoria_id not in fuera]
+        monto = a_pesos(sum(p.importe for p in cuentan))
+        if cuentan and monto > 0:
+            nombre = " ".join(op.descripcion.split()) or libro.categoria(cuentan[0].categoria_id).nombre
             montos[nombre.casefold()].append(monto)
             nombres.setdefault(nombre.casefold(), nombre)
     ejemplos = sorted(((nombres[k], len(v), sum(v, CERO)) for k, v in montos.items()),
                       key=lambda e: (-e[2], -e[1], e[0].casefold()))
-    return Hormiga(umbral, sum(e[1] for e in ejemplos), sum((e[2] for e in ejemplos), CERO), ejemplos[:5])
+    return Hormiga(umbral, sum(e[1] for e in ejemplos), sum((e[2] for e in ejemplos), CERO), ejemplos[:5], ajustes)
+
+
+def umbral_automatico(gastos: Decimal) -> Decimal:
+    """«Chico», si no eliges un monto: menos del 1 % de lo que gastaste en el mes, redondeado ($11,619 → $100)."""
+    return monedas.redondo(gastos * HORMIGA)
+
+
+def ajustes_hormiga(libro: Libro) -> AjustesHormiga:
+    """Tus ajustes de gastos hormiga (los de TALLY si no los has cambiado). Una subcategoría que ya no existe o
+    que ya no es de gasto se ignora."""
+    p = libro.perfil
+    if p is None:
+        return AjustesHormiga()
+    gasto = {c.id for c in libro.categorias() if c.clase is ClaseCategoria.GASTO}
+    return AjustesHormiga(a_pesos(p.hormiga_tope) if p.hormiga_tope is not None else None,
+                          tuple(c for c in p.hormiga_fuera if c in gasto), p.hormiga_veces, p.hormiga_porcentaje)
+
+
+MAXIMO_VECES = 1_000
+
+
+def ajustar_hormiga(libro: Libro, *, tope=None, fuera=(), veces: int = HORMIGA_VECES,
+                    porcentaje: int = HORMIGA_PORCENTAJE) -> AjustesHormiga:
+    """Cambia qué cuenta como gasto hormiga: ``tope`` (menos de este monto; ``None`` = automático), las
+    subcategorías que nunca cuentan, y cuándo te lo recomienda el Cierre (``veces`` o más, o ``porcentaje`` % o más
+    de tus gastos; 0 apaga ese aviso)."""
+    if libro.perfil is None:
+        raise ErrorValidacion("Primero escribe tu nombre en la bienvenida.")
+    centavos = None
+    if tope is not None:
+        centavos = a_centavos(tope)
+        if centavos <= 0:
+            raise ErrorValidacion("El monto de un gasto hormiga debe ser mayor que cero (o déjalo en automático).")
+    excluidas = tuple(dict.fromkeys(fuera))
+    for categoria_id in excluidas:
+        if libro.categoria(categoria_id).clase is not ClaseCategoria.GASTO:
+            raise ErrorValidacion("Solo las subcategorías de gasto pueden quedar fuera de los gastos hormiga.")
+    if isinstance(veces, bool) or not 0 <= int(veces) <= MAXIMO_VECES:
+        raise ErrorValidacion(f"La cantidad de gastos para avisarte va de 0 a {MAXIMO_VECES}.")
+    if isinstance(porcentaje, bool) or not 0 <= int(porcentaje) <= 100:
+        raise ErrorValidacion("El porcentaje de tus gastos para avisarte va de 0 a 100.")
+    libro.perfil = replace(libro.perfil, hormiga_tope=centavos, hormiga_fuera=excluidas, hormiga_veces=int(veces),
+                           hormiga_porcentaje=int(porcentaje))
+    return ajustes_hormiga(libro)
 
 
 def _suscripciones(libro: Libro, desde: date, hasta: date) -> list[tuple[str, Decimal]]:
@@ -387,7 +461,7 @@ def recomendaciones(r: Reporte) -> list[str]:
     if r.intereses > 0:
         lista.append(f"Pagaste {_dinero(r.intereses)} de intereses y comisiones. Pagar tus tarjetas completas "
                      "(para no generar intereses) te ahorra ese dinero.")
-    if r.hormiga.veces >= 15 or (n.gastos and r.hormiga.total * 10 >= n.gastos):
+    if r.hormiga.merece_aviso(n.gastos):
         lista.append(f"Tuviste {r.hormiga.veces} gastos chicos (menos de {_dinero(r.hormiga.umbral)}) que sumaron "
                      f"{_dinero(r.hormiga.total)}. Uno por uno no se nota; juntos, sí.")
     if r.fondo_meses is not None and r.fondo_meses < metas.MESES_FONDO[0]:

@@ -8,13 +8,16 @@ from decimal import Decimal
 import pandas as pd
 import streamlit as st
 
-from motor import cierre, consultas
+from motor import categorias, cierre, consultas
 from motor.cierre import Reporte
 from portal import navegacion
-from portal.componentes import exportar, formato
+from portal.componentes import candado, exportar, formato
 from portal.componentes.sesion import ejecutar, libro
 
 PENDIENTES = {"calendario": "📅", "temporal": "↩️", "tarjeta": "💳"}
+HORMIGA_ABIERTA = "_cierre_hormiga"           # el umbral automático del mes, mientras «Ajustar» está abierta
+AUTOMATICO, FIJO = "automatico", "fijo"
+MOSTRAR_EXCLUIDAS = 3                         # en la explicación; las demás, «y N más»
 
 
 def mostrar() -> None:
@@ -54,6 +57,8 @@ def mostrar() -> None:
     st.divider()
     _descargar(r)
     _historial(lista)
+    if HORMIGA_ABIERTA in st.session_state:    # la ventana sigue abierta mientras esté anotada (se cierra al guardar o con la X)
+        _dialogo_hormiga(st.session_state[HORMIGA_ABIERTA])
 
 
 # ------------------------------------------------------------- estado del cierre
@@ -172,19 +177,108 @@ def _gasto(r: Reporte) -> None:
     minimo = r.rubros[0].minimo
     st.caption(f"Tu promedio: los meses anteriores con datos (hasta 3). «Subió»: {cierre.SUBE_PORCENTAJE} % más y al "
                f"menos {formato.dinero_md(minimo)} más.")
-    h = r.hormiga
-    if h.veces:
-        st.markdown(f"**🐜 Gastos hormiga:** {h.veces} gastos de menos de {formato.dinero_md(h.umbral)} "
-                    f"que sumaron **{formato.dinero_md(h.total)}**"
-                    + (f" ({(h.total / r.numeros.gastos * 100).quantize(Decimal('0.1'))} % de tus gastos)."
-                       if r.numeros.gastos else "."))
-        st.caption(" · ".join(f"{formato.md(nombre)}: {veces} {'vez' if veces == 1 else 'veces'}, "
-                              f"{formato.dinero_md(total)}"
-                              for nombre, veces, total in h.ejemplos))
+    _hormiga(r)
     if r.suscripciones:
         total = sum((m for _, m in r.suscripciones), Decimal(0))
         st.markdown(f"**⭐ Suscripciones que te cobraron:** {formato.dinero_md(total)} — "
                     + ", ".join(f"{formato.md(n)} {formato.dinero_md(m)}" for n, m in r.suscripciones))
+
+
+def _hormiga(r: Reporte) -> None:
+    h, lib = r.hormiga, libro()
+    texto, boton = st.columns([4, 1], vertical_alignment="center")
+    if h.veces:
+        texto.markdown(f"**🐜 Gastos hormiga:** {h.veces} gastos de menos de {formato.dinero_md(h.umbral)} "
+                       f"que sumaron **{formato.dinero_md(h.total)}**"
+                       + (f" ({(h.total / r.numeros.gastos * 100).quantize(Decimal('0.1'))} % de tus gastos)."
+                          if r.numeros.gastos else "."))
+    else:
+        texto.markdown(f"**🐜 Gastos hormiga:** ninguno de menos de {formato.dinero_md(h.umbral)} este mes.")
+    boton.button("Ajustar", icon=":material/settings:", key="cierre_hormiga_ajustar", width="stretch",
+                 help="Qué cuenta como gasto hormiga y cuándo te lo recomienda el cierre.",
+                 on_click=_abrir_hormiga, args=(cierre.umbral_automatico(r.numeros.gastos),))
+    if h.ejemplos:
+        st.caption(" · ".join(f"{formato.md(nombre)}: {veces} {'vez' if veces == 1 else 'veces'}, "
+                              f"{formato.dinero_md(total)}"
+                              for nombre, veces, total in h.ejemplos))
+    a = h.ajustes
+    como = ("el 1 % de lo que gastaste en el mes, redondeado" if a.automatico else "el monto que elegiste")
+    nombres = [formato.md(categorias.etiqueta(lib, c)) for c in a.fuera]
+    if len(nombres) > MOSTRAR_EXCLUIDAS:
+        nombres = nombres[:MOSTRAR_EXCLUIDAS] + [f"{len(nombres) - MOSTRAR_EXCLUIDAS} más"]
+    fuera = f" Sin contar {', '.join(nombres[:-1])} y {nombres[-1]}." if len(nombres) > 1 else (
+        f" Sin contar {nombres[0]}." if nombres else "")
+    st.caption(f"Gasto hormiga: menos de {formato.dinero_md(h.umbral)} ({como}).{fuera} {_cuando_avisa(a)}")
+
+
+def _cuando_avisa(a: cierre.AjustesHormiga) -> str:
+    partes = ([f"tienes {a.veces} o más"] if a.veces else []) + (
+        [f"suman el {a.porcentaje} % de tus gastos o más"] if a.porcentaje else [])
+    if not partes:
+        return "El cierre no te los recomienda (lo apagaste)."
+    return f"Te los recomienda si {' o si '.join(partes)}."
+
+
+def _abrir_hormiga(automatico: Decimal) -> None:
+    st.session_state[HORMIGA_ABIERTA] = automatico
+
+
+def _cerrar_hormiga() -> None:
+    st.session_state.pop(HORMIGA_ABIERTA, None)
+
+
+def _guardar_hormiga(accion) -> None:
+    if ejecutar(accion, "Guardado: el cierre ya usa tus ajustes"):
+        _cerrar_hormiga()
+        st.rerun()
+
+
+@st.dialog("Ajustar gastos hormiga", width="large", icon=":material/settings:", on_dismiss=_cerrar_hormiga)
+def _dialogo_hormiga(automatico: Decimal) -> None:
+    candado.en_ventana()
+    lib = libro()
+    a = cierre.ajustes_hormiga(lib)
+    st.caption("Los gastos hormiga son muchos gastos chicos que, uno por uno, no se notan, pero juntos sí. Aquí "
+               "eliges qué es «chico» para ti, qué no cuenta y cuándo quieres que el cierre te lo recomiende.")
+    st.markdown("**¿Qué es un gasto chico?**")
+    modo = st.radio(
+        "¿Qué es un gasto chico?", [AUTOMATICO, FIJO], index=0 if a.automatico else 1, key="hormiga_modo",
+        label_visibility="collapsed",
+        format_func={AUTOMATICO: f"Automático: menos del 1 % de lo que gastas en el mes, redondeado (en este mes, "
+                                 f"menos de {formato.dinero(automatico)})",
+                     FIJO: "Menos de un monto que yo elijo"}.get)
+    st.caption("El automático se ajusta solo a lo que gastas, pero un mes con una compra grande lo sube. Un monto fijo "
+               "vale igual todos los meses.")
+    tope = None
+    if modo == FIJO:
+        tope = st.number_input("Menos de", min_value=0.01, step=10.0, format="%.2f", key="hormiga_tope",
+                               value=float(a.tope if a.tope is not None else automatico),
+                               help="Un gasto de este monto o más ya no es hormiga.")
+    st.markdown("**¿Qué subcategorías nunca cuentan?**")
+    opciones = {c.id: categorias.etiqueta(lib, c.id) for c in categorias.para_tipo(lib, "gasto")}
+    opciones.update({c: categorias.etiqueta(lib, c) for c in a.fuera if c not in opciones})   # una ya archivada
+    fuera = st.multiselect(
+        "Subcategorías que no cuentan", list(opciones), default=list(a.fuera), format_func=opciones.get,
+        key="hormiga_fuera", label_visibility="collapsed", placeholder="Todas cuentan")
+    st.caption("Gastos chicos pero necesarios, como el metro, las casetas o el estacionamiento. Una compra que "
+               "repartiste en varias subcategorías se mide por su total; de ella solo cuenta lo que no está aquí.")
+    st.markdown("**¿Cuándo te lo recomienda el cierre?**")
+    izquierda, derecha = st.columns(2)
+    veces = izquierda.number_input("Si tuve esta cantidad o más", min_value=0, max_value=cierre.MAXIMO_VECES,
+                                   value=a.veces, step=1, key="hormiga_veces", help="0 = no por la cantidad.")
+    porcentaje = derecha.number_input("O si juntos suman este % de mis gastos o más", min_value=0, max_value=100,
+                                      value=a.porcentaje, step=1, key="hormiga_porcentaje",
+                                      help="0 = no por lo que suman.")
+    st.caption("Con 0 en los dos, el cierre no te los recomienda; los sigues viendo en «A dónde se fue».")
+    guardar, original = st.columns(2)
+    if guardar.button("Guardar", type="primary", icon=":material/save:", width="stretch", key="hormiga_guardar"):
+        _guardar_hormiga(lambda li: cierre.ajustar_hormiga(
+            li, tope=Decimal(str(tope)) if tope is not None else None, fuera=fuera, veces=veces,
+            porcentaje=porcentaje))
+    if original.button("Volver a lo de TALLY", icon=":material/restart_alt:", width="stretch",
+                       key="hormiga_original", help=f"Automático, todas cuentan, y te lo recomienda si tienes "
+                       f"{cierre.HORMIGA_VECES} o más o si suman el {cierre.HORMIGA_PORCENTAJE} % de tus gastos."):
+        _guardar_hormiga(cierre.ajustar_hormiga)
 
 
 def _con_signo(valor: Decimal | None) -> str:

@@ -2009,6 +2009,55 @@ def test_cierre_de_mes_cerrar_avisar_y_volver_a_cerrar(raiz, con_datos):
     assert sesion_en(raiz).libro.cierres() == []
 
 
+def test_cierre_ajustar_gastos_hormiga(raiz, con_datos):
+    from motor import cierre
+
+    s = sesion_en(raiz)
+    anio, mes = cierre.anterior(s.libro.hoy())
+    cat = con_datos["cat"]
+    with s.cambio() as lib:                       # $3,190 de gastos: automático, menos de $20
+        movimientos.registrar_ingreso(lib, date(anio, mes, 1), con_datos["debito"], cat["NOMINA"], 9_000, "Nómina")
+        movimientos.registrar_gasto(lib, date(anio, mes, 2), con_datos["debito"], cat["RENTA"], 3_000, "Renta")
+        for dia in range(1, 13):
+            movimientos.registrar_gasto(lib, date(anio, mes, dia), con_datos["debito"], cat["CAFETERIAS"], 15, "Café")
+        movimientos.registrar_gasto(lib, date(anio, mes, 20), con_datos["debito"], cat["CASETAS"], 10, "Caseta")
+    at = abrir(_pagina("cierre"))
+    sin_errores(at)
+    assert any("13 gastos de menos de \\$20.00" in m.value for m in at.markdown)
+    assert any("el 1 % de lo que gastaste" in c.value and "Te los recomienda si tienes 15 o más" in c.value
+               for c in at.caption)
+
+    at.button(key="cierre_hormiga_ajustar").click().run()
+    sin_errores(at)
+    at.radio(key="hormiga_modo").set_value("fijo").run()
+    at.number_input(key="hormiga_tope").set_value(100.0)
+    at.multiselect(key="hormiga_fuera").set_value([cat["CASETAS"]])
+    at.number_input(key="hormiga_veces").set_value(0)
+    at.number_input(key="hormiga_porcentaje").set_value(0)
+    at.button(key="hormiga_guardar").click().run()
+    sin_errores(at)
+    p = sesion_en(raiz).libro.perfil
+    assert (p.hormiga_tope, p.hormiga_fuera, p.hormiga_veces, p.hormiga_porcentaje) == (10_000, (cat["CASETAS"],), 0, 0)
+    assert "_cierre_hormiga" not in at.session_state                # se cerró la ventana
+    assert any("12 gastos de menos de \\$100.00" in m.value for m in at.markdown)
+    assert any("el monto que elegiste" in c.value and "Sin contar MOVILIDAD › CASETAS" in c.value
+               and "no te los recomienda" in c.value for c in at.caption)
+
+    at.button(key="cierre_hormiga_ajustar").click().run()           # y de vuelta a lo de TALLY
+    assert at.radio(key="hormiga_modo").value == "fijo" and at.number_input(key="hormiga_tope").value == 100.0
+    at.button(key="hormiga_original").click().run()
+    sin_errores(at)
+    assert cierre.ajustes_hormiga(sesion_en(raiz).libro) == cierre.AjustesHormiga()
+    assert any("13 gastos de menos de \\$20.00" in m.value for m in at.markdown)
+
+    at.button(key="cierre_hormiga_ajustar").click().run()           # muchas fuera: solo se nombran 3
+    at.multiselect(key="hormiga_fuera").set_value(
+        [cat[n] for n in ("CASETAS", "CAFETERIAS", "ESTACIONAMIENTO", "TRANSPORTE PUBLICO")])
+    at.button(key="hormiga_guardar").click().run()
+    assert any("Sin contar MOVILIDAD › CASETAS, ALIMENTACION › CAFETERIAS, MOVILIDAD › ESTACIONAMIENTO y 1 más."
+               in c.value for c in at.caption)
+
+
 # ------------------------------------------------------------ reglas automáticas de categorías
 
 

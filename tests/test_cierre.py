@@ -6,9 +6,10 @@ from datetime import date, datetime
 import pytest
 
 from conftest import D
-from motor import categorias, cierre, cuentas, metas, movimientos, recurrentes, temporales
+from motor import categorias, cierre, cuentas, metas, movimientos, perfil, recurrentes, temporales
 from motor.errores import ErrorValidacion
 from motor.libro import Libro
+from motor.modelo import Perfil
 from motor.serializacion import instantanea, libro_desde_instantanea
 
 
@@ -137,3 +138,129 @@ def test_sin_movimientos(libro):
     assert cierre.meses(libro) == [] and cierre.recordar(libro) is None
     r = cierre.reporte(libro, 2026, 7)
     assert r.numeros.tasa is None and r.recomendaciones == [] and r.rubros == []
+
+
+# ------------------------------------------------------------------ gastos hormiga a tu gusto
+
+
+def _hormiga(libro):
+    return cierre.reporte(libro, 2026, 7).hormiga
+
+
+def test_gastos_hormiga_automaticos_por_omision(libro, julio):
+    perfil.configurar(libro, "Usuaria Ficticia")
+    a = cierre.ajustes_hormiga(libro)
+    assert a == cierre.AjustesHormiga() and a.automatico and (a.veces, a.porcentaje) == (15, 10)
+    p = Perfil("x", datetime(2026, 1, 1))                         # el perfil y el cierre dicen lo mismo
+    assert (p.hormiga_tope, p.hormiga_fuera, p.hormiga_veces, p.hormiga_porcentaje) == (
+        None, (), cierre.HORMIGA_VECES, cierre.HORMIGA_PORCENTAJE)
+    h = _hormiga(libro)
+    assert (h.umbral, h.veces, h.total) == (D(100), 16, D(800))  # 1 % de $11,619, redondeado: menos de $100
+
+
+def test_un_monto_fijo_para_gasto_hormiga(libro, julio):
+    perfil.configurar(libro, "Usuaria Ficticia")
+    cierre.ajustar_hormiga(libro, tope=200)
+    h = _hormiga(libro)                                          # ahora también los intereses y el streaming
+    assert (h.umbral, h.veces, h.total) == (D(200), 18, D(1_119)) and not h.ajustes.automatico
+    assert [e[0] for e in h.ejemplos] == ["Café", "Streaming", "Intereses"]
+    cierre.ajustar_hormiga(libro, tope=None)                     # de vuelta a automático
+    assert _hormiga(libro).umbral == D(100)
+
+
+def test_subcategorias_que_no_cuentan_como_hormiga(libro, julio, cat):
+    perfil.configurar(libro, "Usuaria Ficticia")
+    cierre.ajustar_hormiga(libro, tope=200, fuera=[cat("CAFETERIAS"), cat("CAFETERIAS")])
+    assert cierre.ajustes_hormiga(libro).fuera == (cat("CAFETERIAS"),)
+    h = _hormiga(libro)
+    assert (h.veces, h.total) == (2, D(319)) and [e[0] for e in h.ejemplos] == ["Streaming", "Intereses"]
+
+
+def test_una_compra_repartida_cuenta_por_su_total(libro, julio, cat):
+    perfil.configurar(libro, "Usuaria Ficticia")
+    cierre.ajustar_hormiga(libro, fuera=[cat("CAFETERIAS")])
+    movimientos.registrar_gasto(libro, date(2026, 7, 30), julio.debito, descripcion="Tienda",
+                                reparto=[(cat("CAFETERIAS"), 30), (cat("RESTAURANTES"), 60)])     # $90: chica
+    movimientos.registrar_gasto(libro, date(2026, 7, 31), julio.debito, descripcion="Súper",
+                                reparto=[(cat("CAFETERIAS"), 400), (cat("RESTAURANTES"), 60)])    # $460: no
+    h = _hormiga(libro)
+    assert (h.veces, h.total, h.ejemplos) == (1, D(60), [("Tienda", 1, D(60))])
+
+
+def test_cuando_te_lo_recomienda(libro, julio):
+    perfil.configurar(libro, "Usuaria Ficticia")
+    gastos = D(11_619)
+    assert _hormiga(libro).merece_aviso(gastos)                  # 16 gastos chicos: 15 o más
+    cierre.ajustar_hormiga(libro, veces=20, porcentaje=0)
+    assert not _hormiga(libro).merece_aviso(gastos)
+    cierre.ajustar_hormiga(libro, veces=0, porcentaje=5)          # $800 son el 6.9 % de $11,619
+    assert _hormiga(libro).merece_aviso(gastos)
+    cierre.ajustar_hormiga(libro, veces=0, porcentaje=7)
+    assert not _hormiga(libro).merece_aviso(gastos)
+    assert not _hormiga(libro).merece_aviso(D(0))
+    assert not cierre.Hormiga(D(100), 0, D(0), []).merece_aviso(D(1_000))
+
+
+def test_la_recomendacion_de_gastos_hormiga(libro, ctas, cat):
+    perfil.configurar(libro, "Usuaria Ficticia")
+    movimientos.registrar_ingreso(libro, date(2026, 7, 1), ctas.debito, cat("NOMINA"), 10_000)
+    movimientos.registrar_gasto(libro, date(2026, 7, 2), ctas.debito, cat("RENTA"), 5_000)
+    for dia in range(1, 21):
+        movimientos.registrar_gasto(libro, date(2026, 7, dia), ctas.debito, cat("CAFETERIAS"), 40, "Café")
+
+    def menciona() -> bool:
+        return any("gastos chicos" in t for t in cierre.reporte(libro, 2026, 7).recomendaciones)
+    assert menciona()                                             # 20 gastos de menos de $50
+    cierre.ajustar_hormiga(libro, veces=0, porcentaje=0)          # ya no te lo recomienda
+    assert not menciona() and cierre.reporte(libro, 2026, 7).hormiga.veces == 20
+
+
+def test_los_ajustes_de_hormiga_se_guardan(libro, julio, cat):
+    perfil.configurar(libro, "Usuaria Ficticia")
+    cierre.ajustar_hormiga(libro, tope="150.50", fuera=[cat("TRANSPORTE PUBLICO")], veces=8, porcentaje=12)
+    copia = libro_desde_instantanea(instantanea(libro))
+    assert cierre.ajustes_hormiga(copia) == cierre.AjustesHormiga(D("150.50"), (cat("TRANSPORTE PUBLICO"),), 8, 12)
+    assert _hormiga(copia).umbral == D("150.50")
+
+
+@pytest.mark.parametrize("cambios, motivo", [
+    (dict(tope=0), "mayor que cero"),
+    (dict(tope=-50), "mayor que cero"),
+    (dict(veces=-1), "de 0 a 1000"),
+    (dict(veces=1_001), "de 0 a 1000"),
+    (dict(veces=True), "de 0 a 1000"),
+    (dict(porcentaje=101), "de 0 a 100"),
+])
+def test_ajustes_de_hormiga_no_validos(libro, cambios, motivo):
+    perfil.configurar(libro, "Usuaria Ficticia")
+    with pytest.raises(ErrorValidacion, match=motivo):
+        cierre.ajustar_hormiga(libro, **cambios)
+    assert cierre.ajustes_hormiga(libro) == cierre.AjustesHormiga()
+
+
+def test_solo_subcategorias_de_gasto_quedan_fuera(libro, cat):
+    with pytest.raises(ErrorValidacion, match="bienvenida"):
+        cierre.ajustar_hormiga(libro, tope=100)
+    perfil.configurar(libro, "Usuaria Ficticia")
+    with pytest.raises(ErrorValidacion, match="Solo las subcategorías de gasto"):
+        cierre.ajustar_hormiga(libro, fuera=[cat("NOMINA")])
+
+
+def test_al_borrar_o_juntar_una_subcategoria_excluida(libro, ctas, cat):
+    perfil.configurar(libro, "Usuaria Ficticia")
+    transporte = categorias.buscar_rubro(libro, "MOVILIDAD").id
+    propia = categorias.crear(libro, "PASAJES FICTICIOS", transporte).id
+    usada = categorias.crear(libro, "CASETAS FICTICIAS", transporte).id
+    movimientos.registrar_gasto(libro, date(2026, 7, 2), ctas.debito, usada, 40, "Caseta")
+    cierre.ajustar_hormiga(libro, fuera=[propia, usada])
+    categorias.eliminar(libro, propia)                                 # sin movimientos: sale de la lista
+    assert libro.perfil.hormiga_fuera == (usada,)
+    categorias.eliminar(libro, usada, reasignar_a=cat("TRANSPORTE PUBLICO"))        # se junta con otra: esa tampoco cuenta
+    assert cierre.ajustes_hormiga(libro).fuera == (cat("TRANSPORTE PUBLICO"),)
+
+
+def test_una_excluida_que_ya_no_existe_se_ignora(libro, cat):
+    perfil.configurar(libro, "Usuaria Ficticia")
+    from dataclasses import replace
+    libro.perfil = replace(libro.perfil, hormiga_fuera=("no-existe", cat("NOMINA"), cat("TRANSPORTE PUBLICO")))
+    assert cierre.ajustes_hormiga(libro).fuera == (cat("TRANSPORTE PUBLICO"),)
