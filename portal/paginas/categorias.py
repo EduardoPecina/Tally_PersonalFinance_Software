@@ -19,9 +19,12 @@ from portal.componentes.sesion import aplicar, avisar, ejecutar, libro, sesion
 SIN_CLASIFICACION = "— Sin clasificación —"
 REGLA_NOMBRES = ("Los nombres se guardan en MAYÚSCULAS y sin acentos («Gastos médicos» → «GASTOS MEDICOS»). "
                  "No se puede agregar dos veces lo mismo, aunque cambien mayúsculas, acentos o espacios.")
-ABIERTA = "_categorias_ventana"   # (SUBCATEGORIA o CATEGORIA, id) mientras su ventana está abierta
+ABIERTA = "_categorias_ventana"   # (SUBCATEGORIA o CATEGORIA, id, desde dónde) mientras su ventana está abierta
+BUSCAR = "buscar"                  # el ⚙️ Administrar de un resultado de la búsqueda (si no, el id de su categoría)
 SUBCATEGORIA, CATEGORIA = "subcategoria", "categoria"
-CAJAS_ABIERTAS = "_categorias_abiertas"   # siguen abiertas aunque cambie su número (al mover una subcategoría)
+CAJA_ABIERTA = "_categorias_caja"   # la de la última ⚙️ Administrar: sigue abierta aunque cambie su número
+PESTANA = "categorias_pestana"
+PESTANA_RECORDADA = "_categorias_pestana_recordada"   # al volver a Categorías, sigue en la que estabas
 AYUDA_MOVER = ("La caja donde está. Cámbiala para moverla a otra categoría: sus movimientos se van con ella y "
                "nada se pierde.")
 AYUDA_CONTABLE = ("En qué renglón de tu Contabilidad técnica cae (Estado de Resultados, Flujo y Balanza). TALLY lo "
@@ -41,31 +44,28 @@ def _rubros(clase: ClaseCategoria) -> list[Rubro]:
     return [r for r in libro().rubros() if r.clase is clase]
 
 
-def _tabla(subcategorias: list[Categoria], usos: Counter, con_categoria: bool, contables: dict) -> None:
-    """Un renglón por subcategoría, con su botón ⚙️ Administrar (cambiarla, moverla de categoría o borrarla)."""
+def _tabla(subcategorias: list[Categoria], usos: Counter, con_categoria: bool, contables: dict, donde: str) -> None:
+    """Un renglón por subcategoría, con su botón ⚙️ Administrar (cambiarla, moverla de categoría o borrarla). Pocas
+    piezas por renglón: cada una que se agrega hace más lento abrir una categoría."""
     lib = libro()
     nombres = _clasificaciones()
-    anchos = ([1.8, 2.8, 1.8, 2] if con_categoria else [3.2, 2, 2.2]) + [1.3, 2]
-    titulos = (["Categoría"] if con_categoria else []) + ["Subcategoría", "Clasificación", "Rubro contable",
-                                                          "Movimientos", ""]
-    for columna, titulo in zip(st.columns(anchos), titulos):
-        if titulo:
-            columna.caption(titulo, help=AYUDA_CONTABLE if titulo == "Rubro contable" else None)
     for c in subcategorias:
-        columnas = iter(st.columns(anchos, vertical_alignment="center"))
-        if con_categoria:
-            next(columnas).markdown(formato.md(categorias.nombre_rubro(lib, c.id)))
-        ayuda = [texto for texto, si in (("⭐ Tu ingreso principal: marca el inicio de cada quincena.", c.principal),
-                                         ("Archivada: no sale al registrar movimientos nuevos.", not c.activa)) if si]
-        next(columnas).markdown(formato.md(c.nombre) + (" ⭐" if c.principal else "")
-                                + ("" if c.activa else " :gray[(archivada)]"), help=" ".join(ayuda) or None)
-        next(columnas).markdown(formato.md(nombres.get(c.grupo_id, SIN_CLASIFICACION)))
-        next(columnas).markdown(formato.md(contables[c.id].nombre))
-        next(columnas).markdown(str(usos[c.id]))
-        next(columnas).button("Administrar", icon=":material/settings:", key=f"administrar_sub_{c.id}",
-                              on_click=_abrir, args=(SUBCATEGORIA, c.id), width="stretch",
-                              help="Cambiarle el nombre, moverla a otra categoría, cambiar su clasificación o su "
-                                   "rubro contable, archivarla o borrarla.")
+        fila = st.container(horizontal=True, vertical_alignment="center")   # más ligero que st.columns
+        prefijo = f"{formato.md(categorias.nombre_rubro(lib, c.id))} › " if con_categoria else ""
+        movimientos = usos[c.id]
+        fila.markdown(
+            f"{prefijo}**{formato.md(c.nombre)}**" + (" ⭐" if c.principal else "")
+            + ("" if c.activa else " :gray[(archivada)]")
+            + "  \n:gray["
+            + (f"{formato.md(nombres.get(c.grupo_id, SIN_CLASIFICACION))} · "      # las clasificaciones son de gastos
+               if c.clase is ClaseCategoria.GASTO else "")
+            + f"{formato.md(contables[c.id].nombre)} · {movimientos} movimiento{'' if movimientos == 1 else 's'}]",
+            help=" ".join(t for t, si in (
+                ("⭐ Tu ingreso principal: marca el inicio de cada quincena.", c.principal),
+                ("Archivada: no sale al registrar movimientos nuevos.", not c.activa)) if si) or None,
+            width="stretch")
+        fila.button("Administrar", icon=":material/settings:", key=f"administrar_sub_{c.id}",
+                    on_click=_abrir, args=(SUBCATEGORIA, c.id, donde), width=150)
 
 
 def _arbol(clase: ClaseCategoria) -> None:
@@ -84,36 +84,48 @@ def _arbol(clase: ClaseCategoria) -> None:
 
     buscado = st.text_input("Buscar", key=f"buscar_{clase.value}", placeholder="Ej. gym, dentista, uber…")
     if buscado.strip():
+        _ventana(BUSCAR)
         encontradas = [c for c in categorias.ordenadas(lib, propias)
                        if clave(buscado) in clave(c.nombre) or clave(buscado) in clave(categorias.nombre_rubro(lib, c.id))]
         if encontradas:
-            _tabla(encontradas, usos, con_categoria=True, contables=contables)
+            _tabla(encontradas, usos, con_categoria=True, contables=contables, donde=BUSCAR)
         else:
             st.info("No hay ninguna con ese nombre. Puedes agregarla arriba, en ➕ Nueva subcategoría.")
         return
-    st.caption("Abre una categoría para ver sus subcategorías. Con **⚙️ Administrar** cambias, mueves a otra "
-               "categoría o borras cada una.")
+    st.caption("Abre una categoría para ver sus subcategorías; debajo de cada una, "
+               + ("su clasificación, " if clase is ClaseCategoria.GASTO else "")
+               + "su rubro contable y cuántos movimientos tiene. Con **⚙️ Administrar** la cambias, la mueves a otra "
+                 "categoría o la borras.", help=AYUDA_CONTABLE)
     for rubro in rubros:
-        contenido = categorias.ordenadas(lib, categorias.subcategorias(lib, rubro.id))
-        # Solo se arma lo de adentro cuando está abierta (con 20 categorías y 100+ subcategorías, es mucho).
-        caja = st.expander(f"**{rubro.nombre}** · {len(contenido)}", key=f"caja_{rubro.id}",
-                           expanded=rubro.id in st.session_state.get(CAJAS_ABIERTAS, set()),
-                           on_change=_al_abrir_o_cerrar, args=(rubro.id,))
-        if not caja.open:
-            continue
-        with caja:
-            st.button("Administrar categoría", icon=":material/settings:", key=f"administrar_cat_{rubro.id}",
-                      on_click=_abrir, args=(CATEGORIA, rubro.id),
-                      help=f"Cambiarle el nombre a {rubro.nombre} o borrarla (sus subcategorías pasan a otra).")
-            if contenido:
-                _tabla(contenido, usos, con_categoria=False, contables=contables)
-            else:
-                st.caption("Sin subcategorías todavía. Agrégalas arriba, en ➕ Nueva subcategoría.")
+        _categoria(rubro, categorias.ordenadas(lib, categorias.subcategorias(lib, rubro.id)), usos, contables)
 
 
-def _al_abrir_o_cerrar(rubro_id: str) -> None:
-    abiertas = st.session_state.setdefault(CAJAS_ABIERTAS, set())
-    (abiertas.add if st.session_state.get(f"caja_{rubro_id}") else abiertas.discard)(rubro_id)
+@st.fragment
+def _categoria(rubro: Rubro, contenido: list[Categoria], usos: Counter, contables: dict) -> None:
+    """Una categoría en su propio fragmento: abrirla, cerrarla o abrir un ⚙️ Administrar solo rehace esta caja, y
+    sus subcategorías solo se arman al abrirla (armar las 100+ de todas hacía lenta la página)."""
+    _ventana(rubro.id)
+    caja = st.expander(f"**{rubro.nombre}** · {len(contenido)}", key=f"caja_{rubro.id}", on_change="rerun",
+                       # la de la última ⚙️ Administrar sigue abierta aunque cambie su número
+                       expanded=rubro.id == st.session_state.get(CAJA_ABIERTA))
+    if not caja.open:
+        return
+    with caja:
+        st.button("Administrar categoría", icon=":material/settings:", key=f"administrar_cat_{rubro.id}",
+                  on_click=_abrir, args=(CATEGORIA, rubro.id, rubro.id),
+                  help=f"Cambiarle el nombre a {rubro.nombre} o borrarla (sus subcategorías pasan a otra).")
+        if contenido:
+            _tabla(contenido, usos, con_categoria=False, contables=contables, donde=rubro.id)
+        else:
+            st.caption("Sin subcategorías todavía. Agrégalas arriba, en ➕ Nueva subcategoría.")
+
+
+def _ventana(donde: str) -> None:
+    """La ventana de ⚙️ Administrar que se abrió aquí (sigue abierta mientras esté anotada; se cierra al guardar o
+    con la X)."""
+    abierta = st.session_state.get(ABIERTA)
+    if abierta and abierta[2] == donde:
+        (_ventana_subcategoria if abierta[0] == SUBCATEGORIA else _ventana_categoria)(abierta[1])
 
 
 def _nueva_subcategoria(clase: ClaseCategoria, rubros: list[Rubro]) -> None:
@@ -246,8 +258,10 @@ def _modificar_rubro(rubro: Rubro, rubros: list[Rubro]) -> None:
 # ------------------------------------------------------------------ las ventanas de ⚙️ Administrar
 
 
-def _abrir(que: str, id_: str) -> None:
-    st.session_state[ABIERTA] = (que, id_)
+def _abrir(que: str, id_: str, donde: str) -> None:
+    st.session_state[ABIERTA] = (que, id_, donde)
+    if donde != BUSCAR:
+        st.session_state[CAJA_ABIERTA] = donde
 
 
 def _cerrar() -> None:
@@ -387,19 +401,24 @@ def mostrar() -> None:
     st.title("Categorías")
     st.caption("Las **categorías** son cajas que agrupan **subcategorías** (por ejemplo, SALUD agrupa DENTISTA y "
                "MEDICINAS Y FARMACIA). A cada movimiento le pones una subcategoría y los reportes suman por ambas.")
-    gastos, ingresos, clasificaciones, contabilidad, automaticas = st.tabs(
-        ["Gastos", "Ingresos", "Clasificaciones", "Contabilidad", "⚡ Reglas automáticas"])
-    with gastos:
-        _arbol(ClaseCategoria.GASTO)
-    with ingresos:
-        _arbol(ClaseCategoria.INGRESO)
-    with clasificaciones:
-        _clasificaciones_editables()
-    with contabilidad:
-        contabilidad_categorias.mostrar()
-    with automaticas:
-        reglas.mostrar()
-    # La ventana de ⚙️ Administrar sigue abierta mientras esté anotada (se cierra al guardar o con la X).
-    abierta = st.session_state.get(ABIERTA)
-    if abierta:
-        (_ventana_subcategoria if abierta[0] == SUBCATEGORIA else _ventana_categoria)(abierta[1])
+    # Solo se arma la pestaña que está a la vista: armar las cinco (con las cajas de Clasificaciones y Contabilidad,
+    # de cientos de etiquetas) hacía lenta la página.
+    pestanas = st.tabs(list(PESTANAS), key=PESTANA, default=st.session_state.get(PESTANA_RECORDADA, "Gastos"),
+                       on_change=_al_cambiar_de_pestana)
+    for pestana, mostrar_pestana in zip(pestanas, PESTANAS.values()):
+        if pestana.open:
+            with pestana:
+                mostrar_pestana()
+
+
+def _al_cambiar_de_pestana() -> None:
+    st.session_state[PESTANA_RECORDADA] = st.session_state[PESTANA]
+
+
+PESTANAS = {                                  # cada pestaña y lo que muestra (después de definir las funciones)
+    "Gastos": lambda: _arbol(ClaseCategoria.GASTO),
+    "Ingresos": lambda: _arbol(ClaseCategoria.INGRESO),
+    "Clasificaciones": _clasificaciones_editables,
+    "Contabilidad": contabilidad_categorias.mostrar,
+    "⚡ Reglas automáticas": reglas.mostrar,
+}

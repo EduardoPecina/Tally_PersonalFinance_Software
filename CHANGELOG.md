@@ -2,6 +2,19 @@
 
 Todos los cambios relevantes de TALLY se documentan aquí.
 
+## [0.27.1] — Sin publicar
+
+- **Categorías: abrir una categoría ya no tarda.** Desde los botones ⚙️ Administrar (0.26.1), abrir o cerrar una
+  categoría volvía a armar toda la página, con las cinco pestañas (las cajas de Clasificaciones y Contabilidad tienen
+  cientos de etiquetas). Ahora:
+  - cada categoría se rehace sola: abrirla o abrir su ⚙️ Administrar no toca lo demás (de ~0.7 a ~0.25 segundos en
+    una PC rápida);
+  - solo se arma la pestaña que estás viendo, y al volver a Categorías sigue en la última que usaste;
+  - guardar desde ⚙️ Administrar también es más rápido (de ~0.85 a ~0.45 segundos).
+  - Cambiar de pestaña tarda un poco más que antes (~0.5 segundos), porque ahora se arma al elegirla.
+- Cada subcategoría se ve en dos renglones: su nombre y, debajo, su clasificación (en gastos), su rubro contable y
+  cuántos movimientos tiene.
+
 ## [0.27.0] — Sin publicar
 
 - **Los pagos al fisco salen en tu Calendario.** Si tu perfil de impuestos tiene **🔔 Recordatorio de pago al
