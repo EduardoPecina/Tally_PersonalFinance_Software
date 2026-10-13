@@ -222,6 +222,12 @@ def _pagina(nombre: str) -> str:
     return f"vistas/{nombre}.py"
 
 
+def en_pestana(at: AppTest, pestana: str) -> AppTest:
+    """Categorías solo arma la pestaña que está a la vista y recuerda la última: así se elige otra."""
+    at.session_state["_categorias_pestana_recordada"] = pestana
+    return at.run()
+
+
 def test_tarjeta_con_10_dias_naturales_despues_del_corte(raiz, con_datos):
     at = abrir()
     at.switch_page(_pagina("cuentas")).run()
@@ -275,7 +281,7 @@ def test_administrar_subcategorias_y_categorias_desde_su_caja(raiz, con_datos):
     at = abrir(_pagina("categorias"))
     assert not any(s.value == "Modificar" for s in at.markdown)                 # ya no hay que bajar a elegirla
     assert not any((b.key or "").startswith("administrar_sub_") for b in at.button)   # cerradas: no se arman
-    at.session_state["_categorias_abiertas"] = {salud}                         # abre la caja de SALUD
+    at.session_state["_categorias_caja"] = salud                               # abre la caja de SALUD
     at.run()
     sin_errores(at)
     assert any(b.key == f"administrar_sub_{dentista}" for b in at.button)
@@ -289,6 +295,8 @@ def test_administrar_subcategorias_y_categorias_desde_su_caja(raiz, con_datos):
     assert not any(b.label == "Guardar cambios" for b in at.button)            # la ventana se cerró
     assert any(b.key == f"administrar_cat_{salud}" for b in at.button)         # SALUD sigue abierta (con 8)
     assert not any(b.key == f"administrar_sub_{dentista}" for b in at.button)  # ya no está en SALUD
+    assert next(e for e in at.expander if e.label.startswith("**SALUD**")).label.endswith("· 8")
+    assert next(e for e in at.expander if e.label.startswith("**CUIDADO PERSONAL**")).label.endswith("· 4")
 
     # Renombrar la categoría desde su ⚙️ Administrar categoría.
     next(b for b in at.button if b.key == f"administrar_cat_{salud}").click().run()
@@ -818,6 +826,7 @@ def test_clasificaciones_como_cajas_con_sus_subcategorias(raiz, con_datos):
     grupo = {g.nombre: g.id for g in s.libro.grupos()}
     snacks = next(c.id for c in s.libro.categorias() if c.nombre == "SNACKS Y ANTOJOS")
     at = abrir(_pagina("categorias"))
+    en_pestana(at, "Clasificaciones")
     sin_errores(at)
 
     def caja(nombre):                       # la clave lleva una versión que cambia tras cada ajuste
@@ -845,6 +854,7 @@ def test_rubros_contables_como_cajas_en_categorias(raiz, con_datos):
     s = sesion_en(raiz)
     alimentos = next(c.id for c in s.libro.categorias() if c.nombre == "ALIMENTOS")
     at = abrir(_pagina("categorias"))
+    en_pestana(at, "Contabilidad")
     sin_errores(at)
 
     def caja(rubro_id):                     # la clave lleva una versión que cambia tras cada ajuste
@@ -888,6 +898,7 @@ def test_los_rubros_de_tally_se_editan_en_categorias(raiz, con_datos):
     from motor.modelo import RC_FINANCIEROS, RC_IMPUESTOS, RC_VIDA
 
     at = abrir(_pagina("categorias"))
+    en_pestana(at, "Contabilidad")
     sin_errores(at)
     # Todos tienen su botón Editar, como en Clasificaciones (también los de TALLY).
     assert all(any(b.key == f"rc_renombrar_{r.id}" for b in at.button) for r in rc.todos(sesion_en(raiz).libro))
@@ -1982,6 +1993,7 @@ def test_reglas_automaticas_desde_categorias(raiz, con_datos):
     from motor import reglas_categorias
 
     at = abrir(_pagina("categorias"))
+    en_pestana(at, "⚡ Reglas automáticas")
     assert "⚡ Reglas automáticas" in [t.label for t in at.tabs]
     assert any("Todavía no tienes reglas" in i.value for i in at.info)
     next(t for t in at.text_input if t.label == "Si la descripción dice…").input("pizza")
@@ -2024,6 +2036,7 @@ def test_reglas_sugeridas_y_al_registrar(raiz, con_datos):
             movimientos.registrar_gasto(lib, lib.hoy(), con_datos["debito"], con_datos["cat"]["TRANSPORTE"], 50,
                                         f"UBER FICTICIO {i}")
     at = abrir(_pagina("categorias"))
+    en_pestana(at, "⚡ Reglas automáticas")
     assert any(e.label.startswith("💡 Sugerencias de reglas") for e in at.expander)
     at.button(key="regla_sugerida_0").click().run()
     sin_errores(at)
