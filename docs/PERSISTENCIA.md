@@ -55,6 +55,8 @@ que los dos siempre buscan los datos en el mismo lugar.
   los respaldos: si se borra o se daña, TALLY lo ignora y lo rehace en la
   siguiente consulta.
 - Esquema 5 y respaldos de formato 5 desde TALLY 0.11: entidad `prestamo` (cómo se contrató cada préstamo).
+- Esquema 11 y respaldos de formato 11 desde TALLY 0.28: en el `perfil`, tus ajustes de gastos hormiga
+  (`hormiga_tope` en centavos o `null` = automático, `hormiga_fuera`, `hormiga_veces`, `hormiga_porcentaje`).
 - Esquema 10 y respaldos de formato 10 desde TALLY 0.26: en `rubro_contable` también se guarda lo que el usuario
   les cambia a los seis rubros de TALLY (con su mismo id: otro `nombre`, o `borrado: true`); los que no cambia no
   se guardan. Gastos de vida y Otros ingresos no se borran.

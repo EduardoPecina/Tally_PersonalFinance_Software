@@ -78,7 +78,9 @@ def perfil_a_dict(p: Perfil) -> dict:
             "dias_para_reclamar": p.dias_para_reclamar, "clasificaciones": p.clasificaciones,
             "actualizar_precios": p.actualizar_precios, "iva": str(p.iva), "ingreso_esperado": p.ingreso_esperado,
             "meta_ahorro": p.meta_ahorro, "plan_deudas": p.plan_deudas, "estrategia_deudas": p.estrategia_deudas,
-            "salud_ignorados": list(p.salud_ignorados), "guia_oculta": p.guia_oculta}
+            "salud_ignorados": list(p.salud_ignorados), "guia_oculta": p.guia_oculta,
+            "hormiga_tope": p.hormiga_tope, "hormiga_fuera": list(p.hormiga_fuera), "hormiga_veces": p.hormiga_veces,
+            "hormiga_porcentaje": p.hormiga_porcentaje}
 
 
 def grupo_a_dict(g: Grupo) -> dict:
@@ -155,7 +157,9 @@ def perfil_desde_dict(d: dict) -> Perfil:
                   actualizar_precios=d.get("actualizar_precios", False), iva=Decimal(d.get("iva", "16")),
                   ingreso_esperado=d.get("ingreso_esperado"), meta_ahorro=d.get("meta_ahorro", 10),
                   plan_deudas=d.get("plan_deudas"), estrategia_deudas=d.get("estrategia_deudas", ""),
-                  salud_ignorados=tuple(d.get("salud_ignorados", ())), guia_oculta=d.get("guia_oculta", False))
+                  salud_ignorados=tuple(d.get("salud_ignorados", ())), guia_oculta=d.get("guia_oculta", False),
+                  hormiga_tope=d.get("hormiga_tope"), hormiga_fuera=tuple(d.get("hormiga_fuera", ())),
+                  hormiga_veces=d.get("hormiga_veces", 15), hormiga_porcentaje=d.get("hormiga_porcentaje", 10))
 
 
 def grupo_desde_dict(d: dict) -> Grupo:

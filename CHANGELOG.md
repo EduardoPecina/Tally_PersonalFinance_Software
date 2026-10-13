@@ -2,6 +2,24 @@
 
 Todos los cambios relevantes de TALLY se documentan aquí.
 
+## [0.28.0] — Sin publicar
+
+- **Gastos hormiga a tu gusto.** En **Cierre de mes › 💸 A dónde se fue**, junto a los gastos hormiga, el botón
+  **⚙️ Ajustar** abre una ventana para elegir:
+  - **Qué es un gasto chico:** automático (menos del 1 % de lo que gastas en el mes, redondeado, como hasta ahora)
+    o **menos de un monto que tú eliges**, que vale igual todos los meses (un mes con una compra grande ya no sube
+    el límite).
+  - **Subcategorías que nunca cuentan**, como el metro, las casetas o el estacionamiento. Una compra que repartiste
+    en varias subcategorías se mide por su total y de ella solo cuenta lo que no excluiste.
+  - **Cuándo te lo recomienda el cierre:** si tuviste cierta cantidad o más (antes, siempre 15) o si juntos suman
+    cierto % de tus gastos o más (antes, siempre 10 %). Con 0 en los dos ya no te lo recomienda, pero los sigues
+    viendo.
+  - **Volver a lo de TALLY** regresa a como era.
+- Debajo de los gastos hormiga, una línea dice cómo se calcularon: el límite, qué subcategorías no cuentan y cuándo
+  te los recomienda.
+- Si borras o juntas una subcategoría que no contaba como hormiga, la otra tampoco cuenta.
+- Tus ajustes se guardan en tus datos y en tus respaldos (esquema 11, respaldo de formato 11).
+
 ## [0.27.2] — Sin publicar
 
 - **Historial: las subcategorías siguen al tipo de movimiento.** Al filtrar por **Ingreso**, la lista de
