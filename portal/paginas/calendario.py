@@ -6,7 +6,7 @@ from __future__ import annotations
 import pandas as pd
 import streamlit as st
 
-from motor import categorias, recurrentes
+from motor import categorias, impuestos, recurrentes
 from motor.dinero import a_pesos
 from motor.modelo import ClaseCategoria, Recurrente, TipoCuenta, TipoOperacion
 from portal import navegacion
@@ -16,7 +16,7 @@ from portal.componentes.sesion import aplicar, ejecutar, libro
 ESTADOS = {recurrentes.PAGADO: "✅ Pagado", recurrentes.PENDIENTE: "⏳ Pendiente", recurrentes.VENCIDO: "🔴 Vencido"}
 TIPOS = {TipoOperacion.GASTO: "Un pago o gasto", TipoOperacion.INGRESO: "Un ingreso",
          TipoOperacion.TRANSFERENCIA: "Pasar dinero a otra de mis cuentas"}
-ICONOS = {recurrentes.RECURRENTE: "🔁", recurrentes.TARJETA: "💳", recurrentes.PRESTAMO: "🏦"}
+ICONOS = {recurrentes.RECURRENTE: "🔁", recurrentes.TARJETA: "💳", recurrentes.PRESTAMO: "🏦", recurrentes.FISCO: "🧾"}
 TIPOS_DE_CUENTA = (TipoCuenta.DEBITO, TipoCuenta.CREDITO, TipoCuenta.AHORRO, TipoCuenta.EFECTIVO, TipoCuenta.OTRA,
                    TipoCuenta.INVERSION, TipoCuenta.PRESTAMO, TipoCuenta.POR_COBRAR)
 
@@ -24,7 +24,7 @@ TIPOS_DE_CUENTA = (TipoCuenta.DEBITO, TipoCuenta.CREDITO, TipoCuenta.AHORRO, Tip
 def mostrar() -> None:
     st.title("Calendario de pagos")
     st.caption("Lo que te toca pagar y cobrar, y cómo quedaría tu dinero día con día. TALLY junta tus pagos fijos y "
-               "suscripciones con los pagos de tus tarjetas y préstamos.")
+               "suscripciones con los pagos de tus tarjetas, tus préstamos y lo que le toca pagar al fisco.")
     sugerencias = recurrentes.detectar(libro())
     proximos, fijos, sugeridos = st.tabs(["📅 Próximos 30 días", "🔁 Mis pagos fijos y suscripciones",
                                           f"✨ Sugerencias ({len(sugerencias)})" if sugerencias else "✨ Sugerencias"])
@@ -52,7 +52,7 @@ def _proximos() -> None:
              help="Tu dinero disponible (las cuentas que marcaste como disponibles).")
     b.metric("Entra en 30 días", formato.dinero_metrica(a_pesos(f.entra)), help="Ingresos pendientes que esperas.")
     c.metric("Sale en 30 días", formato.dinero_metrica(a_pesos(f.sale)),
-             help="Pagos pendientes: fijos, suscripciones de débito, tarjetas y préstamos.")
+             help="Pagos pendientes: fijos, suscripciones de débito, tarjetas, préstamos y pagos al fisco.")
     d.metric("En 30 días tendrías", formato.dinero_metrica(a_pesos(f.final)))
     dia_minimo, minimo = f.minimo
     if f.negativo:
@@ -74,7 +74,7 @@ def _proximos() -> None:
     st.dataframe(formato.pintar(pd.DataFrame({
         "Fecha": [e.fecha for e in f.eventos],
         "Qué": [f"{ICONOS[e.clase]} {e.nombre}" for e in f.eventos],
-        "Cuenta": [lib.cuenta(e.cuenta_id).nombre for e in f.eventos],
+        "Cuenta": [lib.cuenta(e.cuenta_id).nombre if e.cuenta_id else "—" for e in f.eventos],
         "Importe": [formato.dinero_con_signo(a_pesos(abs(e.centavos)), "+" if e.centavos > 0 else "-")
                     for e in f.eventos],
         "Estado": [ESTADOS[e.estado] for e in f.eventos],
@@ -86,6 +86,29 @@ def _proximos() -> None:
            for e in f.eventos):
         st.caption("Los pagos de tarjetas y préstamos se registran en **Deudas** (o como transferencia en Registrar).")
         navegacion.enlace("deudas", "Ir a Deudas", "💳")
+    _fisco([e for e in f.eventos if e.clase == recurrentes.FISCO and e.estado != recurrentes.PAGADO])
+
+
+def _fisco(eventos) -> None:
+    """Los pagos al fisco pendientes: TALLY no registra nada; aquí se marcan como pagados."""
+    if not eventos:
+        return
+    st.markdown("##### 🧾 Pagos al fisco")
+    st.caption("Lo que te toca pagar según tus perfiles de impuestos (Impuestos › ⚙️ Configurar). TALLY no registra "
+               "nada: cuando pagues, regístralo como gasto en IMPUESTOS y márcalo aquí. Los de un periodo que no ha "
+               "terminado son estimados: lo que llevas cobrado más lo que esperas cobrar.")
+    for e in eventos:
+        texto, boton = st.columns([3, 1.2], vertical_alignment="center")
+        texto.markdown(f"**{formato.md(e.nombre)}**: {formato.dinero_md(a_pesos(-e.centavos))} a más tardar el "
+                       f"{formato.fecha_larga(e.fecha)}"
+                       + (" · *estimado, el periodo no ha terminado*" if e.en_curso else ""))
+        if not e.en_curso and boton.button("Ya lo pagué", key=f"cal_fisco_{e.clave}", icon=":material/check:",
+                                           help="Deja de contarlo en tu calendario y en el Resumen. No registra "
+                                                "nada: registra el pago como gasto en IMPUESTOS."):
+            if ejecutar(lambda lib_, clave=e.clave: impuestos.marcar_pagado(lib_, clave),
+                        exito="Listo: marcado como pagado"):
+                st.rerun()
+    navegacion.enlace("impuestos", "Ver Impuestos › Pagos al fisco", "🧾")
 
 
 def _registrar(eventos) -> None:

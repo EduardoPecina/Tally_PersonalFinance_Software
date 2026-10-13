@@ -61,7 +61,8 @@ COMO_HAGO = (
      "**Impuestos**: tus gastos deducibles del año (tú eliges qué cuenta y con qué topes, para cualquier país), el "
      "cálculo o la revisión de un recibo o factura y el **recordatorio de pago al fisco**: en tu perfil de impuestos "
      "dices cada cuándo pagas, sobre qué ingresos y la fecha límite, y el Resumen te dice cuánto pagar y hasta "
-     "cuándo.", "impuestos", "Ir a Impuestos"),
+     "cuándo. También sale en tu Calendario y cuenta en cómo quedaría tu dinero en 30 días.", "impuestos",
+     "Ir a Impuestos"),
     ("Corregir o borrar un movimiento",
      "**Historial**: busca el movimiento, selecciónalo (casilla a la izquierda) y usa Editar o Eliminar. Todo queda "
      "en la bitácora.", "historial", "Ir al Historial"),

@@ -361,6 +361,8 @@ REGISTRO = {"recibido": "Lo que me llega a la cuenta (ya con sus impuestos)",
             "subtotal": "El monto antes de impuestos (el subtotal)"}
 DIAS_TRAS_EL_LIMITE = 30            # el aviso sigue (como vencido) hasta 30 días después de la fecha límite
 PENDIENTE, VENCIDO, PAGADO, EN_CURSO, SIN_PAGO = "pendiente", "vencido", "pagado", "en curso", "sin pago"
+_MESES = ("enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre",
+          "noviembre", "diciembre")
 _PALABRAS_DE_RETENCION = {"RETENCION", "RETENIDO", "RETENIDA", "RET", "DE", "DEL", "LA", "EL", "SOBRE"}
 
 
@@ -399,6 +401,15 @@ class PagoAlFisco:
     def clave(self) -> str:
         return clave_de_pago(self.perfil, self.desde)
 
+    @property
+    def periodo_texto(self) -> str:
+        """«septiembre 2026», «ene–mar 2026» o «2026»."""
+        if self.desde.month == self.hasta.month:
+            return f"{_MESES[self.desde.month - 1]} {self.desde.year}"
+        if self.desde.month == 1 and self.hasta.month == 12:
+            return str(self.desde.year)
+        return f"{_MESES[self.desde.month - 1][:3]}–{_MESES[self.hasta.month - 1][:3]} {self.desde.year}"
+
     def estado(self, hoy: date) -> str:
         if self.pagado:
             return PAGADO
@@ -429,18 +440,28 @@ def limite(perfil: PerfilImpuestos, hasta: date) -> date:
     return date(anio, mes + 1, min(perfil.dia_limite, calendar.monthrange(anio, mes + 1)[1]))
 
 
-def pago_del_periodo(libro: Libro, perfil: PerfilImpuestos, desde: date, hasta: date) -> PagoAlFisco:
-    """Cuánto le toca pagar al fisco por los ingresos de ``desde`` a ``hasta``."""
+def pago_del_periodo(libro: Libro, perfil: PerfilImpuestos, desde: date, hasta: date,
+                     hoy: date | None = None) -> PagoAlFisco:
+    """Cuánto le toca pagar al fisco por los ingresos de ``desde`` a ``hasta``. Con ``hoy`` (para el Calendario), a
+    un periodo que no ha terminado se le suma lo que esperas cobrar todavía según tu Calendario."""
     from motor import recurrentes
 
     ingresos = set(perfil.subcategorias)
+    fijos = [r for r in libro.recurrentes()
+             if r.activa and r.tipo is TipoOperacion.INGRESO and r.categoria_id in ingresos]
     centavos = sum(-p.importe for op in libro.operaciones(desde, hasta) for p in op.partidas_de_categoria()
                    if p.categoria_id in ingresos)
     estimado = False
-    if not centavos:                                     # sin ingresos registrados: lo que dice tu calendario
-        centavos = sum(recurrentes.monto_en(r, dia) for r in libro.recurrentes()
-                       if r.activa and r.tipo is TipoOperacion.INGRESO and r.categoria_id in ingresos
-                       for dia in recurrentes.fechas(r, desde, hasta))
+    if hoy is not None and hasta >= hoy:                 # en curso: lo registrado más lo que falta cobrar
+        falta = 0
+        for r in fijos:
+            dias = recurrentes.fechas(r, desde, hasta)
+            cobrados = recurrentes.pagos(libro, r, dias)
+            falta += sum(recurrentes.monto_en(r, dia) for dia in dias if dia not in cobrados)
+        centavos += falta
+        estimado = bool(falta)
+    elif not centavos:                                   # sin ingresos registrados: lo que dice tu calendario
+        centavos = sum(recurrentes.monto_en(r, dia) for r in fijos for dia in recurrentes.fechas(r, desde, hasta))
         estimado = bool(centavos)
     cobrado = a_pesos(centavos)
     desglose = calcular(perfil, max(cobrado, CERO))
@@ -491,6 +512,28 @@ def pagos_al_fisco(libro: Libro, perfil: PerfilImpuestos, hoy: date, cuantos: in
         pagos.append(pago_del_periodo(libro, perfil, desde, hasta))
         dia = desde - timedelta(days=1)
     return pagos
+
+
+def proximos(libro: Libro, desde: date, hasta: date, hoy: date) -> list[PagoAlFisco]:
+    """Los pagos al fisco con fecha límite de ``desde`` a ``hasta`` (para el Calendario y el flujo): los periodos que
+    ya terminaron con lo que registraste; el que va en curso, con lo que llevas más lo que esperas cobrar. Sin los
+    que no tienen nada que pagar ni los que vencieron antes de que configuraras el recordatorio."""
+    pagos = []
+    for perfil in libro.fiscal.perfiles:
+        if not perfil.frecuencia:
+            continue
+        dia = hasta                     # los periodos que terminan después de ``hasta`` vencen después de ``hasta``
+        while True:
+            inicio, fin = periodo(perfil, dia)
+            vence = limite(perfil, fin)
+            if vence < desde:           # los anteriores vencen todavía antes
+                break
+            if vence <= hasta and (perfil.recordatorio_desde is None or vence >= perfil.recordatorio_desde):
+                pago = pago_del_periodo(libro, perfil, inicio, fin, hoy)
+                if pago.total > 0:
+                    pagos.append(pago)
+            dia = inicio - timedelta(days=1)
+    return sorted(pagos, key=lambda p: (p.limite, p.perfil.nombre.casefold()))
 
 
 def por_pagar(libro: Libro, hoy: date | None = None) -> list[PagoAlFisco]:
