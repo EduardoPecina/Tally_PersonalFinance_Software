@@ -2,6 +2,19 @@
 
 Todos los cambios relevantes de TALLY se documentan aquí.
 
+## [0.26.1] — Sin publicar
+
+- **Categorías: botones ⚙️ Administrar dentro de cada caja.** Ya no hay que bajar hasta «Modificar» y elegir de una
+  lista:
+  - al abrir una categoría (SALUD, HOGAR…), **⚙️ Administrar categoría** abre una ventana para renombrarla o
+    borrarla (pasando sus subcategorías a otra);
+  - cada subcategoría tiene su **⚙️ Administrar**: nombre, **mover a otra categoría** («Categoría (para moverla,
+    elige otra)», con sus movimientos), clasificación, rubro contable, archivarla o borrarla. Al guardar, la ventana
+    se cierra y la caja sigue abierta.
+  - Al buscar, cada resultado también trae su ⚙️ Administrar.
+- **➕ Nueva subcategoría** y **➕ Nueva categoría** pasan arriba, antes de la lista.
+- Las cajas solo se arman al abrirlas: con 20 categorías y más de 100 subcategorías, la página no se hace lenta.
+
 ## [0.26.0] — Sin publicar
 
 - **Categorías › Contabilidad: los rubros de TALLY también se editan.** Antes solo los que creabas tú tenían
