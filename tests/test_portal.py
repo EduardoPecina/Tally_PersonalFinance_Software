@@ -251,7 +251,8 @@ def test_categorias_y_subcategorias_desde_el_portal(raiz, con_datos):
     sin_errores(at)
     assert any(e.label.startswith("**SALUD**") for e in at.expander)
     at.text_input(key="buscar_gasto").input("dentísta").run()
-    assert at.dataframe[0].value["Subcategoría"].tolist() == ["DENTISTA"]
+    dentista = categorias.buscar(sesion_en(raiz).libro, "DENTISTA").id
+    assert [b.key for b in at.button if (b.key or "").startswith("administrar_sub_")] == [f"administrar_sub_{dentista}"]
     at.text_input(key="buscar_gasto").input("").run()
 
     salud = categorias.buscar_rubro(sesion_en(raiz).libro, "Salud").id
@@ -263,6 +264,39 @@ def test_categorias_y_subcategorias_desde_el_portal(raiz, con_datos):
     # La misma, escrita distinto: no se puede agregar dos veces.
     nueva_subcategoria(at, salud, "ORTODONCIA ")
     assert any("dos veces" in e.value for e in at.error)
+
+
+def test_administrar_subcategorias_y_categorias_desde_su_caja(raiz, con_datos):
+    from motor import categorias
+
+    lib = sesion_en(raiz).libro
+    salud, cuidado = (categorias.buscar_rubro(lib, n).id for n in ("SALUD", "CUIDADO PERSONAL"))
+    dentista = categorias.buscar(lib, "DENTISTA").id
+    at = abrir(_pagina("categorias"))
+    assert not any(s.value == "Modificar" for s in at.markdown)                 # ya no hay que bajar a elegirla
+    assert not any((b.key or "").startswith("administrar_sub_") for b in at.button)   # cerradas: no se arman
+    at.session_state["_categorias_abiertas"] = {salud}                         # abre la caja de SALUD
+    at.run()
+    sin_errores(at)
+    assert any(b.key == f"administrar_sub_{dentista}" for b in at.button)
+
+    # Mover una subcategoría a otra categoría (con sus movimientos) desde su ⚙️ Administrar.
+    next(b for b in at.button if b.key == f"administrar_sub_{dentista}").click().run()
+    next(x for x in at.selectbox if x.label.startswith("Categoría")).set_value(cuidado)
+    boton(at, "Guardar cambios").click().run()
+    sin_errores(at)
+    assert sesion_en(raiz).libro.categoria(dentista).rubro_id == cuidado
+    assert not any(b.label == "Guardar cambios" for b in at.button)            # la ventana se cerró
+    assert any(b.key == f"administrar_cat_{salud}" for b in at.button)         # SALUD sigue abierta (con 8)
+    assert not any(b.key == f"administrar_sub_{dentista}" for b in at.button)  # ya no está en SALUD
+
+    # Renombrar la categoría desde su ⚙️ Administrar categoría.
+    next(b for b in at.button if b.key == f"administrar_cat_{salud}").click().run()
+    next(t for t in at.text_input if t.label == "Nombre" and t.value == "SALUD").input("Salud y bienestar")
+    next(b for b in at.button if b.label == "Renombrar" and salud in str(b.form_id)).click().run()
+    sin_errores(at)
+    assert sesion_en(raiz).libro.rubro(salud).nombre == "SALUD Y BIENESTAR"
+    assert any(e.label.startswith("**SALUD Y BIENESTAR**") for e in at.expander)
 
 
 TEXTO_CON_DESCONOCIDA = (
@@ -891,7 +925,8 @@ def test_rubro_contable_al_crear_y_editar_una_subcategoria(raiz, con_datos):
     assert any("«Gastos financieros»" in t.value for t in at.toast)        # por su categoría
     nueva = next(c for c in sesion_en(raiz).libro.categorias() if c.nombre == "CARGO POR PAGO TARDIO")
 
-    at.selectbox(key="elegida_gasto").set_value(nueva.id).run()
+    at.text_input(key="buscar_gasto").input("pago tardío").run()
+    next(b for b in at.button if b.key == f"administrar_sub_{nueva.id}").click().run()
     contable = next(x for x in at.selectbox if x.label == "Rubro contable")
     assert contable.value == "rc-financieros"
     contable.set_value("rc-impuestos")
