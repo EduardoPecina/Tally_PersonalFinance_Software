@@ -167,6 +167,7 @@ def test_si_no_se_puede_apartar_el_original_no_queda_nada_a_medias(instalador, t
     monkeypatch.setenv("TALLY_SIN_VENTANAS", "1")
     monkeypatch.setattr(instalador, "portal_abierto", lambda: False)
     monkeypatch.setattr(instalador, "ESPERA_BLOQUEO", 0)
+    monkeypatch.setattr(instalador, "mac", lambda: False)        # el undo() también quitó «como en Windows»
     assert instalador.instalar(sin_librerias=True, sin_accesos=True) == 0
     assert _datos_que_usa_el_programa(raiz / "_Programa", base) == base / "Datos" / "tally.db"
     assert instantanea(Sesion(base / "Datos" / "tally.db").libro) == antes
