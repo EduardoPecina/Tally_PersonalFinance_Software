@@ -1,7 +1,8 @@
 """Abre TALLY sin ventana negra: arranca el servidor local (si no está corriendo) y abre el navegador.
 
-Lo usan el acceso directo del Escritorio (con ``pythonw``) y ``EJECUTAR PORTAL.bat``. El servidor escucha solo
-en ``localhost``: nadie más en la red puede verlo. Si algo falla, muestra una ventana de Windows con el motivo;
+Lo usan el acceso directo del Escritorio (con ``pythonw``) y ``EJECUTAR PORTAL.bat``; en Mac, la app TALLY y
+``EJECUTAR PORTAL.command``. El servidor escucha solo en ``localhost``: nadie más en la red puede verlo. Si algo
+falla, muestra una ventana (de Windows o de la Mac) con el motivo;
 el detalle queda en ``portal.log``, junto a tus datos (fuera de OneDrive: TALLY escribe en él mientras está
 abierto y OneDrive intentaría subirlo sin parar).
 
@@ -72,14 +73,24 @@ def responde(intentos: int = 4, tiempo_espera: float = 5) -> bool:
     return False
 
 
+_DIALOGO_MAC = ('on run argv\n'
+                'display dialog (item 1 of argv) with title "TALLY" buttons {"OK"} default button 1 with icon stop\n'
+                'end run')
+
+
 def avisar_error(mensaje: str) -> None:
-    """Ventana de Windows (no hay consola); en otros sistemas, texto."""
+    """Una ventana con el motivo (la app no tiene consola): la de Windows o la de la Mac; en otros sistemas, texto."""
     if sys.platform == "win32":
         import ctypes
 
         ctypes.windll.user32.MessageBoxW(None, mensaje, "TALLY", 0x10)
-    else:
-        print(mensaje, file=sys.stderr)
+        return
+    print(mensaje, file=sys.stderr)
+    if sys.platform == "darwin" and not os.environ.get("TALLY_SIN_VENTANAS"):   # el mensaje va como argumento
+        try:
+            subprocess.run(["osascript", "-e", _DIALOGO_MAC, mensaje], stdin=subprocess.DEVNULL, timeout=3600)
+        except (OSError, subprocess.SubprocessError):
+            pass
 
 
 # ------------------------------------------------------------------ Un solo lanzador a la vez
@@ -136,7 +147,9 @@ def iniciar_servidor() -> subprocess.Popen:
         "--server.port", str(PUERTO_PORTAL), "--server.address", "localhost", "--server.headless", "true",
         "--browser.gatherUsageStats", "false",
     ]
-    opciones = {"creationflags": subprocess.CREATE_NO_WINDOW} if sys.platform == "win32" else {}
+    # En Mac (y Linux) el servidor va en su propia sesión: sigue abierto aunque termine la app que lo lanzó.
+    opciones = ({"creationflags": subprocess.CREATE_NO_WINDOW} if sys.platform == "win32"
+                else {"start_new_session": True})
     ruta = bitacora()
     ruta.parent.mkdir(parents=True, exist_ok=True)
     # El servidor hereda su propia copia del archivo; este proceso cierra la suya al terminar el bloque.

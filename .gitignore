@@ -31,6 +31,7 @@ Exportaciones/
 *.txt
 !requirements.txt
 !requirements-lock.txt
+!requirements-lock-mac.txt
 !requirements-portal.txt
 
 # Datos ficticios de prueba, si alguna vez se necesitan como archivo.

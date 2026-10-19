@@ -1,8 +1,9 @@
 """Copia de tus respaldos en otra carpeta: tu NAS, un disco externo o una USB (Configuración › Respaldo automático).
 
 Tus datos siguen en esta PC (``Datos``) y sus respaldos en ``Respaldos``; esto deja, además, una copia en la carpeta
-que elijas, por si a la PC le pasa algo. Nada sale a internet: Windows se encarga de entrar al NAS (TALLY no guarda
-ninguna contraseña suya), y si tus datos tienen contraseña, la copia va cifrada como cualquier respaldo.
+que elijas, por si a la computadora le pasa algo. Nada sale a internet: Windows (o tu Mac) se encarga de entrar al
+NAS (TALLY no guarda ninguna contraseña suya), y si tus datos tienen contraseña, la copia va cifrada como cualquier
+respaldo.
 
 - **Cuándo:** con la frecuencia que elijas (diariamente, cada semana o cada mes), al cerrar TALLY, o al abrirlo si
   quedó pendiente (el NAS estaba apagado o TALLY no se cerró bien), y solo si cambiaste algo desde la última copia.
@@ -27,6 +28,7 @@ from datetime import datetime
 from pathlib import Path
 
 from motor import respaldos
+from motor.config import MAC
 from motor.errores import ErrorTally, ErrorValidacion
 from motor.persistencia import Almacen
 
@@ -146,8 +148,8 @@ def _no_es_de_esta_pc(ruta_datos: Path | str, carpeta: str) -> None:
     except OSError:
         return
     if elegida in propias:
-        raise ErrorValidacion("Esa es una carpeta de TALLY en esta PC. Elige la de tu NAS o tu disco externo: la idea "
-                              "es tener la copia en otro lado.")
+        raise ErrorValidacion("Esa es una carpeta de TALLY en esta computadora. Elige la de tu NAS o tu disco "
+                              "externo: la idea es tener la copia en otro lado.")
 
 
 def probar(carpeta: str) -> None:
@@ -157,8 +159,8 @@ def probar(carpeta: str) -> None:
     if not carpeta:
         raise ErrorValidacion("Primero escribe o elige la carpeta de tu NAS o disco externo.")
     if not Path(carpeta).is_absolute():
-        raise ErrorValidacion("Escribe la ruta completa de la carpeta, por ejemplo \\\\MiNAS\\Respaldos o "
-                              "E:\\Respaldos TALLY.")
+        ejemplo = "/Volumes/MiNAS/Respaldos" if MAC else "\\\\MiNAS\\Respaldos o E:\\Respaldos TALLY"
+        raise ErrorValidacion(f"Escribe la ruta completa de la carpeta, por ejemplo {ejemplo}.")
     ruta = Path(carpeta)
     try:
         if not ruta.is_dir():
@@ -182,7 +184,8 @@ def explicar(error: Exception, carpeta: str) -> str:
         return (f"No encuentro la carpeta «{carpeta}». Revisa que tu NAS esté encendido (o tu disco conectado) y que "
                 "la ruta esté bien escrita.")
     if isinstance(error, PermissionError):
-        return f"Windows no deja guardar en «{carpeta}». Revisa que tu usuario tenga permiso de escribir ahí."
+        sistema = "Tu Mac" if MAC else "Windows"
+        return f"{sistema} no deja guardar en «{carpeta}». Revisa que tu usuario tenga permiso de escribir ahí."
     if isinstance(error, OSError) and error.errno == errno.ENOSPC:
         return f"Ya no cabe nada en «{carpeta}»: está lleno. Libera espacio o conserva menos copias."
     detalle = error.strerror if isinstance(error, OSError) and error.strerror else str(error)

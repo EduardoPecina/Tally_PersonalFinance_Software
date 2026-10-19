@@ -26,7 +26,16 @@ def instalador(monkeypatch, tmp_path):
     monkeypatch.setenv("TALLY_SIN_VENTANAS", "1")
     monkeypatch.setattr(modulo, "portal_abierto", lambda: False)
     monkeypatch.setattr(modulo, "ESPERA_BLOQUEO", 0)
+    monkeypatch.setattr(modulo, "mac", lambda: False)        # como en Windows, aunque las pruebas corran en Mac
     return modulo
+
+
+@pytest.fixture
+def en_mac(instalador, monkeypatch, tmp_path):
+    """El instalador como en una Mac (en cualquier sistema): todo en ~/TALLY y la app en ~/Applications."""
+    monkeypatch.setattr(instalador, "mac", lambda: True)
+    monkeypatch.setenv("TALLY_APLICACIONES", str(tmp_path / "Applications"))
+    return instalador
 
 
 def carpeta(tmp_path):
@@ -492,3 +501,146 @@ def test_instalar_bat_se_copia_fuera_del_zip_antes_de_seguir():
     assert 'findstr /i /c:".zip"' in texto and "TALLY_DESDE_COPIA" in texto
     assert texto.index("TALLY_instalador") < texto.index("call :buscar_python")   # antes de cualquier otra cosa
     assert "\r\n" in (RAIZ_REPO / "INSTALAR.bat").read_bytes().decode("utf-8")   # CRLF: cmd lo exige
+
+
+# ------------------------------------------------------------------ Mac
+
+
+def test_en_mac_todo_vive_en_la_carpeta_de_inicio(en_mac, tmp_path):
+    assert en_mac.instalar(sin_librerias=True, sin_accesos=True) == 0
+    base = datos(tmp_path)                                       # ~/TALLY
+    assert (base / "_Programa" / "portal" / "app.py").exists()
+    assert (base / "Datos").is_dir() and (base / "Respaldos").is_dir()
+    assert not carpeta(tmp_path).exists()                        # nada en el Escritorio (puede estar en iCloud)
+    leeme = (base / "LEEME.txt").read_text(encoding="utf-8")
+    assert "Aplicaciones" in leeme and "INSTALAR.command" in leeme and "iCloud" in leeme and ".bat" not in leeme
+    assert "RESULTADO: terminó bien" in (base / "instalacion.log").read_text(encoding="utf-8")
+
+
+def test_en_mac_actualizar_respalda_y_no_toca_los_datos(en_mac, tmp_path):
+    en_mac.instalar(sin_librerias=True, sin_accesos=True)
+    base = datos(tmp_path)
+    with Sesion(base / "Datos" / "tally.db").cambio() as libro:
+        cuentas.crear(libro, "Débito Ficticio", "debito", saldo_inicial=100, fecha_creacion=date(2026, 7, 1))
+    antes = huella(base / "Datos" / "tally.db")
+    (base / "_Programa" / "marca.txt").write_text("versión anterior")
+    assert en_mac.instalar(sin_librerias=True, sin_accesos=True) == 0
+    assert huella(base / "Datos" / "tally.db") == antes
+    assert not (base / "_Programa" / "marca.txt").exists()              # el programa se reemplazó completo
+    assert list((base / "Respaldos").glob("TALLY_antes_de_actualizar_*.zip"))
+
+
+def test_en_mac_usa_las_librerias_verificadas_para_mac(en_mac, monkeypatch):
+    comandos = []
+    monkeypatch.setattr(en_mac, "ejecutar", lambda comando: comandos.append(comando) or 0)
+    assert en_mac.instalar_librerias()
+    (comando,) = comandos
+    assert comando[comando.index("-r") + 1].endswith("requirements-lock-mac.txt")
+    assert "--require-hashes" in comando and "--only-binary=:all:" in comando
+    assert en_mac.instalador() == "INSTALAR.command" and en_mac.programa_incompleto() == []
+
+
+def test_las_librerias_de_mac_son_las_mismas_versiones_que_las_de_windows():
+    def versiones(nombre):
+        texto = (RAIZ_REPO / nombre).read_text(encoding="utf-8").replace("\\\n", " ")
+        paquetes = [linea.split()[0] for linea in texto.splitlines()
+                    if linea.strip() and not linea.lstrip().startswith("#")]
+        for linea in texto.splitlines():
+            if linea.strip() and not linea.lstrip().startswith("#"):
+                assert "--hash=sha256:" in linea, linea
+        return dict(p.split("==") for p in paquetes)
+
+    windows, mac = versiones("requirements-lock.txt"), versiones("requirements-lock-mac.txt")
+    solo_windows = {"colorama", "pywin32", "tzdata", "watchdog"}     # Mac no los usa
+    assert set(windows) - set(mac) == solo_windows and set(mac) <= set(windows)
+    assert all(mac[p] == windows[p] for p in mac)
+
+
+def test_en_mac_crea_la_app_con_el_python_de_tally(en_mac, tmp_path):
+    import plistlib
+
+    llamadas = []
+    original = en_mac.crear_app_mac
+    en_mac.crear_app_mac = lambda programa, base=None: llamadas.append((programa, base)) or original(programa, base)
+    assert en_mac.instalar(sin_librerias=True, sin_accesos=False) == 0
+    base = datos(tmp_path)
+    assert llamadas == [(base / "_Programa", base)]
+    app = tmp_path / "Applications" / "TALLY.app"
+    info = plistlib.loads((app / "Contents" / "Info.plist").read_bytes())
+    assert (info["CFBundleExecutable"], info["CFBundleIconFile"], info["CFBundlePackageType"]) == ("TALLY", "tally",
+                                                                                                    "APPL")
+    lanzador = app / "Contents" / "MacOS" / "TALLY"
+    assert lanzador.stat().st_mode & 0o111                               # se puede ejecutar
+    texto = lanzador.read_text(encoding="utf-8")
+    assert texto.startswith("#!/bin/bash") and sys.executable in texto
+    assert str(base / "_Programa" / "portal" / "iniciar.py") in texto
+    assert (app / "Contents" / "Resources" / "tally.icns").read_bytes()[:4] == b"icns"
+    assert not (tmp_path / "Applications" / "TALLY.app.nueva").exists()
+
+
+def test_en_mac_renovar_la_app_conserva_el_icono_elegido(en_mac, tmp_path):
+    from motor import perfil
+
+    en_mac.instalar(sin_librerias=True, sin_accesos=False)
+    base = datos(tmp_path)
+    with Sesion(base / "Datos" / "tally.db").cambio() as libro:
+        perfil.configurar(libro, "Usuario Ficticio")
+        perfil.ajustar(libro, icono="acento")
+    assert en_mac.instalar(sin_librerias=True, sin_accesos=False) == 0
+    icono = tmp_path / "Applications" / "TALLY.app" / "Contents" / "Resources" / "tally.icns"
+    assert icono.read_bytes() == (base / "_Programa" / "portal" / "recursos" / "tally_acento.icns").read_bytes()
+
+
+def test_en_mac_si_no_se_puede_crear_la_app_lo_dice(en_mac, tmp_path, monkeypatch, capsys):
+    (tmp_path / "Applications").write_text("no es una carpeta")          # no se puede crear la app ahí
+    assert en_mac.instalar(sin_librerias=True, sin_accesos=False) == 0
+    salida = capsys.readouterr().out
+    assert "No se pudo crear la app" in salida and "EJECUTAR PORTAL.command" in salida
+
+
+def test_en_mac_los_avisos_hablan_de_la_mac(en_mac, tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(en_mac, "portal_abierto", lambda: True)
+    assert en_mac.instalar(sin_librerias=True, sin_accesos=True) == 1
+    salida = capsys.readouterr().out
+    assert "INSTALAR.command" in salida and "carpeta de inicio" in salida and "INSTALAR.bat" not in salida
+
+
+def test_instalar_command_para_mac():
+    ruta = RAIZ_REPO / "INSTALAR.command"
+    texto = ruta.read_text(encoding="utf-8")
+    assert texto.startswith("#!/bin/bash") and b"\r\n" not in ruta.read_bytes()   # LF: bash no acepta CRLF
+    assert "hw.optional.arm64" in texto                                   # Mac con Intel: lo dice y no sigue
+    assert "pkgutil --check-signature" in texto and "Python Software Foundation" in texto
+    assert "-m venv" in texto and "instalador/instalar.py" in texto
+    portal = (RAIZ_REPO / "EJECUTAR PORTAL.command").read_text(encoding="utf-8")
+    assert portal.startswith("#!/bin/bash") and "portal/iniciar.py" in portal
+    if sys.platform != "win32":
+        import os
+
+        assert os.access(ruta, os.X_OK) and os.access(RAIZ_REPO / "EJECUTAR PORTAL.command", os.X_OK)
+
+
+def test_en_mac_cambiar_el_icono_de_la_app(monkeypatch, tmp_path):
+    from portal import accesos
+
+    monkeypatch.setattr(accesos.sys, "platform", "darwin")
+    monkeypatch.setenv("TALLY_APLICACIONES", str(tmp_path))
+    assert accesos.cambiar_icono("oscuro")[0] == 0                      # aún no hay app
+    (tmp_path / "TALLY.app" / "Contents" / "Resources").mkdir(parents=True)
+    cambiados, mensaje = accesos.cambiar_icono("oscuro")
+    assert cambiados == 1 and "app TALLY" in mensaje
+    icono = tmp_path / "TALLY.app" / "Contents" / "Resources" / "tally.icns"
+    assert icono.read_bytes() == accesos.archivo_icono("oscuro").with_suffix(".icns").read_bytes()
+    for variante in ("claro", "oscuro", "acento", "gris"):
+        assert accesos.archivo_icono(variante).with_suffix(".icns").read_bytes()[:4] == b"icns"
+
+
+def test_en_mac_https_usa_los_certificados_de_certifi(monkeypatch):
+    import ssl
+
+    from motor import cotizaciones
+
+    monkeypatch.setattr(cotizaciones.sys, "platform", "darwin")
+    assert isinstance(cotizaciones.contexto_https(), ssl.SSLContext)
+    monkeypatch.setattr(cotizaciones.sys, "platform", "win32")
+    assert cotizaciones.contexto_https() is None                        # Windows: los del sistema

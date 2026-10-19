@@ -1,12 +1,14 @@
 """Cambiar el color del ícono de los accesos directos de TALLY (Configuración → Apariencia).
 
-Los accesos están en el Escritorio y dentro de la carpeta TALLY (los crea el instalador). Se actualizan con
-pywin32, como al instalarlos; en otra plataforma no hay nada que hacer.
+En Windows, los accesos están en el Escritorio y dentro de la carpeta TALLY (los crea el instalador) y se
+actualizan con pywin32, como al instalarlos. En Mac, se cambia el ícono de la app ~/Applications/TALLY.app.
 """
 
 from __future__ import annotations
 
 import os
+import shutil
+import subprocess
 import sys
 from pathlib import Path
 
@@ -56,10 +58,42 @@ def accesos_directos() -> list[Path]:
     return [r for r in dict.fromkeys(posibles) if r.exists()]
 
 
+def app_mac() -> Path:
+    """La app que crea el instalador en Mac."""
+    if os.environ.get("TALLY_APLICACIONES"):                  # para pruebas
+        return Path(os.environ["TALLY_APLICACIONES"]) / "TALLY.app"
+    return Path.home() / "Applications" / "TALLY.app"
+
+
+LSREGISTER = Path("/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/"
+                  "lsregister")
+
+
+def _cambiar_icono_mac(variante: str) -> tuple[int, str]:
+    app = app_mac()
+    if not (app / "Contents").is_dir():
+        return 0, "No se encontró la app TALLY en Aplicaciones; se usará este ícono al reinstalar."
+    try:
+        shutil.copyfile(archivo_icono(variante).with_suffix(".icns"), app / "Contents" / "Resources" / "tally.icns")
+        os.utime(app)                                     # que Finder y el Dock lo vuelvan a leer
+    except OSError as error:
+        return 0, f"Tu Mac no dejó cambiar el ícono ({error})."
+    if LSREGISTER.exists():
+        try:
+            subprocess.run([str(LSREGISTER), "-f", str(app)], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                           stderr=subprocess.DEVNULL, timeout=60)
+        except (OSError, subprocess.SubprocessError):
+            pass
+    return 1, "Ícono cambiado en la app TALLY. Si el Dock sigue mostrando el anterior, quítala y vuelve a ponerla."
+
+
 def cambiar_icono(variante: str) -> tuple[int, str]:
-    """Pone el ícono de la variante en los accesos directos. Devuelve (cuántos se cambiaron, mensaje)."""
+    """Pone el ícono de la variante en los accesos directos (o en la app, en Mac). Devuelve (cuántos se cambiaron,
+    mensaje)."""
+    if sys.platform == "darwin":
+        return _cambiar_icono_mac(variante)
     if sys.platform != "win32":
-        return 0, "Los accesos directos solo existen en Windows."
+        return 0, "Los accesos directos solo existen en Windows y Mac."
     accesos = accesos_directos()
     if not accesos:
         return 0, "No se encontraron los accesos directos de TALLY; se usará este ícono al reinstalar."
@@ -67,7 +101,7 @@ def cambiar_icono(variante: str) -> tuple[int, str]:
         import pythoncom
         import win32com.client
     except ImportError:
-        return 0, "Falta pywin32; vuelve a correr INSTALAR.bat."
+        return 0, "Falta pywin32; vuelve a correr INSTALAR.bat."              # solo en Windows
     pythoncom.CoInitialize()           # el portal atiende cada pestaña en su propio hilo
     try:
         shell = win32com.client.Dispatch("WScript.Shell")

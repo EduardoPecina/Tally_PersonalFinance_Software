@@ -1,4 +1,5 @@
-"""Instalador de TALLY. Lo llama INSTALAR.bat (que antes se asegura de que haya Python 3.13).
+"""Instalador de TALLY. Lo llama INSTALAR.bat en Windows o INSTALAR.command en Mac (que antes se aseguran de que
+haya Python 3.13).
 
 Se puede correr las veces que sea: la primera vez INSTALA y después ACTUALIZA (reemplaza solo el programa;
 tus finanzas y tus respaldos no se tocan).
@@ -18,13 +19,22 @@ tus finanzas y tus respaldos no se tocan).
        (copia verificada; el original se quita solo después de comprobar la copia).
     5. Crea el acceso directo "TALLY" en el Escritorio y dentro de la carpeta.
 
+En Mac (chip de Apple), todo vive en tu carpeta de inicio, fuera del Escritorio y de iCloud:
+           ~/TALLY/
+             Datos/, Respaldos/         tus finanzas y sus respaldos
+             _Programa/                 el programa (se reemplaza completo al actualizar)
+             _Python/                   el Python de TALLY (lo crea INSTALAR.command; no toca el de tu Mac)
+             LEEME.txt, instalacion.log
+       y la app ~/Applications/TALLY.app (aparece en Aplicaciones, Launchpad y Spotlight; se puede poner en el Dock).
+
 Uso manual (pruebas):  python instalador/instalar.py [--sin-librerias] [--sin-accesos]
-Las variables TALLY_ESCRITORIO y TALLY_DATOS permiten usar otras carpetas (pruebas).
+Las variables TALLY_ESCRITORIO, TALLY_DATOS y TALLY_APLICACIONES permiten usar otras carpetas (pruebas).
 """
 
 import argparse
 import os
 import platform
+import plistlib
 import queue
 import re
 import shutil
@@ -56,8 +66,26 @@ NO_COPIAR = shutil.ignore_patterns(
 
 BITACORA = "instalacion.log"                      # en la carpeta TALLY: todo lo que muestra la ventana negra
 TAMANO_MAXIMO = 2_000_000                         # bytes; si crece más, se conservan las instalaciones más recientes
-PIDE_BITACORA = (f"\n\nSi necesitas ayuda, comparte el archivo {BITACORA} (carpeta TALLY de tu Escritorio): "
-                 "ahí quedó el detalle de lo que pasó. No contiene tus datos financieros.")
+
+
+def mac():
+    """True en Mac (las pruebas lo cambian para revisar las dos formas de instalar en cualquier sistema)."""
+    return sys.platform == "darwin"
+
+
+def instalador():
+    return "INSTALAR.command" if mac() else "INSTALAR.bat"
+
+
+def lock():
+    """Las librerías verificadas de este sistema (las mismas versiones en los dos)."""
+    return "requirements-lock-mac.txt" if mac() else "requirements-lock.txt"
+
+
+def pide_bitacora():
+    donde = "carpeta TALLY de tu carpeta de inicio" if mac() else "carpeta TALLY de tu Escritorio"
+    return (f"\n\nSi necesitas ayuda, comparte el archivo {BITACORA} ({donde}): ahí quedó el detalle de lo que "
+            "pasó. No contiene tus datos financieros.")
 
 NOMBRE_ACCESO_DATOS = "Mis datos de TALLY"
 
@@ -87,6 +115,37 @@ ACTUALIZAR
 
 PASAR TUS DATOS A OTRA PC
   Crea un respaldo desde TALLY, instala TALLY en la otra PC y restaura ese respaldo.
+
+SI ALGO FALLA AL INSTALAR
+  Revisa o comparte el archivo instalacion.log (está en esta carpeta).
+"""
+
+LEEME_MAC = """TALLY
+=====
+Your money. Your computer. Your data.
+
+ABRIR TALLY
+  Abre la app "TALLY": está en Aplicaciones (o escribe TALLY en Spotlight, Cmd + Espacio).
+  Para tenerla a la mano, arrástrala al Dock.
+  Se abre en tu navegador, pero todo se queda en esta Mac: no usa Internet.
+  Para cerrarlo: botón "Cerrar TALLY" en el menú de la izquierda.
+  Si la app no abre: doble clic en _Programa/EJECUTAR PORTAL.command
+
+ESTA CARPETA ({datos})
+  Vive en tu carpeta de inicio, en esta Mac: nunca se sube a iCloud ni a ninguna nube.
+    Datos       tus finanzas (tally.db). No la borres ni la edites a mano.
+    Respaldos   respaldos manuales y automáticos (archivos .zip).
+                Copia alguno a una memoria USB o a tu NAS de vez en cuando
+                (o actívalo en TALLY: Configuración, Respaldos).
+    _Programa   el programa. No modifiques nada aquí.
+    _Python     el Python de TALLY. No modifiques nada aquí.
+
+ACTUALIZAR
+  Cierra TALLY y vuelve a correr INSTALAR.command de la versión nueva. Antes de actualizar se crea un
+  respaldo automático en la carpeta Respaldos. Tus datos no se tocan.
+
+PASAR TUS DATOS A OTRA COMPUTADORA (Mac o Windows)
+  Crea un respaldo desde TALLY, instala TALLY en la otra computadora y restaura ese respaldo.
 
 SI ALGO FALLA AL INSTALAR
   Revisa o comparte el archivo instalacion.log (está en esta carpeta).
@@ -246,14 +305,28 @@ def limpiar_restos_de_pip(carpetas=None):
     return borrados
 
 
-# ------------------------------------------------------------------ Windows
+# ------------------------------------------------------------------ Windows y Mac
+_DIALOGO_MAC = ("on run argv\n"
+                "display dialog (item 1 of argv) with title (item 2 of argv) buttons {\"OK\"} default button 1 "
+                "with icon (item 3 of argv as integer)\n"
+                "end run")
+
+
 def avisar(mensaje, titulo="Instalador de TALLY", error=False):
     if error:
-        mensaje += PIDE_BITACORA
+        mensaje += pide_bitacora()
     print(("ERROR: " if error else "") + mensaje)
-    if sys.platform == "win32" and not os.environ.get("TALLY_SIN_VENTANAS"):
+    if os.environ.get("TALLY_SIN_VENTANAS"):
+        return
+    if sys.platform == "win32":
         import ctypes
         ctypes.windll.user32.MessageBoxW(None, mensaje, titulo, 0x10 if error else 0x40)
+    elif sys.platform == "darwin":                  # el texto va como argumento: nada que escapar
+        try:
+            subprocess.run(["osascript", "-e", _DIALOGO_MAC, mensaje, titulo, "0" if error else "1"],
+                           stdin=subprocess.DEVNULL, timeout=3600)
+        except (OSError, subprocess.SubprocessError):
+            pass
 
 
 def escritorio():
@@ -297,7 +370,7 @@ def instalar_librerias():
     print("Revisando librerías en las versiones probadas...")
     print("La primera vez puede tardar hasta 10 minutos (el antivirus revisa miles de archivos). "
           "No cierres esta ventana aunque parezca quieta.")
-    comando = [sys.executable, "-m", "pip", "install", "-r", str(ORIGEN / "requirements-lock.txt"),
+    comando = [sys.executable, "-m", "pip", "install", "-r", str(ORIGEN / lock()),
                "--require-hashes", "--only-binary=:all:",
                "--disable-pip-version-check", "--progress-bar", "off", "--retries", "10", "--timeout", "60"]
     for intento in (1, 2):
@@ -310,16 +383,21 @@ def instalar_librerias():
 # Lo mínimo que debe traer el programa para instalarse. Si falta algo, casi siempre es porque se corrió
 # INSTALAR.bat desde DENTRO del ZIP y Windows borró su copia temporal (o la extracción quedó a medias).
 ARCHIVOS_NECESARIOS = ("motor/respaldos.py", "motor/persistencia.py", "motor/cifrado.py", "motor/rutas.py",
-                       "portal/app.py",
-                       "requirements-lock.txt", "INSTALAR.bat")
-AVISO_ZIP = ("Descomprime el ZIP primero: clic derecho en el archivo .zip → «Extraer todo», abre la carpeta que se "
-             "crea y corre INSTALAR.bat desde ahí. (Si lo corres desde dentro del ZIP, Windows puede borrar su copia "
-             "temporal a media instalación.)")
+                       "portal/app.py")
+
+
+def aviso_zip():
+    if mac():
+        return ("Descomprime el ZIP primero (doble clic en el archivo .zip), abre la carpeta que se crea y corre "
+                "INSTALAR.command desde ahí.")
+    return ("Descomprime el ZIP primero: clic derecho en el archivo .zip → «Extraer todo», abre la carpeta que se "
+            "crea y corre INSTALAR.bat desde ahí. (Si lo corres desde dentro del ZIP, Windows puede borrar su copia "
+            "temporal a media instalación.)")
 
 
 def programa_incompleto():
     """Los archivos necesarios que faltan en el origen (lista vacía si está completo)."""
-    return [a for a in ARCHIVOS_NECESARIOS if not (ORIGEN / a).exists()]
+    return [a for a in (*ARCHIVOS_NECESARIOS, lock(), instalador()) if not (ORIGEN / a).exists()]
 
 
 def _motor(modulo):
@@ -440,7 +518,10 @@ def puede_escribir(carpeta):
 
 
 def carpeta_de_instalacion():
-    """Escritorio\\TALLY; si Windows no deja escribir en el Escritorio, la carpeta del usuario."""
+    """Escritorio\\TALLY; si Windows no deja escribir en el Escritorio, la carpeta del usuario. En Mac, siempre la
+    carpeta del usuario (~/TALLY): el Escritorio puede estar en iCloud y el programa no tiene por qué verse ahí."""
+    if mac():
+        return carpeta_de_datos()
     raiz = escritorio() / NOMBRE_CARPETA
     if puede_escribir(raiz):
         return raiz
@@ -521,7 +602,10 @@ def copiar_programa(destino):
 def crear_estructura(raiz, base):
     for carpeta in (base / DATOS, base / RESPALDOS):
         carpeta.mkdir(parents=True, exist_ok=True)
-    (raiz / "LEEME.txt").write_text(LEEME.format(datos=base), encoding="utf-8-sig")
+    if mac():
+        (raiz / "LEEME.txt").write_text(LEEME_MAC.format(datos=base), encoding="utf-8")
+    else:
+        (raiz / "LEEME.txt").write_text(LEEME.format(datos=base), encoding="utf-8-sig")
 
 
 def quitar_log_del_escritorio(raiz, base):
@@ -626,6 +710,81 @@ def crear_accesos(raiz, programa, base=None):
     return listo
 
 
+# ------------------------------------------------------------------ La app de Mac
+def aplicaciones():
+    """~/Applications: la carpeta Aplicaciones de tu usuario (no pide contraseña; Launchpad y Spotlight la ven)."""
+    if os.environ.get("TALLY_APLICACIONES"):                  # para pruebas
+        return Path(os.environ["TALLY_APLICACIONES"])
+    return Path.home() / "Applications"
+
+
+def icono_elegido_mac(programa, base):
+    """El .icns del color que eligió el usuario en Configuración (el claro si no eligió o no se puede leer)."""
+    return icono_elegido(programa, base).with_suffix(".icns")
+
+
+LANZADOR_MAC = """#!/bin/bash
+# Abre TALLY: arranca el portal local (si no está corriendo) y abre tu navegador. Lo creó el instalador de TALLY.
+# Si algo falla, el detalle queda en portal.log, junto a tus datos.
+exec {python} {iniciar}
+"""
+
+
+def crear_app_mac(programa, base=None):
+    """Crea (o renueva) ~/Applications/TALLY.app: abre TALLY con el Python de TALLY y lleva el ícono elegido. Se arma
+    aparte y luego reemplaza a la anterior, así nunca queda una app a medias. True si quedó lista."""
+    import shlex
+
+    destino = aplicaciones() / f"{NOMBRE_ACCESO}.app"
+    nueva = destino.with_name(destino.name + ".nueva")
+    print(f"Creando la app TALLY en {destino.parent}...")
+    try:
+        borrar_carpeta(nueva, intentos=3)
+        (nueva / "Contents" / "MacOS").mkdir(parents=True)
+        (nueva / "Contents" / "Resources").mkdir()
+        (nueva / "Contents" / "Info.plist").write_bytes(plistlib.dumps({
+            "CFBundleName": NOMBRE_ACCESO, "CFBundleDisplayName": NOMBRE_ACCESO,
+            "CFBundleIdentifier": "io.github.eduardopecina.tally", "CFBundlePackageType": "APPL",
+            "CFBundleExecutable": NOMBRE_ACCESO, "CFBundleIconFile": "tally",
+            "CFBundleVersion": version_del_programa(), "CFBundleShortVersionString": version_del_programa(),
+            "LSMinimumSystemVersion": "11.0", "NSHighResolutionCapable": True,
+        }))
+        lanzador = nueva / "Contents" / "MacOS" / NOMBRE_ACCESO
+        lanzador.write_text(LANZADOR_MAC.format(python=shlex.quote(sys.executable),
+                                                iniciar=shlex.quote(str(programa / "portal" / "iniciar.py"))),
+                            encoding="utf-8")
+        lanzador.chmod(0o755)
+        icono = icono_elegido_mac(programa, base)
+        if icono.exists():
+            shutil.copyfile(icono, nueva / "Contents" / "Resources" / "tally.icns")
+        if destino.is_symlink():
+            destino.unlink()
+        elif destino.exists():
+            borrar_carpeta(destino, intentos=3)
+        nueva.rename(destino)
+    except OSError as error:
+        print(f"No se pudo crear la app TALLY ({error}).")
+        borrar_carpeta(nueva, intentos=1)
+        return False
+    registrar_app_mac(destino)
+    return True
+
+
+LSREGISTER = Path("/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/"
+                  "lsregister")
+
+
+def registrar_app_mac(app):
+    """Que Finder, Launchpad y Spotlight vean la app (y su ícono nuevo) de inmediato."""
+    try:
+        os.utime(app)
+        if LSREGISTER.exists():
+            subprocess.run([str(LSREGISTER), "-f", str(app)], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                           stderr=subprocess.DEVNULL, timeout=60)
+    except (OSError, subprocess.SubprocessError):
+        pass
+
+
 def instalar(sin_librerias=False, sin_accesos=False):
     """Instala o actualiza, dejando todo registrado en TALLY\\instalacion.log."""
     raiz = carpeta_de_instalacion()
@@ -637,7 +796,7 @@ def instalar(sin_librerias=False, sin_accesos=False):
         bitacora.solo_archivo("\n" + encabezado(raiz))
         bat = pasos_de_instalar_bat()
         if bat:
-            bitacora.solo_archivo("-- INSTALAR.bat --\n" + bat + "\n-- Instalador --")
+            bitacora.solo_archivo(f"-- {instalador()} --\n" + bat + "\n-- Instalador --")
         try:
             resultado = _instalar(raiz, sin_librerias, sin_accesos)
         except Exception:                             # noqa: BLE001 - cualquier error inesperado queda registrado
@@ -658,13 +817,14 @@ def _instalar(raiz, sin_librerias, sin_accesos):
     print(f"Tus datos: {base}")
 
     if raiz.resolve() == ORIGEN or raiz.resolve() in ORIGEN.parents and ORIGEN != programa.resolve():
-        avisar("El instalador se está ejecutando desde dentro de la carpeta TALLY del Escritorio.\n\n"
-               "Descomprime el ZIP en otra carpeta (por ejemplo, Descargas) y corre INSTALAR.bat desde ahí.",
+        donde = "de tu carpeta de inicio" if mac() else "del Escritorio"
+        avisar(f"El instalador se está ejecutando desde dentro de la carpeta TALLY {donde}.\n\n"
+               f"Descomprime el ZIP en otra carpeta (por ejemplo, Descargas) y corre {instalador()} desde ahí.",
                error=True)
         return 1
     faltan = programa_incompleto()
     if faltan:
-        avisar(f"El programa que intentas instalar está incompleto (falta {', '.join(faltan)}).\n\n{AVISO_ZIP}\n\n"
+        avisar(f"El programa que intentas instalar está incompleto (falta {', '.join(faltan)}).\n\n{aviso_zip()}\n\n"
                "No se cambió nada.", error=True)
         return 1
     # El respaldo previo usa el motor NUEVO: se carga ya, antes de instalar las librerías (que tarda), para no
@@ -672,12 +832,13 @@ def _instalar(raiz, sin_librerias, sin_accesos):
     _motor("respaldos")
     if sys.version_info[:2] != PYTHON_PROBADO and not sin_librerias:
         version = ".".join(map(str, PYTHON_PROBADO))
+        como = "lo instala desde python.org" if mac() else "lo instala solo para tu usuario"
         avisar(f"Este instalador debe correr con Python {version} (se está usando "
-               f"{sys.version_info.major}.{sys.version_info.minor}).\n\nUsa INSTALAR.bat: busca Python {version} y, "
-               "si no está, lo instala solo para tu usuario.", error=True)
+               f"{sys.version_info.major}.{sys.version_info.minor}).\n\nUsa {instalador()}: busca Python {version} "
+               f"y, si no está, {como}.", error=True)
         return 1
     if portal_abierto():
-        avisar("TALLY está abierto.\n\nCiérralo y vuelve a correr INSTALAR.bat.", error=True)
+        avisar(f"TALLY está abierto.\n\nCiérralo y vuelve a correr {instalador()}.", error=True)
         return 1
     if not sin_librerias and not instalar_librerias():
         avisar("No se pudieron instalar las librerías de Python (¿sin Internet o la red las bloquea?).\n\n"
@@ -688,7 +849,7 @@ def _instalar(raiz, sin_librerias, sin_accesos):
     try:
         respaldo = respaldar_datos(raiz, base)
     except ModuleNotFoundError as error:              # el origen desapareció (ZIP) a media instalación
-        avisar(f"No se pudo respaldar tus datos antes de actualizar ({error}).\n\n{AVISO_ZIP}\n\n"
+        avisar(f"No se pudo respaldar tus datos antes de actualizar ({error}).\n\n{aviso_zip()}\n\n"
                "No se cambió nada.", error=True)
         return 1
     except Exception as error:                        # noqa: BLE001 - sin respaldo no se actualiza
@@ -703,9 +864,14 @@ def _instalar(raiz, sin_librerias, sin_accesos):
         copiar_programa(programa)
         quitar_log_del_escritorio(raiz, base)
     except PermissionError:
-        avisar("Windows no dejó reemplazar la carpeta _Programa: algún archivo está abierto (TALLY, una "
-               "ventana de esa carpeta u OneDrive sincronizando).\n\nCiérralos y vuelve a correr "
-               "INSTALAR.bat. Tus datos no se modificaron.", error=True)
+        if mac():
+            avisar("Tu Mac no dejó reemplazar la carpeta _Programa: algún archivo está abierto (TALLY o una ventana "
+                   "de esa carpeta).\n\nCiérralos y vuelve a correr INSTALAR.command. Tus datos no se modificaron.",
+                   error=True)
+        else:
+            avisar("Windows no dejó reemplazar la carpeta _Programa: algún archivo está abierto (TALLY, una "
+                   "ventana de esa carpeta u OneDrive sincronizando).\n\nCiérralos y vuelve a correr "
+                   "INSTALAR.bat. Tus datos no se modificaron.", error=True)
         return 1
 
     try:
@@ -718,15 +884,25 @@ def _instalar(raiz, sin_librerias, sin_accesos):
         print(aviso_migracion)
 
     hay_portal = portal_disponible(programa)
-    accesos = sin_accesos or sys.platform != "win32" or not hay_portal or crear_accesos(raiz, programa, base)
+    if mac():
+        accesos = sin_accesos or not hay_portal or crear_app_mac(programa, base)
+    else:
+        accesos = sin_accesos or sys.platform != "win32" or not hay_portal or crear_accesos(raiz, programa, base)
 
+    equipo = "esta Mac" if mac() else "esta PC"
     mensaje = (f"{'Actualización' if actualizacion else 'Instalación'} terminada.\n\nCarpeta: {raiz}"
-               f"\nTus datos (solo en esta PC): {base}")
+               f"\nTus datos (solo en {equipo}): {base}")
     if aviso_migracion:
         mensaje += f"\n\n{aviso_migracion}"
     if respaldo:
         mensaje += f"\n\nAntes de actualizar se respaldaron tus datos en:\n{respaldo.name}"
-    if hay_portal:
+    if hay_portal and mac():
+        mensaje += ("\n\nPara abrir TALLY: la app \"TALLY\" en Aplicaciones (o escribe TALLY en Spotlight). Para "
+                    "tenerla a la mano, arrástrala al Dock.")
+        if not accesos:
+            mensaje += ("\n\nNo se pudo crear la app (el detalle está en instalacion.log). Mientras tanto, abre TALLY "
+                        "con EJECUTAR PORTAL.command dentro de _Programa.")
+    elif hay_portal:
         mensaje += f"\n\nPara abrir TALLY: doble clic en \"{NOMBRE_ACCESO}\" en tu Escritorio."
         if not accesos:
             mensaje += ("\n\nNo se pudo crear el acceso directo (el detalle está en instalacion.log). Mientras tanto, "
@@ -735,8 +911,13 @@ def _instalar(raiz, sin_librerias, sin_accesos):
         mensaje += ("\n\nEsta versión todavía no trae el portal (las pantallas). Para ver el motor en acción: "
                     "doble clic en EJECUTAR.bat dentro de _Programa.")
     avisar(mensaje)
-    if sys.platform == "win32" and not os.environ.get("TALLY_SIN_VENTANAS"):
-        os.startfile(raiz)                                        # abre la carpeta en el Explorador
+    if not os.environ.get("TALLY_SIN_VENTANAS"):
+        if sys.platform == "win32":
+            os.startfile(raiz)                                    # abre la carpeta en el Explorador
+        elif sys.platform == "darwin":                            # muestra la app en Finder, lista para el Dock
+            app = aplicaciones() / f"{NOMBRE_ACCESO}.app"
+            subprocess.run(["open", "-R", str(app)] if app.exists() else ["open", str(raiz)],
+                           stdin=subprocess.DEVNULL, check=False)
     return 0
 
 

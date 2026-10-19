@@ -30,6 +30,8 @@ from __future__ import annotations
 import json
 import os
 import re
+import ssl
+import sys
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -116,8 +118,21 @@ def _pedir(url: str) -> str:
     if not url.startswith("https://"):
         raise ValueError("la consulta de precios solo se hace por HTTPS")
     peticion = urllib.request.Request(url, headers={"User-Agent": AGENTE, "Accept": "application/json"})
-    with urllib.request.urlopen(peticion, timeout=TIEMPO_ESPERA) as respuesta:  # noqa: S310 - URL fija https
+    with urllib.request.urlopen(peticion, timeout=TIEMPO_ESPERA,  # noqa: S310 - URL fija https
+                                context=contexto_https()) as respuesta:
         return respuesta.read().decode("utf-8")
+
+
+def contexto_https():
+    """En Mac, el Python de python.org no usa los certificados del sistema (hasta correr «Install Certificates»):
+    se usan los de certifi, que vienen con las librerías de TALLY. En Windows, los del sistema (``None``)."""
+    if sys.platform != "darwin":
+        return None
+    try:
+        import certifi
+    except ImportError:
+        return None
+    return ssl.create_default_context(cafile=certifi.where())
 
 
 def leer(simbolo: str, texto: str) -> Cotizacion:

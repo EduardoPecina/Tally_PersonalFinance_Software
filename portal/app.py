@@ -12,7 +12,7 @@ if str(RAIZ) not in sys.path:
 import streamlit as st  # noqa: E402
 
 from motor import copia_externa, monedas, perfil, respaldos  # noqa: E402
-from motor.config import LEMA, VERSION  # noqa: E402
+from motor.config import LEMA, MAC, VERSION  # noqa: E402
 from motor.errores import ErrorBloqueado, ErrorDatos, ErrorTally  # noqa: E402
 from portal import accesos, navegacion  # noqa: E402
 from portal.componentes import candado, formato, por_recuperar, tema  # noqa: E402
@@ -101,8 +101,9 @@ def _barra_lateral() -> None:
             candado.bloquear()
             st.rerun()
         if st.button("Cerrar TALLY", icon=":material/power_settings_new:", width="stretch",
-                     help="Cierra TALLY por completo. Todo queda guardado. Para volver a abrirlo: acceso "
-                          "directo TALLY de tu Escritorio."):
+                     help="Cierra TALLY por completo. Todo queda guardado. Para volver a abrirlo: "
+                          + ("la app TALLY (Aplicaciones, Dock o Spotlight)." if MAC
+                             else "acceso directo TALLY de tu Escritorio.")):
             st.html(pagina_cerrado(), unsafe_allow_javascript=True)
             cerrar_portal()
             st.stop()

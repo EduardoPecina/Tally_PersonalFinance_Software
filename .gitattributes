@@ -1,2 +1,4 @@
 # Los .bat de Windows necesitan fin de línea CRLF.
 *.bat text eol=crlf
+# Los .command de Mac son de bash: fin de línea LF siempre (aunque se descarguen desde Windows).
+*.command text eol=lf

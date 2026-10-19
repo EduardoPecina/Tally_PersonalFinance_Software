@@ -19,6 +19,9 @@ Los datos van en la carpeta del perfil del usuario porque:
   privada que Windows borra al desinstalarlo;
 - existe en cualquier Windows y el usuario siempre puede escribir en ella.
 
+En Mac, todo vive en ``~/TALLY`` (programa, datos, respaldos y el Python de TALLY), fuera del Escritorio y de
+iCloud, y la app ``~/Applications/TALLY.app`` abre el portal: ``raiz()`` y ``carpeta_usuario()`` son la misma carpeta.
+
 En desarrollo (desde el repositorio) todo vive dentro del repositorio (``Datos/`` y ``Respaldos/`` están en
 ``.gitignore``).
 

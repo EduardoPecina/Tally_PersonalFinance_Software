@@ -34,6 +34,7 @@ import unicodedata
 from dataclasses import asdict, dataclass, field, replace
 from datetime import date, datetime
 
+from motor.config import INSTALADOR
 from motor.errores import ErrorContrasena, ErrorDatos, ErrorValidacion
 
 VERSION = 1
@@ -55,7 +56,7 @@ def _aes(llave: bytes):
     try:
         from cryptography.hazmat.primitives.ciphers.aead import AESGCM
     except ImportError:                                   # pragma: no cover - depende de la instalación
-        raise ErrorDatos("Falta un componente de seguridad (cryptography). Vuelve a correr INSTALAR.bat.") from None
+        raise ErrorDatos(f"Falta un componente de seguridad (cryptography). Vuelve a correr {INSTALADOR}.") from None
     return AESGCM(llave)
 
 
