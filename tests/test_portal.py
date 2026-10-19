@@ -163,7 +163,7 @@ def test_lo_calculado_se_olvida_al_cambiar_tus_datos(raiz, con_datos):
 
     at = abrir(_pagina("historial"))
     assert at.dataframe[0].value.shape[0] == 6
-    assert len(sesion_portal._CALCULOS) == 1                       # junto a la sesión abierta
+    assert sesion_portal.sesion() in sesion_portal._CALCULOS        # junto a la sesión abierta
     at.switch_page(_pagina("registrar")).run()
     next(s for s in at.selectbox if s.label == "Subcategoría").set_value(con_datos["cat"]["ALIMENTOS"])
     next(n for n in at.number_input if n.label == "Importe").set_value(42)
