@@ -4,16 +4,17 @@ from __future__ import annotations
 
 import os
 import sys
-
+from datetime import datetime
 from decimal import Decimal
 
 import streamlit as st
 
-from motor import monedas, perfil, reportes, rutas
+from motor import copia_externa, monedas, perfil, reportes, rutas
 from motor.config import LEMA, VERSION
+from motor.errores import ErrorTally
 from motor.perfil import MAXIMO_RESPALDOS
 from portal import accesos
-from portal.componentes import respaldo
+from portal.componentes import candado, carpetas, formato, respaldo
 from portal.componentes.sesion import avisar, ejecutar, libro, sesion
 from portal.navegacion import enlace
 
@@ -81,6 +82,112 @@ def _respaldos() -> None:
                 st.rerun()
     st.caption(f"Se guardan en **{rutas.carpeta_respaldos()}** (solo en esta PC).")
     enlace("respaldos", "Restaurar un respaldo o empezar de cero", "💾")
+    st.divider()
+    _copia_externa()
+
+
+CARPETA = "copia_carpeta"
+SIN_VENTANA = "_copia_sin_ventana"
+RELEER = "_copia_releer"                      # tras guardar, la caja muestra la ruta como quedó
+CUANDO = {"diaria": "Se copia una vez al día", "semanal": "Se copia una vez por semana",
+          "mensual": "Se copia una vez al mes"}
+
+
+def _texto(mensaje: str) -> str:
+    """Un mensaje con rutas de Windows para Markdown: ``\\\\MiNAS\\Respaldos`` se ve tal cual."""
+    return formato.md(mensaje.replace("\\", "\\\\"))
+
+
+def _elegir_carpeta() -> None:
+    elegida = carpetas.elegir_carpeta("Elige dónde guardar las copias de TALLY", st.session_state.get(CARPETA, ""))
+    if elegida is None:
+        st.session_state[SIN_VENTANA] = True
+    elif elegida:
+        st.session_state[CARPETA] = elegida
+
+
+def _copia_externa() -> None:
+    ruta = sesion().almacen.ruta
+    actual = copia_externa.leer(ruta)
+    st.subheader("Copia en tu NAS o disco externo")
+    st.caption("Además de los respaldos de esta PC, TALLY puede dejar una copia en otra carpeta: tu NAS, un disco "
+               "externo o una USB. Si a tu PC le pasa algo, ahí la tienes. Nada sale a internet: es una carpeta de "
+               "tu casa.")
+    if st.session_state.pop(RELEER, False) or CARPETA not in st.session_state:
+        st.session_state[CARPETA] = actual.carpeta
+    texto, boton = st.columns([4, 1], vertical_alignment="bottom")
+    texto.text_input("Carpeta", key=CARPETA, placeholder="\\\\MiNAS\\Respaldos   o   E:\\Respaldos TALLY",
+                     help="Elígela con el botón o pega la ruta. Si tu NAS no aparece en la ventana, conéctalo como "
+                          "unidad en Windows (Z:) o pega su ruta, como `\\\\MiNAS\\Carpeta`. Déjala vacía para ya "
+                          "no copiar.")
+    boton.button("Elegir carpeta…", icon=":material/folder_open:", width="stretch", on_click=_elegir_carpeta,
+                 key="copia_elegir", help="Abre la ventana de Windows para escoger la carpeta.")
+    if st.session_state.pop(SIN_VENTANA, False):
+        st.warning("No se pudo abrir la ventana para elegir la carpeta. Escribe o pega su ruta.", icon="📁")
+    frecuencia = st.segmented_control(
+        "¿Cada cuánto?", list(copia_externa.FRECUENCIAS), format_func=copia_externa.FRECUENCIAS.get,
+        default=actual.frecuencia, required=True, key="copia_frecuencia")
+    if frecuencia == "nunca":
+        st.caption("Solo se copia cuando le das «Copiar ahora».")
+    else:
+        st.caption(f"{CUANDO[frecuencia]}, al cerrar TALLY (o al abrirlo, si quedó pendiente) y solo si cambiaste algo "
+                   "desde la última copia.")
+    conservar = st.number_input("Cuántas copias conservar", min_value=1, max_value=copia_externa.MAXIMO_CONSERVAR,
+                                value=actual.conservar, step=1, key="copia_conservar",
+                                help="Las más viejas se borran solas, pero solo cuando la nueva ya quedó completa y "
+                                     "revisada. Más de una te protege si un error tuyo alcanza a copiarse.")
+    escrita = copia_externa.normalizar(st.session_state.get(CARPETA, ""))
+    guardar, probar, copiar = st.columns(3)
+    if guardar.button("Guardar", type="primary", width="stretch", key="copia_guardar"):
+        with st.spinner("Revisando la carpeta…"):
+            try:
+                nueva = copia_externa.configurar(ruta, escrita, frecuencia, int(conservar))
+            except ErrorTally as error:
+                st.error(_texto(str(error)))
+            else:
+                st.session_state[RELEER] = True
+                avisar("Listo: TALLY copiará tus respaldos ahí" if nueva.activa else "Ya no se copia a otra carpeta")
+                st.rerun()
+    if probar.button("Probar la carpeta", width="stretch", key="copia_probar", disabled=not escrita):
+        with st.spinner("Revisando la carpeta…"):
+            try:
+                copia_externa.probar(escrita)
+            except ErrorTally as error:
+                st.error(_texto(str(error)))
+            else:
+                st.success("Listo: TALLY puede guardar en esta carpeta.", icon="✅")
+    pendiente = escrita != actual.carpeta
+    if copiar.button("Copiar ahora", icon=":material/backup:", width="stretch", key="copia_ahora",
+                     disabled=not actual.activa or pendiente,
+                     help="Primero guarda la carpeta." if pendiente else "Hace una copia en este momento."):
+        with st.spinner("Copiando… en un NAS puede tardar unos segundos."):
+            try:
+                hecha = copia_externa.copiar(ruta, datetime.now())
+            except ErrorTally as error:
+                st.error(_texto(str(error)))
+            else:
+                avisar(f"Copia lista: {hecha.name}")
+                st.rerun()
+    _estado_de_la_copia(copia_externa.leer(ruta))
+
+
+def _estado_de_la_copia(c: copia_externa.Copia) -> None:
+    if not c.activa:
+        return
+    hoy = datetime.now().date()
+    if c.error and c.intento is not None:
+        st.warning(f"No se pudo hacer la última copia ({formato.cuando(c.intento, hoy)}): {_texto(c.error)}",
+                   icon="⚠️")
+    if c.ultima is not None:
+        st.caption(f"✅ Última copia: {formato.cuando(c.ultima, hoy)} · {c.archivo}")
+    elif not c.error:
+        st.caption("Todavía no hay ninguna copia: se hará la próxima vez que cierres TALLY, o dale «Copiar ahora».")
+    if candado.config() is not None:
+        st.caption("🔒 Las copias van cifradas con tu contraseña, igual que tus respaldos.")
+    else:
+        st.caption("⚠️ Tus datos no tienen contraseña: quien pueda abrir esa carpeta podría leer tus finanzas. Si "
+                   "otras personas usan tu NAS, ponle contraseña a TALLY en la pestaña **Seguridad**; las copias que "
+                   "ya estaban siguen sin ella hasta que se reemplacen (o bórralas del NAS).")
 
 
 def _apariencia() -> None:

@@ -495,6 +495,70 @@ def test_configuracion(raiz, con_datos):
     assert at.segmented_control(key="_w_inicio_periodo").value == "anio"
 
 
+def test_copia_en_el_nas_desde_configuracion(raiz, con_datos, tmp_path, monkeypatch):
+    from motor import copia_externa
+    from portal.componentes import carpetas
+
+    datos = raiz / "Datos" / "tally.db"
+    nas = tmp_path / "NAS Ficticio"
+    nas.mkdir()
+    at = abrir(_pagina("configuracion"))
+    sin_errores(at)
+    assert at.button(key="copia_ahora").disabled                     # sin carpeta guardada, aún no
+    at.text_input(key="copia_carpeta").input(str(tmp_path / "no-existe")).run()
+    at.button(key="copia_probar").click().run()
+    assert any("No encuentro la carpeta" in e.value for e in at.error)
+
+    monkeypatch.setattr(carpetas, "elegir_carpeta", lambda titulo, inicial="": str(nas))    # la ventana de Windows
+    at.button(key="copia_elegir").click().run()
+    assert at.text_input(key="copia_carpeta").value == str(nas)
+    at.segmented_control(key="copia_frecuencia").set_value("semanal")
+    at.number_input(key="copia_conservar").set_value(2)
+    at.button(key="copia_guardar").click().run()
+    sin_errores(at)
+    c = copia_externa.leer(datos)
+    assert (c.carpeta, c.frecuencia, c.conservar) == (str(nas), "semanal", 2)
+    assert any("Todavía no hay ninguna copia" in x.value for x in at.caption)
+    assert any("no tienen contraseña" in x.value for x in at.caption)
+
+    at.button(key="copia_ahora").click().run()
+    sin_errores(at)
+    (hecha,) = nas.glob("TALLY_copia_*.zip")
+    assert any("Última copia: hoy" in x.value and hecha.name in x.value for x in at.caption)
+
+    monkeypatch.setattr(carpetas, "elegir_carpeta", lambda titulo, inicial="": None)       # sin ventana
+    at.button(key="copia_elegir").click().run()
+    assert any("No se pudo abrir la ventana" in w.value for w in at.warning)
+
+    at.text_input(key="copia_carpeta").input("")                     # ya no copiar
+    at.button(key="copia_guardar").click().run()
+    sin_errores(at)
+    assert not copia_externa.leer(datos).activa
+
+
+def test_la_copia_al_abrir_y_el_aviso_del_resumen(raiz, con_datos, tmp_path):
+    from datetime import datetime, timedelta
+
+    from motor import copia_externa
+
+    datos = raiz / "Datos" / "tally.db"
+    nas = tmp_path / "NAS Ficticio"
+    nas.mkdir()
+    copia_externa.configurar(datos, str(nas), "diaria", 3)
+    at = abrir()                                                      # al abrir TALLY, si toca, en segundo plano
+    copia_externa._EN_CURSO.esperar(30)
+    assert len(list(nas.glob("TALLY_copia_*.zip"))) == 1
+    assert not any("no se puede copiar" in w.value for w in at.warning)
+
+    hace_ocho = datetime.now() - timedelta(days=8)
+    copia_externa._anotar(datos, error="No encuentro la carpeta «\\\\MiNAS\\Respaldos».", intento=hace_ocho,
+                          fallando_desde=hace_ocho)
+    at = abrir()
+    sin_errores(at)
+    assert any("Hace 8 días que no se puede copiar" in w.value and "\\\\\\\\MiNAS" in w.value
+               for w in at.warning)
+
+
 def test_tu_moneda_cambia_como_se_ve_todo(raiz, con_datos):
     from motor import monedas
 

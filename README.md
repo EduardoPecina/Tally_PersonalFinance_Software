@@ -116,7 +116,7 @@ el acceso directo **Mis datos de TALLY**, dentro de `Escritorio\TALLY`.
 | Respaldos y bitácora | Descargar o restaurar respaldos, ver qué cambió o empezar de cero |
 | Metas de ahorro 🏆 | Tu fondo de emergencia (cuántos meses te cubre) y tus metas: cuánto apartar al mes y cuándo llegas |
 | Calendario 📅 | Lo que te toca pagar y cobrar en 30 días (también lo que le toca pagar al fisco), cómo quedaría tu dinero día con día, tus pagos fijos y suscripciones (y cuánto te cuestan al año) y lo que se repite en tu historial |
-| Configuración ⚙️ | Tu nombre, **tu moneda** (peso mexicano, euro, peso argentino, colombiano o chileno, sol, quetzal… con su símbolo y formato), tema claro u oscuro, color del ícono, respaldo automático diario, periodo del Resumen y datos de la instalación |
+| Configuración ⚙️ | Tu nombre, **tu moneda** (peso mexicano, euro, peso argentino, colombiano o chileno, sol, quetzal… con su símbolo y formato), tema claro u oscuro, color del ícono, respaldo automático diario y **copia en tu NAS o disco externo** (diaria, semanal o mensual, conservando las últimas), periodo del Resumen y datos de la instalación |
 
 ### Cambiar de PC sin perder nada
 

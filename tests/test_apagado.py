@@ -50,3 +50,16 @@ def test_detener_termina_procesos_y_no_toca_otros():
         assert hijo.poll() is not None
     finally:
         hijo.kill()
+
+
+def test_al_salir_espera_el_respaldo_y_hace_la_copia_externa(monkeypatch):
+    import os
+
+    from motor import copia_externa, respaldos, rutas
+
+    llamadas = []
+    monkeypatch.setattr(respaldos, "esperar_en_curso", lambda segundos=None: llamadas.append("respaldo del día"))
+    monkeypatch.setattr(copia_externa, "al_cerrar", lambda ruta: llamadas.append(("copia en el NAS", ruta)))
+    monkeypatch.setattr(os, "_exit", lambda codigo: llamadas.append(("se apaga", codigo)))
+    apagado._salir()
+    assert llamadas == ["respaldo del día", ("copia en el NAS", rutas.archivo_datos()), ("se apaga", 0)]

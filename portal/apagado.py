@@ -57,11 +57,13 @@ def _vigilar() -> None:
 
 def _salir() -> None:
     """Apaga este proceso, pero antes deja terminar el respaldo del día si se está haciendo (segundos, aun con años
-    de datos): así no se pierde el de hoy."""
+    de datos): así no se pierde el de hoy. Y si toca, hace la copia en tu NAS o disco externo (a lo más 2 minutos;
+    si no se puede, se intenta al volver a abrir TALLY)."""
     try:
-        from motor import respaldos
+        from motor import copia_externa, respaldos, rutas
 
         respaldos.esperar_en_curso(segundos=120)
+        copia_externa.al_cerrar(rutas.archivo_datos())
     finally:
         os._exit(0)
 

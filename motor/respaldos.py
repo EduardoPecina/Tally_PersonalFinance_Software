@@ -96,6 +96,20 @@ def crear(sesion: Sesion, destino: Path | str | None = None, *, prefijo: str = "
     return _crear_desde(sesion.almacen, sesion.libro.ahora(), destino, prefijo, sin_contrasena=sin_contrasena)
 
 
+def crear_desde_archivo(ruta_datos: Path | str, destino: Path | str, *, prefijo: str, momento: datetime) -> Path:
+    """Respaldo de un archivo de datos sin abrirlo ni necesitar la contraseña (si la tiene, sale cifrado). Para
+    hacerlo en segundo plano o al cerrar TALLY (motor/copia_externa.py)."""
+    return _crear_desde(Almacen(ruta_datos), momento, destino, prefijo)
+
+
+def verificar(ruta: Path | str) -> None:
+    """Vuelve a leer un respaldo ya escrito y comprueba sus huellas (datos y comprobantes): ``ErrorDatos`` si quedó
+    dañado. Para una copia en un NAS o un disco externo, antes de borrar las anteriores."""
+    ruta = Path(ruta)
+    manifiesto, _ = _abrir_zip(ruta)
+    _archivos_del_zip(ruta, manifiesto)
+
+
 DE_SEGURIDAD_A_CONSERVAR = 5
 
 

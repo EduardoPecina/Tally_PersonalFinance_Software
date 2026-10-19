@@ -11,7 +11,7 @@ if str(RAIZ) not in sys.path:
 
 import streamlit as st  # noqa: E402
 
-from motor import monedas, perfil, respaldos  # noqa: E402
+from motor import copia_externa, monedas, perfil, respaldos  # noqa: E402
 from motor.config import LEMA, VERSION  # noqa: E402
 from motor.errores import ErrorBloqueado, ErrorDatos, ErrorTally  # noqa: E402
 from portal import accesos, navegacion  # noqa: E402
@@ -50,6 +50,23 @@ def _respaldo_del_dia(actual) -> None:
         st.session_state["_respaldo_del_dia"] = True
         if en_curso.error is not None:
             _aviso_de_respaldo(en_curso.error)
+
+
+def _copia_externa(actual) -> None:
+    """Una vez por sesión del navegador: la copia en tu NAS o disco externo, si quedó pendiente (Configuración →
+    Respaldos). En segundo plano, para no esperar al NAS; si falla, se avisa en cuanto se sepa."""
+    en_curso = st.session_state.get("_copia_externa")
+    if en_curso is None:
+        st.session_state["_copia_externa"] = True
+        try:
+            st.session_state["_copia_externa"] = copia_externa.iniciar(actual.almacen.ruta) or True
+        except Exception:  # noqa: BLE001 - una copia fallida nunca impide usar TALLY (queda en Configuración)
+            pass
+    elif isinstance(en_curso, copia_externa.CopiaEnCurso) and en_curso.terminado:
+        st.session_state["_copia_externa"] = True
+        if en_curso.error is not None:
+            detalle = formato.md(str(en_curso.error).replace("\\", "\\\\"))      # rutas de Windows, tal cual
+            st.toast(f"No se pudo copiar tu respaldo a tu NAS o disco externo: {detalle}", icon="⚠️")
 
 
 def _aviso_de_respaldo(error: Exception) -> None:
@@ -138,6 +155,7 @@ def main() -> None:
         return
 
     _respaldo_del_dia(actual)
+    _copia_externa(actual)
     pagina = st.navigation(navegacion.por_seccion(), expanded=True)   # todas las páginas a la vista
     if pagina.url_path != "cuentas":
         st.session_state.pop("cuenta_abierta", None)       # al volver a Cuentas se ve la lista

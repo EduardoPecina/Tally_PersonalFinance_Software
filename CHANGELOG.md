@@ -2,6 +2,25 @@
 
 Todos los cambios relevantes de TALLY se documentan aquí.
 
+## [0.29.0] — Sin publicar
+
+- **Copia de tus respaldos en tu NAS o disco externo.** En **Configuración › Respaldos › Copia en tu NAS o disco
+  externo**:
+  - **La carpeta:** con **📁 Elegir carpeta…** se abre la ventana normal de Windows para escogerla (la de «Guardar
+    como»), o pegas la ruta (`\\MiNAS\Respaldos`, `E:\Respaldos TALLY`). **Probar la carpeta** revisa que TALLY
+    pueda guardar ahí. TALLY la recuerda.
+  - **¿Cada cuánto?** Diariamente, Cada semana, Cada mes o Nunca. Se copia al cerrar TALLY (con el botón o cuando se
+    apaga solo), o al abrirlo si quedó pendiente (el NAS estaba apagado), y solo si cambiaste algo desde la última
+    copia. Con «Nunca», solo cuando le das **Copiar ahora**.
+  - **Cuántas copias conservar:** 3 si no eliges otra cosa (de 1 a 30). Las más viejas se borran solas, pero solo
+    después de que la nueva quedó completa y revisada: si se cae la red a la mitad, las anteriores siguen ahí.
+  - Debajo dice cuándo fue la última copia, o por qué no se pudo («No encuentro la carpeta… ¿está encendido tu
+    NAS?»). Si pasa una semana sin poder copiar, el **Resumen** te avisa.
+- Todo sigue en tu PC: la copia es un respaldo más (se restaura igual, en **Respaldos y bitácora**). Nada sale a
+  internet, TALLY no guarda contraseñas del NAS, y si tus datos tienen contraseña, la copia va cifrada.
+- Lo de esta sección es de esta PC (`Datos\copia_externa.json`), no de tus datos: no cambia el formato de tus datos
+  ni de tus respaldos.
+
 ## [0.28.0] — Sin publicar
 
 - **Gastos hormiga a tu gusto.** En **Cierre de mes › 💸 A dónde se fue**, junto a los gastos hormiga, el botón

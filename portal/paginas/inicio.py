@@ -6,11 +6,11 @@ from datetime import date, timedelta
 
 import streamlit as st
 
-from motor import cierre, cuentas, ingresos, plan_deudas, reportes, tarjetas
+from motor import cierre, copia_externa, cuentas, ingresos, plan_deudas, reportes, tarjetas
 from motor.modelo import TipoCuenta
 from portal.componentes import estado, formato, graficas, por_recuperar
 from portal.componentes import tarjeta as estado_tarjeta
-from portal.componentes.sesion import libro
+from portal.componentes.sesion import libro, sesion
 from portal.navegacion import enlace
 from portal.paginas import ayuda, calendario, impuestos, presupuestos, salud
 
@@ -91,6 +91,14 @@ def _recordar_cierre() -> None:
         enlace("cierre", "Ver el cierre de mes", "📆")
 
 
+def _copia_sin_hacer() -> None:
+    """Si lleva una semana sin poder copiar tus respaldos a tu NAS o disco externo."""
+    texto = copia_externa.aviso(sesion().almacen.ruta)
+    if texto:
+        st.warning(formato.md(texto.replace("\\", "\\\\")), icon="💾")
+        enlace("configuracion", "Revisar la copia en Configuración → Respaldos", "⚙️")
+
+
 def _tarjetas() -> None:
     lib = libro()
     lista = cuentas.listar(lib, tipo=TipoCuenta.CREDITO)
@@ -152,6 +160,7 @@ def mostrar() -> None:
     _avisos()
     impuestos.aviso_en_el_resumen()
     _recordar_cierre()
+    _copia_sin_hacer()
     salud.aviso_en_el_resumen()
     ayuda.tarjeta_en_el_resumen()
     calendario.proximos_avisos()
