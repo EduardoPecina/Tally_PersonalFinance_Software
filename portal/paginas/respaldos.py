@@ -8,6 +8,7 @@ import pandas as pd
 import streamlit as st
 
 from motor import auditoria, comprobantes, respaldos, rutas
+from motor.config import MAC
 from motor.errores import ErrorTally
 from portal.componentes import respaldo
 from portal.componentes.sesion import avisar, sesion
@@ -109,6 +110,9 @@ def mostrar() -> None:
         st.warning(f"Tus datos siguen en **{rutas.carpeta_usuario()}**, porque al actualizar Windows no dejó "
                    "moverlos. Para pasarlos a tu carpeta de usuario (fuera de OneDrive), cierra TALLY y vuelve a "
                    "correr INSTALAR.bat.")
+    elif MAC:
+        st.caption(f"Tus datos viven solo en esta Mac, en **{rutas.carpeta_usuario()}** (fuera de iCloud y de "
+                   "cualquier nube).")
     else:
         st.caption(f"Tus datos viven solo en esta PC, en **{rutas.carpeta_usuario()}** (fuera de OneDrive y de "
                    "cualquier nube).")

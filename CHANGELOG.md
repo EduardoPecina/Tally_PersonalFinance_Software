@@ -2,6 +2,30 @@
 
 Todos los cambios relevantes de TALLY se documentan aquí.
 
+## [0.30.0] — Sin publicar
+
+- **TALLY para Mac (con chip de Apple: M1 o más nuevo).** Por dentro es el mismo TALLY; cambia cómo se instala y
+  cómo se abre:
+  - **`INSTALAR.command`** (clic derecho → Abrir, la primera vez): busca Python 3.13 o descarga el oficial de
+    python.org (revisa que esté firmado por la Python Software Foundation) y te pide la contraseña de tu Mac una
+    vez. TALLY usa su propio Python en `~/TALLY/_Python`, sin tocar el de tu Mac.
+  - Las librerías, con las **mismas versiones** que en Windows y verificadas con su huella
+    (`requirements-lock-mac.txt`).
+  - Todo vive en **`~/TALLY`** (tus datos, respaldos y el programa), fuera del Escritorio y de iCloud.
+  - La app **TALLY** queda en **Aplicaciones** (Launchpad y Spotlight la encuentran; arrástrala al Dock), con el
+    color de ícono que elijas en Configuración.
+  - En la Mac: «Abrir la carpeta de mis datos» abre Finder; «Elegir carpeta…» de la copia al NAS abre la ventana de
+    la Mac; los avisos salen en ventanas de la Mac y los textos hablan de la Mac (rutas como
+    `/Volumes/MiNAS/Respaldos`, iCloud en lugar de OneDrive, `INSTALAR.command`).
+  - La consulta de precios usa los certificados de seguridad que trae TALLY (el Python de python.org no usa los de
+    la Mac).
+  - Las Mac con procesador Intel no están incluidas: la librería de cifrado (cryptography 49) ya solo se publica para
+    chip de Apple. `INSTALAR.command` lo dice y no cambia nada.
+- **Pruebas en una Mac en cada cambio** (GitHub Actions), además de Windows: todas las pruebas, la descarga de Python
+  desde python.org y la instalación de punta a punta con `INSTALAR.command` (dos veces, como al actualizar), hasta
+  abrir TALLY con la app y comprobar que responde.
+- En Windows no cambia nada.
+
 ## [0.29.0] — Sin publicar
 
 - **Copia de tus respaldos en tu NAS o disco externo.** En **Configuración › Respaldos › Copia en tu NAS o disco

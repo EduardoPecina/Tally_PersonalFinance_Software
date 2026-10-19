@@ -1,6 +1,7 @@
 """El lanzador del portal (acceso directo del Escritorio)."""
 
 import importlib.util
+import sys
 from pathlib import Path
 
 import pytest
@@ -93,6 +94,22 @@ def test_inicia_streamlit_solo_en_localhost(iniciar, monkeypatch, tmp_path):
     assert comando[comando.index("--browser.gatherUsageStats") + 1] == "false"
     assert lanzado["cwd"] == RAIZ_REPO  # ahí está .streamlit/config.toml
     assert (tmp_path / "portal.log").read_text().startswith("=====")
+    if sys.platform != "win32":                # Mac: el servidor sigue aunque termine la app que lo lanzó
+        assert lanzado["start_new_session"] is True
+
+
+def test_en_mac_los_errores_salen_en_una_ventana_de_la_mac(monkeypatch, tmp_path):
+    monkeypatch.setenv("TALLY_RAIZ", str(tmp_path))
+    spec = importlib.util.spec_from_file_location("iniciar_real", RAIZ_REPO / "portal" / "iniciar.py")
+    real = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(real)                      # sin el «avisar_error» falso de las otras pruebas
+    llamadas = []
+    monkeypatch.setattr(real.sys, "platform", "darwin")
+    monkeypatch.setattr(real.subprocess, "run", lambda comando, **opciones: llamadas.append(comando))
+    real.avisar_error("TALLY no pudo iniciar «por algo».")
+    ((programa, _, guion, mensaje),) = llamadas
+    assert programa == "osascript" and "display dialog (item 1 of argv)" in guion
+    assert mensaje == "TALLY no pudo iniciar «por algo»."          # como argumento: comillas sin escapar
 
 
 def test_portal_log_vive_junto_a_los_datos_fuera_de_onedrive(monkeypatch, tmp_path):

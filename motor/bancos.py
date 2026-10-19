@@ -40,6 +40,7 @@ from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from html.parser import HTMLParser
 
 from motor import categorias, efectivo, reglas_categorias
+from motor.config import INSTALADOR
 from motor.errores import ErrorValidacion
 from motor.importacion import Archivo, Bloque, Destino, Linea, clave_destino, decodificar
 from motor.libro import Libro
@@ -173,7 +174,7 @@ def _tabla_de_xlsx(datos: bytes) -> tuple[tuple[str, ...], ...]:
     try:
         import openpyxl
     except ImportError:
-        raise ErrorValidacion("Falta un componente para leer Excel. Vuelve a correr INSTALAR.bat.") from None
+        raise ErrorValidacion(f"Falta un componente para leer Excel. Vuelve a correr {INSTALADOR}.") from None
     try:
         documento = openpyxl.load_workbook(io.BytesIO(datos), read_only=True, data_only=True)
     except Exception:                                   # zip dañado, no es un Excel, etc.
@@ -210,7 +211,7 @@ def _texto_de_pdf(datos: bytes, contrasena: str) -> str:
     try:
         from pypdf import PdfReader
     except ImportError:
-        raise ErrorValidacion("Falta un componente para leer PDF. Vuelve a correr INSTALAR.bat.") from None
+        raise ErrorValidacion(f"Falta un componente para leer PDF. Vuelve a correr {INSTALADOR}.") from None
     registro = logging.getLogger("pypdf")
     nivel = registro.level
     registro.setLevel(logging.ERROR)                  # avisos técnicos de fuentes que no le importan al usuario

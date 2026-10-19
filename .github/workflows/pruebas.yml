@@ -1,5 +1,6 @@
-# Corre todas las pruebas en Windows (como la PC del usuario) en cada pull request y en main.
-# Usa exactamente las librerías del lock verificado, igual que INSTALAR.bat.
+# Corre todas las pruebas en Windows (como la PC del usuario) y en una Mac con chip de Apple, en cada pull request
+# y en main. Usa exactamente las librerías de los locks verificados, igual que INSTALAR.bat e INSTALAR.command.
+# En la Mac, además, instala TALLY de punta a punta con INSTALAR.command y comprueba que abra.
 name: Pruebas
 
 on:
@@ -26,3 +27,79 @@ jobs:
         run: "python -m pip install --require-hashes --only-binary=:all: -r requirements-lock.txt"
       - name: Pruebas
         run: python -m pytest -q
+
+  mac:
+    name: Mac (chip de Apple) · Python 3.13
+    runs-on: macos-latest
+    timeout-minutes: 30
+    env:
+      PYTHONUTF8: "1"
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+      - name: Instalar librerías (lock verificado para Mac)
+        run: "python -m pip install --require-hashes --only-binary=:all: -r requirements-lock-mac.txt"
+      - name: Pruebas
+        run: python -m pytest -q
+      - name: Las ventanas de la Mac (AppleScript) están bien escritas
+        run: |
+          python - <<'EOF'
+          import importlib.util, os, subprocess, sys
+          sys.path.insert(0, os.getcwd())
+          def cargar(nombre, ruta):
+              spec = importlib.util.spec_from_file_location(nombre, ruta)
+              modulo = importlib.util.module_from_spec(spec)
+              spec.loader.exec_module(modulo)
+              return modulo
+          from portal.componentes import carpetas
+          guiones = {
+              "aviso del instalador": cargar("instalar", "instalador/instalar.py")._DIALOGO_MAC,
+              "error al abrir": cargar("iniciar", "portal/iniciar.py")._DIALOGO_MAC,
+              "elegir carpeta": carpetas._VENTANA_MAC,
+          }
+          for nombre, guion in guiones.items():
+              subprocess.run(["osacompile", "-e", guion, "-o", os.path.join(os.environ["RUNNER_TEMP"], "x.scpt")],
+                             check=True)
+              print("ok:", nombre)
+          EOF
+      - name: Descarga de Python desde python.org (verifica la firma, sin instalar)
+        run: ./INSTALAR.command --probar-descarga
+      - name: Instalar TALLY de punta a punta con INSTALAR.command (dos veces, como al actualizar)
+        run: |
+          export HOME="$RUNNER_TEMP/casa"            # una carpeta de inicio vacía, como una Mac nueva
+          mkdir -p "$HOME"
+          export TALLY_SIN_VENTANAS=1
+          ./INSTALAR.command
+          test -f "$HOME/TALLY/_Programa/portal/app.py"
+          test -x "$HOME/TALLY/_Python/bin/python"
+          test -x "$HOME/Applications/TALLY.app/Contents/MacOS/TALLY"
+          test -f "$HOME/Applications/TALLY.app/Contents/Resources/tally.icns"
+          plutil -lint "$HOME/Applications/TALLY.app/Contents/Info.plist"
+          ./INSTALAR.command
+          grep -c "RESULTADO: terminó bien" "$HOME/TALLY/instalacion.log" | grep -qx 2
+      - name: Abrir TALLY con la app y comprobar que responde
+        run: |
+          export HOME="$RUNNER_TEMP/casa"
+          export BROWSER=true                       # sin navegador en la prueba: la app solo arranca el portal
+          export TALLY_SIN_VENTANAS=1               # si algo falla, el motivo sale aquí y no en una ventana
+          "$HOME/Applications/TALLY.app/Contents/MacOS/TALLY"
+          for intento in $(seq 1 60); do
+            curl -fsS http://127.0.0.1:8765/_stcore/health && break
+            sleep 2
+          done
+          curl -fsS http://127.0.0.1:8765/_stcore/health
+          curl -fsS http://127.0.0.1:8765/ | grep -qi "<html"
+          pgrep -fl "streamlit run" || true
+          # La app usa el Python de TALLY y el portal que corre es el instalado (en Mac, el proceso de Python se
+          # llama «Python.app/…/Python» aunque venga de ~/TALLY/_Python: por eso se revisa el lanzador).
+          grep -q "/TALLY/_Python/bin/python" "$HOME/Applications/TALLY.app/Contents/MacOS/TALLY"
+          pgrep -f "streamlit run $HOME/TALLY/_Programa/portal/app.py" >/dev/null
+          pkill -f "portal/app.py" || true
+      - name: Bitácoras (si algo falló)
+        if: failure()
+        run: |
+          cat "$RUNNER_TEMP/casa/TALLY/instalacion.log" 2>/dev/null || true
+          cat "$RUNNER_TEMP/casa/TALLY/portal.log" 2>/dev/null || true
+          cat "${TMPDIR:-/tmp}/tally_instalar_command.log" 2>/dev/null || true

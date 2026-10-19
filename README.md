@@ -71,6 +71,11 @@ Detalle en [`docs/MODELO_CONTABLE.md`](docs/MODELO_CONTABLE.md) y
 
 ## Instalar y usar
 
+TALLY funciona en **Windows** y en **Mac con chip de Apple** (M1 o más nuevo). Por dentro es igual en los dos;
+solo cambia cómo se instala y cómo se abre.
+
+### En Windows
+
 1. Descarga el proyecto (en GitHub: **Code → Download ZIP**) y descomprímelo
    (clic derecho en el ZIP → **Extraer todo**) en cualquier carpeta que no sea
    el Escritorio (por ejemplo, Descargas). Si corres `INSTALAR.bat` desde
@@ -93,6 +98,31 @@ actualizar se respaldan tus datos y no se tocan.
 Tus datos y respaldos están en `C:\Users\<tu usuario>\TALLY`, fuera del
 Escritorio, así que OneDrive no los sube a la nube. Para abrir esa carpeta usa
 el acceso directo **Mis datos de TALLY**, dentro de `Escritorio\TALLY`.
+
+### En Mac (chip de Apple: M1 o más nuevo)
+
+1. Descarga el proyecto (en GitHub: **Code → Download ZIP**) y ábrelo con
+   doble clic: se crea la carpeta del programa.
+2. **Clic derecho** en `INSTALAR.command` → **Abrir** → **Abrir**. La primera
+   vez, macOS avisa que «no puede verificar al desarrollador», porque TALLY no
+   está firmado por Apple: con clic derecho → Abrir te deja abrirlo. En las
+   versiones más nuevas de macOS: **Ajustes del Sistema → Privacidad y
+   seguridad → Abrir de todos modos**. Solo pasa una vez. Si te pregunta si
+   Terminal puede acceder a tu carpeta de Descargas, dile que sí.
+3. Si tu Mac no tiene Python 3.13, el instalador descarga el oficial de
+   python.org (revisa que esté firmado por la Python Software Foundation) y tu
+   Mac te pide tu contraseña una vez. TALLY usa su propio Python en
+   `~/TALLY/_Python`: no toca el de tu Mac ni el de Homebrew.
+4. Al terminar, la app **TALLY** queda en **Aplicaciones** (también la
+   encuentras en Launchpad y con Spotlight). Arrástrala al Dock para tenerla a
+   la mano. Se abre en tu navegador, igual que en Windows.
+
+Tus datos, respaldos y el programa están en `~/TALLY` (tu carpeta de inicio),
+fuera del Escritorio, así que iCloud no los sube a la nube. Para actualizar,
+corre el `INSTALAR.command` de la versión nueva.
+
+Las Mac con procesador Intel no están incluidas por ahora: la librería de
+cifrado que usa TALLY (cryptography 49) ya solo se publica para chip de Apple.
 
 | Página | Responde a |
 |---|---|
@@ -125,6 +155,8 @@ el acceso directo **Mis datos de TALLY**, dentro de `Escritorio\TALLY`.
 2. En la PC nueva: instala TALLY y, en la bienvenida, elige **«Ya usaba
    TALLY»** y sube el `.zip`. También sirve el archivo `tally.db` de la otra
    PC.
+
+Funciona igual de Windows a Mac y de Mac a Windows: el respaldo es el mismo.
 
 ### Contraseña de TALLY (opcional)
 
@@ -233,8 +265,21 @@ python -m motor.demo --persistencia    # la demostración
 python portal\iniciar.py               # abre el portal
 ```
 
-`requirements-lock.txt` está fijado para Windows con CPython 3.13. En otro
-sistema, instala `requirements.txt` sin hashes.
+En Mac (Terminal):
+
+```bash
+python3.13 -m venv .venv
+source .venv/bin/activate
+python -m pip install --require-hashes --only-binary=:all: -r requirements-lock-mac.txt
+python -m pytest
+python portal/iniciar.py               # o doble clic en «EJECUTAR PORTAL.command»
+```
+
+`requirements-lock.txt` está fijado para Windows y `requirements-lock-mac.txt`
+para Mac con chip de Apple, los dos con CPython 3.13 y las mismas versiones. En
+otro sistema, instala `requirements.txt` sin hashes. Las pruebas corren en
+Windows y en Mac en cada cambio (GitHub Actions); en la Mac, además, se instala
+TALLY de punta a punta con `INSTALAR.command`.
 
 Si PowerShell no deja activar el entorno, ejecuta una vez
 `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`.
@@ -245,7 +290,7 @@ Si PowerShell no deja activar el entorno, ejecuta una vez
 .streamlit/   Configuración del portal local (localhost:8765, sin telemetría)
 motor/        Toda la lógica financiera y de persistencia; independiente de Streamlit
 portal/       Interfaz con Streamlit: páginas, componentes y lanzador (iniciar.py)
-instalador/   Instalador para Windows (instalar.py)
+instalador/   Instalador para Windows y Mac (instalar.py; lo llaman INSTALAR.bat e INSTALAR.command)
 tests/        Pruebas automatizadas con datos ficticios
 docs/         Modelo contable, persistencia y marca (docs/marca)
 _Programa/    Carpeta administrada por el instalador

@@ -91,7 +91,7 @@ def test_ajustes_no_validos(datos, nas, carpeta, frecuencia, conservar, motivo):
 def test_no_vale_una_carpeta_de_tally_en_esta_pc(datos, raiz):
     (raiz / "Respaldos").mkdir(parents=True)
     for carpeta in (raiz / "Datos", raiz / "Respaldos"):
-        with pytest.raises(ErrorValidacion, match="carpeta de TALLY en esta PC"):
+        with pytest.raises(ErrorValidacion, match="carpeta de TALLY en esta computadora"):
             copia_externa.configurar(datos, str(carpeta), "diaria", 3)
 
 
@@ -155,7 +155,8 @@ def test_una_copia_danada_no_borra_las_anteriores(sesion, datos, nas, monkeypatc
     assert _copias(nas) == [buena.name]
 
 
-def test_mensajes_sencillos_de_lo_que_pasa(datos, nas):
+def test_mensajes_sencillos_de_lo_que_pasa(datos, nas, monkeypatch):
+    monkeypatch.setattr(copia_externa, "MAC", False)                  # en Windows (en Mac, «Tu Mac no deja…»)
     assert "No encuentro la carpeta" in copia_externa.explicar(FileNotFoundError(), "Z:\\X")
     assert "Windows no deja guardar" in copia_externa.explicar(PermissionError(), "Z:\\X")
     assert "está lleno" in copia_externa.explicar(OSError(errno.ENOSPC, "No space left"), "Z:\\X")
@@ -248,8 +249,11 @@ def test_un_archivo_de_ajustes_danado_no_rompe_nada(datos):
 
 def test_la_ventana_para_elegir_carpeta(monkeypatch, tmp_path):
     import subprocess
+    import sys
 
     from portal.componentes import carpetas
+
+    monkeypatch.setattr(sys, "platform", "linux")                        # la ventana de tkinter (la de Windows)
 
     def ventana(eligio):
         def correr(argumentos, **kwargs):
@@ -265,3 +269,33 @@ def test_la_ventana_para_elegir_carpeta(monkeypatch, tmp_path):
     assert carpetas.elegir_carpeta("Elige dónde guardar las copias de TALLY") == ""
     monkeypatch.setattr(subprocess, "run", lambda *a, **k: subprocess.CompletedProcess(a, 1))   # sin tkinter
     assert carpetas.elegir_carpeta("x") is None
+
+
+def test_la_ventana_para_elegir_carpeta_en_mac(monkeypatch, tmp_path):
+    import subprocess
+    import sys
+
+    from portal.componentes import carpetas
+
+    monkeypatch.setattr(sys, "platform", "darwin")
+    respuestas = {}
+
+    def osascript(comando, **opciones):
+        assert comando[0] == "osascript" and "choose folder with prompt aviso" in comando[2]
+        respuestas["argumentos"] = comando[3:]
+        return subprocess.CompletedProcess(comando, respuestas["codigo"], respuestas["salida"], respuestas["error"])
+    monkeypatch.setattr(subprocess, "run", osascript)
+    respuestas.update(codigo=0, salida="/Volumes/NAS Ficticio/Respaldos/\n", error="")
+    assert carpetas.elegir_carpeta("Elige", str(tmp_path)) == "/Volumes/NAS Ficticio/Respaldos"
+    assert respuestas["argumentos"] == ["Elige", str(tmp_path)]               # empieza donde ya estaba
+    respuestas.update(codigo=1, salida="", error="execution error: User canceled. (-128)")
+    assert carpetas.elegir_carpeta("Elige") == ""                               # le dio Cancelar
+    respuestas.update(codigo=1, salida="", error="algo más")
+    assert carpetas.elegir_carpeta("Elige") is None                             # que pegue la ruta
+
+
+def test_en_mac_los_mensajes_hablan_de_la_mac(monkeypatch):
+    monkeypatch.setattr(copia_externa, "MAC", True)
+    assert copia_externa.explicar(PermissionError(), "/Volumes/X").startswith("Tu Mac no deja guardar")
+    with pytest.raises(ErrorValidacion, match="/Volumes/MiNAS/Respaldos"):
+        copia_externa.probar("relativa")

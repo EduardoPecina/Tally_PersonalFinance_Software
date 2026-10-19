@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import subprocess
 import sys
 from datetime import datetime
 from decimal import Decimal
@@ -10,7 +11,7 @@ from decimal import Decimal
 import streamlit as st
 
 from motor import copia_externa, monedas, perfil, reportes, rutas
-from motor.config import LEMA, VERSION
+from motor.config import LEMA, MAC, VERSION
 from motor.errores import ErrorTally
 from motor.perfil import MAXIMO_RESPALDOS
 from portal import accesos
@@ -116,12 +117,18 @@ def _copia_externa() -> None:
     if st.session_state.pop(RELEER, False) or CARPETA not in st.session_state:
         st.session_state[CARPETA] = actual.carpeta
     texto, boton = st.columns([4, 1], vertical_alignment="bottom")
-    texto.text_input("Carpeta", key=CARPETA, placeholder="\\\\MiNAS\\Respaldos   o   E:\\Respaldos TALLY",
-                     help="Elígela con el botón o pega la ruta. Si tu NAS no aparece en la ventana, conéctalo como "
-                          "unidad en Windows (Z:) o pega su ruta, como `\\\\MiNAS\\Carpeta`. Déjala vacía para ya "
-                          "no copiar.")
+    if MAC:
+        ejemplo, ayuda = "/Volumes/MiNAS/Respaldos", ("Elígela con el botón o pega la ruta. Tu NAS aparece cuando lo "
+                                                      "conectas en Finder (Ir → Conectarse al servidor). Déjala vacía "
+                                                      "para ya no copiar.")
+    else:
+        ejemplo, ayuda = "\\\\MiNAS\\Respaldos   o   E:\\Respaldos TALLY", (
+            "Elígela con el botón o pega la ruta. Si tu NAS no aparece en la ventana, conéctalo como unidad en Windows "
+            "(Z:) o pega su ruta, como `\\\\MiNAS\\Carpeta`. Déjala vacía para ya no copiar.")
+    texto.text_input("Carpeta", key=CARPETA, placeholder=ejemplo, help=ayuda)
     boton.button("Elegir carpeta…", icon=":material/folder_open:", width="stretch", on_click=_elegir_carpeta,
-                 key="copia_elegir", help="Abre la ventana de Windows para escoger la carpeta.")
+                 key="copia_elegir",
+                 help=f"Abre la ventana {'de la Mac' if MAC else 'de Windows'} para escoger la carpeta.")
     if st.session_state.pop(SIN_VENTANA, False):
         st.warning("No se pudo abrir la ventana para elegir la carpeta. Escribe o pega su ruta.", icon="📁")
     frecuencia = st.segmented_control(
@@ -201,7 +208,8 @@ def _apariencia() -> None:
         st.rerun()
 
     st.subheader("Ícono de TALLY")
-    st.caption("El color del ícono del acceso directo del Escritorio y de la pestaña del navegador.")
+    st.caption("El color del ícono de la app TALLY (en Aplicaciones y en el Dock) y de la pestaña del navegador."
+               if MAC else "El color del ícono del acceso directo del Escritorio y de la pestaña del navegador.")
     columnas = st.columns(len(perfil.ICONOS))
     for columna, (variante, nombre) in zip(columnas, perfil.ICONOS.items()):
         with columna, st.container(border=True):
@@ -248,8 +256,12 @@ def _acerca() -> None:
         "«Consultar valor aproximado actual» en una cuenta de inversión envía solo el símbolo del título "
         "(p. ej. IVVPESO.MX), y solo cuando lo aprietas."
     )
-    if sys.platform == "win32" and st.button("Abrir la carpeta de mis datos", icon=":material/folder_open:"):
-        os.startfile(rutas.carpeta_usuario())  # noqa: S606 - abre el Explorador en la carpeta local del usuario
+    if sys.platform in ("win32", "darwin") and st.button("Abrir la carpeta de mis datos",
+                                                         icon=":material/folder_open:"):
+        if sys.platform == "win32":
+            os.startfile(rutas.carpeta_usuario())  # noqa: S606 - abre el Explorador en la carpeta local del usuario
+        else:
+            subprocess.Popen(["open", str(rutas.carpeta_usuario())])   # Finder, en la carpeta de tus datos
     enlace("cargar", "Cargar datos desde Excel", "📥")
     enlace("categorias", "Categorías y subcategorías", "🏷️")
 
