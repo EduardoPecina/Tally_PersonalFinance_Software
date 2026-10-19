@@ -48,7 +48,8 @@ def _respaldo_del_dia(actual) -> None:
     if en_curso is None:
         st.session_state["_respaldo_del_dia"] = True
         try:
-            st.session_state["_respaldo_del_dia"] = respaldos.iniciar_respaldo_del_dia(actual) or True
+            st.session_state["_respaldo_del_dia"] = respaldos.iniciar_respaldo_del_dia(
+                actual, retraso=respaldos.RETRASO_DEL_DIA) or True
         except Exception as error:  # noqa: BLE001 - un respaldo fallido nunca impide usar TALLY
             _aviso_de_respaldo(error)
     elif isinstance(en_curso, respaldos.RespaldoEnCurso) and en_curso.terminado:
