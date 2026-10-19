@@ -35,6 +35,9 @@ def en_mac(instalador, monkeypatch, tmp_path):
     """El instalador como en una Mac (en cualquier sistema): todo en ~/TALLY y la app en ~/Applications."""
     monkeypatch.setattr(instalador, "mac", lambda: True)
     monkeypatch.setenv("TALLY_APLICACIONES", str(tmp_path / "Applications"))
+    instalador.al_dock = []                                   # sin tocar el Dock de verdad (las pruebas corren en Mac)
+    monkeypatch.setattr(instalador, "poner_en_el_dock",
+                        lambda app, base: instalador.al_dock.append((app, base)) or True)
     return instalador
 
 
@@ -646,3 +649,67 @@ def test_en_mac_https_usa_los_certificados_de_certifi(monkeypatch):
     assert isinstance(cotizaciones.contexto_https(), ssl.SSLContext)
     monkeypatch.setattr(cotizaciones.sys, "platform", "win32")
     assert cotizaciones.contexto_https() is None                        # Windows: los del sistema
+
+
+def test_en_mac_la_app_queda_en_el_dock(en_mac, tmp_path, capsys):
+    assert en_mac.instalar(sin_librerias=True, sin_accesos=False) == 0
+    assert en_mac.al_dock == [(tmp_path / "Applications" / "TALLY.app", datos(tmp_path))]
+    assert "en tu Dock" in capsys.readouterr().out
+    en_mac.al_dock.clear()
+    assert en_mac.instalar(sin_librerias=True, sin_accesos=True) == 0           # sin accesos: no toca el Dock
+    assert en_mac.al_dock == []
+
+
+class _DockFicticio:
+    """``defaults`` y ``killall`` de mentira: un Dock en memoria."""
+
+    def __init__(self, apps=(), falla=False):
+        self.apps = list(apps)
+        self.falla = falla
+        self.escrituras, self.reinicios = [], 0
+
+    def __call__(self, comando, **opciones):
+        import plistlib
+        import subprocess
+
+        if comando[:2] == ["defaults", "export"]:
+            if self.falla:
+                return subprocess.CompletedProcess(comando, 1, b"", b"error")
+            datos = {"persistent-apps": [{"tile-data": {"file-data": {"_CFURLString": a, "_CFURLStringType": 15}}}
+                                         for a in self.apps]}
+            return subprocess.CompletedProcess(comando, 0, plistlib.dumps(datos), b"")
+        if comando[:2] == ["defaults", "write"]:
+            self.escrituras.append(comando[-1])
+            return subprocess.CompletedProcess(comando, 0)
+        if comando == ["killall", "Dock"]:
+            self.reinicios += 1
+            return subprocess.CompletedProcess(comando, 0)
+        raise AssertionError(comando)
+
+
+def test_poner_en_el_dock_la_primera_vez(instalador, tmp_path, monkeypatch):
+    import subprocess
+
+    dock = _DockFicticio(apps=["file:///System/Applications/Mail.app/"])
+    monkeypatch.setattr(subprocess, "run", dock)
+    app, base = tmp_path / "Mis Apps" / "TALLY.app", tmp_path / "TALLY"
+    base.mkdir()
+    assert instalador.poner_en_el_dock(app, base)
+    (entrada,) = dock.escrituras
+    assert "<key>_CFURLString</key><string>file://" in entrada and "/Mis%20Apps/TALLY.app/</string>" in entrada
+    assert dock.reinicios == 1 and (base / ".tally_en_el_dock").exists()
+
+    dock.apps.append(app.as_uri() + "/")                                   # al actualizar: ya está, no se duplica
+    assert instalador.poner_en_el_dock(app, base) and len(dock.escrituras) == 1 and dock.reinicios == 1
+
+    dock.apps.pop()                                                        # el usuario la quitó: se respeta
+    assert not instalador.poner_en_el_dock(app, base) and len(dock.escrituras) == 1
+
+
+def test_si_no_se_puede_leer_el_dock_no_se_toca(instalador, tmp_path, monkeypatch):
+    import subprocess
+
+    dock = _DockFicticio(falla=True)
+    monkeypatch.setattr(subprocess, "run", dock)
+    assert not instalador.poner_en_el_dock(tmp_path / "TALLY.app", tmp_path)
+    assert dock.escrituras == [] and dock.reinicios == 0 and not (tmp_path / ".tally_en_el_dock").exists()

@@ -25,7 +25,8 @@ En Mac (chip de Apple), todo vive en tu carpeta de inicio, fuera del Escritorio 
              _Programa/                 el programa (se reemplaza completo al actualizar)
              _Python/                   el Python de TALLY (lo crea INSTALAR.command; no toca el de tu Mac)
              LEEME.txt, instalacion.log
-       y la app ~/Applications/TALLY.app (aparece en Aplicaciones, Launchpad y Spotlight; se puede poner en el Dock).
+       y la app ~/Applications/TALLY.app (aparece en Aplicaciones, Launchpad y Spotlight), que la primera vez se pone
+       en el Dock (si el usuario la quita, las actualizaciones lo respetan).
 
 Uso manual (pruebas):  python instalador/instalar.py [--sin-librerias] [--sin-accesos]
 Las variables TALLY_ESCRITORIO, TALLY_DATOS y TALLY_APLICACIONES permiten usar otras carpetas (pruebas).
@@ -125,8 +126,8 @@ LEEME_MAC = """TALLY
 Your money. Your computer. Your data.
 
 ABRIR TALLY
-  Abre la app "TALLY": está en Aplicaciones (o escribe TALLY en Spotlight, Cmd + Espacio).
-  Para tenerla a la mano, arrástrala al Dock.
+  Clic en el ícono de TALLY en tu Dock (el instalador lo pone ahí la primera vez).
+  También está en Aplicaciones y con Spotlight (Cmd + Espacio, escribe TALLY).
   Se abre en tu navegador, pero todo se queda en esta Mac: no usa Internet.
   Para cerrarlo: botón "Cerrar TALLY" en el menú de la izquierda.
   Si la app no abre: doble clic en _Programa/EJECUTAR PORTAL.command
@@ -772,6 +773,60 @@ def crear_app_mac(programa, base=None):
 
 LSREGISTER = Path("/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/"
                   "lsregister")
+MARCA_DOCK = ".tally_en_el_dock"          # en ~/TALLY: el instalador ya puso TALLY en el Dock una vez
+
+
+def apps_del_dock():
+    """Las direcciones (``file:///…/``) de las apps fijas en el Dock, o ``None`` si no se pueden leer."""
+    try:
+        resultado = subprocess.run(["defaults", "export", "com.apple.dock", "-"], capture_output=True,
+                                   stdin=subprocess.DEVNULL, timeout=30)
+        if resultado.returncode != 0:
+            return None
+        datos = plistlib.loads(resultado.stdout)
+    except (OSError, subprocess.SubprocessError, ValueError, plistlib.InvalidFileException):
+        return None
+    direcciones = []
+    for elemento in datos.get("persistent-apps", []):
+        try:
+            direcciones.append(elemento["tile-data"]["file-data"]["_CFURLString"])
+        except (KeyError, TypeError):
+            continue
+    return direcciones
+
+
+def poner_en_el_dock(app, base):
+    """Pone la app en el Dock, al final, la PRIMERA vez: si después el usuario la quita, las actualizaciones lo
+    respetan (queda anotado en ``~/TALLY/.tally_en_el_dock``). Si ya está, no la duplica. True si quedó en el Dock.
+    El Dock se reinicia un instante para mostrarla."""
+    from xml.sax.saxutils import escape
+
+    direccion = app.as_uri().rstrip("/") + "/"
+    actuales = apps_del_dock()
+    if actuales is None:
+        return False
+    marca = base / MARCA_DOCK
+    if any(d.rstrip("/") == direccion.rstrip("/") for d in actuales):
+        marca.touch()
+        return True
+    if marca.exists():
+        print("TALLY no está en tu Dock (lo quitaste): se respeta.")
+        return False
+    entrada = ("<dict><key>tile-data</key><dict><key>file-data</key><dict>"
+               f"<key>_CFURLString</key><string>{escape(direccion)}</string>"
+               "<key>_CFURLStringType</key><integer>15</integer></dict></dict></dict>")
+    try:
+        escrito = subprocess.run(["defaults", "write", "com.apple.dock", "persistent-apps", "-array-add", entrada],
+                                 stdin=subprocess.DEVNULL, timeout=30)
+        if escrito.returncode != 0:
+            return False
+        subprocess.run(["killall", "Dock"], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                       stderr=subprocess.DEVNULL, timeout=30)
+    except (OSError, subprocess.SubprocessError):
+        return False
+    marca.write_text("El instalador puso TALLY en el Dock. Si lo quitas, no lo vuelve a poner.\n", encoding="utf-8")
+    print("TALLY quedó en tu Dock.")
+    return True
 
 
 def registrar_app_mac(app):
@@ -884,8 +939,11 @@ def _instalar(raiz, sin_librerias, sin_accesos):
         print(aviso_migracion)
 
     hay_portal = portal_disponible(programa)
+    en_el_dock = False
     if mac():
         accesos = sin_accesos or not hay_portal or crear_app_mac(programa, base)
+        if not sin_accesos and hay_portal and accesos:
+            en_el_dock = poner_en_el_dock(aplicaciones() / f"{NOMBRE_ACCESO}.app", base)
     else:
         accesos = sin_accesos or sys.platform != "win32" or not hay_portal or crear_accesos(raiz, programa, base)
 
@@ -896,7 +954,10 @@ def _instalar(raiz, sin_librerias, sin_accesos):
         mensaje += f"\n\n{aviso_migracion}"
     if respaldo:
         mensaje += f"\n\nAntes de actualizar se respaldaron tus datos en:\n{respaldo.name}"
-    if hay_portal and mac():
+    if hay_portal and mac() and en_el_dock:
+        mensaje += ("\n\nPara abrir TALLY: el ícono de TALLY en tu Dock (abajo). También está en Aplicaciones y con "
+                    "Spotlight (escribe TALLY).")
+    elif hay_portal and mac():
         mensaje += ("\n\nPara abrir TALLY: la app \"TALLY\" en Aplicaciones (o escribe TALLY en Spotlight). Para "
                     "tenerla a la mano, arrástrala al Dock.")
         if not accesos:
@@ -914,7 +975,7 @@ def _instalar(raiz, sin_librerias, sin_accesos):
     if not os.environ.get("TALLY_SIN_VENTANAS"):
         if sys.platform == "win32":
             os.startfile(raiz)                                    # abre la carpeta en el Explorador
-        elif sys.platform == "darwin":                            # muestra la app en Finder, lista para el Dock
+        elif sys.platform == "darwin" and not en_el_dock:         # muestra la app en Finder, lista para el Dock
             app = aplicaciones() / f"{NOMBRE_ACCESO}.app"
             subprocess.run(["open", "-R", str(app)] if app.exists() else ["open", str(raiz)],
                            stdin=subprocess.DEVNULL, check=False)

@@ -113,9 +113,10 @@ el acceso directo **Mis datos de TALLY**, dentro de `Escritorio\TALLY`.
    python.org (revisa que esté firmado por la Python Software Foundation) y tu
    Mac te pide tu contraseña una vez. TALLY usa su propio Python en
    `~/TALLY/_Python`: no toca el de tu Mac ni el de Homebrew.
-4. Al terminar, la app **TALLY** queda en **Aplicaciones** (también la
-   encuentras en Launchpad y con Spotlight). Arrástrala al Dock para tenerla a
-   la mano. Se abre en tu navegador, igual que en Windows.
+4. Al terminar, el ícono de **TALLY** ya está en tu **Dock**, sin hacer nada
+   más (y la app en **Aplicaciones**, Launchpad y Spotlight). Se abre en tu
+   navegador, igual que en Windows. Si lo quitas del Dock, las actualizaciones
+   no lo vuelven a poner.
 
 Tus datos, respaldos y el programa están en `~/TALLY` (tu carpeta de inicio),
 fuera del Escritorio, así que iCloud no los sube a la nube. Para actualizar,
