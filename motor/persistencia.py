@@ -325,6 +325,16 @@ class Almacen:
             conexion.execute("VACUUM")
             conexion.execute("PRAGMA wal_checkpoint(TRUNCATE)")
 
+    def revision_en_disco(self) -> int:
+        """Cuántas veces se ha guardado algo en el archivo, sin cargarlo ni necesitar la llave: para saber si cambió
+        desde la última copia (motor/copia_externa.py)."""
+        self._preparar()
+        try:
+            with closing(self._conectar()) as conexion:
+                return int(self._meta(conexion, "revision") or 0)
+        except sqlite3.DatabaseError as error:
+            raise ErrorDatos(f"No se pudo leer el archivo de datos ({error}).") from error
+
     def leer_crudo(self) -> dict:
         """Todo tal como está en el disco (cifrado o no), sin necesitar la llave: para respaldos y copias.
 

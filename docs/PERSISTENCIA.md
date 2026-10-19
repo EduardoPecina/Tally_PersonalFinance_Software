@@ -77,8 +77,15 @@ que los dos siempre buscan los datos en el mismo lugar.
   públicos de cada símbolo y tipo de cambio (fecha, precio, moneda), para las
   gráficas de la página Inversiones. Igual que `precios.json`: no es parte de
   tus datos ni de los respaldos, y si se borra se vuelve a pedir.
+- `Datos\copia_externa.json` (TALLY 0.29) guarda la copia en tu NAS o disco
+  externo (motor/copia_externa.py): la carpeta, cada cuánto, cuántas copias
+  conservar y cómo salió la última. Es de esta PC, no de tus datos: no va en
+  los respaldos y se lee sin la contraseña (para copiar al cerrar TALLY). Las
+  copias son respaldos normales (`TALLY_copia_*.zip`), cifrados si tus datos
+  tienen contraseña.
 - Un **contador de revisión** detecta si otra ventana de TALLY modificó los
-  datos y pide recargar en lugar de sobrescribir.
+  datos y pide recargar en lugar de sobrescribir. La copia externa lo usa para
+  no volver a copiar si nada cambió.
 - **Al abrir** se ejecuta `PRAGMA quick_check` y se verifica que cada
   movimiento sume cero y que sus cuentas y categorías existan. Si algo está
   mal, TALLY lo dice y sugiere restaurar un respaldo; no trabaja sobre datos

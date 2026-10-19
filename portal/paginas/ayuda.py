@@ -79,7 +79,8 @@ COMO_HAGO = (
     ("Respaldar, o pasar TALLY a otra computadora",
      "**Respaldos y bitácora → Descargar respaldo**: un .zip con todo (también tus comprobantes). En la otra "
      "computadora, al abrir TALLY elige «Ya usaba TALLY» y súbelo. Además, TALLY hace un respaldo automático cada "
-     "día.", "respaldos", "Ir a Respaldos"),
+     "día, y en **Configuración → Respaldos** puedes dejar una copia en tu NAS o disco externo (diaria, semanal o "
+     "mensual).", "respaldos", "Ir a Respaldos"),
     ("Proteger mis datos con contraseña",
      "**Configuración → Seguridad**. Todo se cifra en tu computadora. Guarda bien tu **Kit de emergencia**: sin tu "
      "contraseña ni tu Kit, nadie (ni TALLY) puede abrir tus datos.", "configuracion", "Ir a Configuración"),
