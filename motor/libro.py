@@ -57,9 +57,10 @@ class Libro:
         self._rubros: dict[str, Rubro] = {}
         self._operaciones: dict[str, Operacion] = {}
         # Índices que se arman al pedirlos y se tiran con cada cambio de movimientos (ver _movimientos_cambiaron):
-        # los movimientos en orden con sus fechas (para buscar un rango con bisect) y el saldo acumulado de cada
-        # cuenta. Con años de datos, el Resumen pide cientos de saldos y rangos en cada vista.
+        # los movimientos en orden con sus fechas (para buscar un rango con bisect), los de cada cuenta y el saldo
+        # acumulado de cada cuenta. Con años de datos, el Resumen pide cientos de saldos y rangos en cada vista.
         self._orden: tuple[list[Operacion], list[date]] | None = None
+        self._por_cuenta: dict[str, tuple[list[Operacion], list[date]]] | None = None
         self._acumulados: dict[str, tuple[list[date], list[int]]] | None = None
         self._valores: dict[str, OperacionValor] = {}
         self._plazos: dict[str, InversionPlazo] = {}
@@ -506,9 +507,11 @@ class Libro:
         except KeyError:
             raise ErrorNoEncontrado("El movimiento no existe.") from None
 
-    def operaciones(self, desde: date | None = None, hasta: date | None = None) -> list[Operacion]:
-        """Operaciones en orden cronológico, opcionalmente en un rango (inclusivo). Una lista nueva cada vez."""
-        ops, fechas = self._ordenadas()
+    def operaciones(self, desde: date | None = None, hasta: date | None = None,
+                    cuenta_id: str | None = None) -> list[Operacion]:
+        """Operaciones en orden cronológico, opcionalmente en un rango (inclusivo) y solo las que mueven una cuenta.
+        Una lista nueva cada vez."""
+        ops, fechas = self._ordenadas() if cuenta_id is None else self._de_cuenta(cuenta_id)
         inicio = bisect_left(fechas, desde) if desde is not None else 0
         fin = bisect_right(fechas, hasta) if hasta is not None else len(ops)
         return ops[inicio:fin]
@@ -519,8 +522,21 @@ class Libro:
             self._orden = (ops, [op.fecha for op in ops])
         return self._orden
 
+    def _de_cuenta(self, cuenta_id: str) -> tuple[list[Operacion], list[date]]:
+        if self._por_cuenta is None:
+            self._por_cuenta = {}
+            for op in self._ordenadas()[0]:
+                for p in op.partidas:
+                    if p.cuenta_id is not None:
+                        ops, fechas = self._por_cuenta.setdefault(p.cuenta_id, ([], []))
+                        if not ops or ops[-1] is not op:          # una vez aunque la mueva en dos partidas
+                            ops.append(op)
+                            fechas.append(op.fecha)
+        return self._por_cuenta.get(cuenta_id, ([], []))
+
     def _movimientos_cambiaron(self) -> None:
         self._orden = None
+        self._por_cuenta = None
         self._acumulados = None
 
     def agregar_operacion(self, op: Operacion) -> Operacion:

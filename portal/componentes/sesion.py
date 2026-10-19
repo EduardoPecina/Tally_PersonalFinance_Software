@@ -8,6 +8,7 @@ errores del motor como mensajes amables.
 from __future__ import annotations
 
 from collections.abc import Callable
+from pathlib import Path
 from typing import TypeVar
 
 import streamlit as st
@@ -20,11 +21,35 @@ from motor.sesion import Sesion
 T = TypeVar("T")
 
 
+_PRECARGADAS: dict[str, Sesion] = {}         # abiertas antes de la primera vista (portal/servidor.py)
+
+
 @st.cache_resource(show_spinner=False)
 def _abrir(ruta: str) -> Sesion:
     from portal.componentes import candado              # la llave, si tus datos tienen contraseña
 
+    precargada = _PRECARGADAS.pop(ruta, None)
+    if precargada is not None and candado.llave() is None and _al_dia(precargada):
+        return precargada
     return Sesion.abrir(ruta, llave=candado.llave())
+
+
+def precargar() -> None:
+    """Abre tus datos antes de la primera vista, mientras tu navegador abre (portal/servidor.py). Solo si ya existen
+    y no tienen contraseña (con contraseña hay que esperar a que la escribas)."""
+    from motor import seguridad
+
+    ruta = ruta_datos()
+    if Path(ruta).exists() and seguridad.config(ruta) is None:
+        _PRECARGADAS[ruta] = Sesion.abrir(ruta)
+
+
+def _al_dia(precargada: Sesion) -> bool:
+    """Que nadie haya cambiado el archivo desde que se precargó."""
+    try:
+        return precargada.almacen.revision == precargada.almacen.revision_en_disco()
+    except ErrorTally:
+        return False
 
 
 def ruta_datos() -> str:
@@ -51,6 +76,41 @@ def llave_actual() -> bytes | None:
 
 def libro() -> Libro:
     return sesion().libro
+
+
+CALCULOS = "_calculos"
+MAXIMO_CALCULOS = 64          # por versión de tus datos: los filtros que vas probando en un rato
+
+
+def calculado(funcion: Callable[..., T], *args, **kwargs) -> T:
+    """``funcion(libro(), *args, **kwargs)``, recordado mientras tus datos no cambien (y el mismo día).
+
+    Para lo que tarda y se vuelve a pedir en cada clic de la misma página (elegir un renglón, abrir una pestaña,
+    volver a la página). Cualquier cambio a tus datos lo olvida todo. Lo que regresa no se debe modificar."""
+    lib = libro()
+    version = (id(sesion()), id(lib), sesion().almacen.revision, lib.hoy())
+    guardados = st.session_state.get(CALCULOS)
+    if guardados is None or guardados[0] != version:
+        guardados = (version, {})
+        st.session_state[CALCULOS] = guardados
+    llave = (funcion.__module__, funcion.__qualname__, _congelar(args), _congelar(kwargs))
+    memoria = guardados[1]
+    if llave not in memoria:
+        if len(memoria) >= MAXIMO_CALCULOS:
+            memoria.pop(next(iter(memoria)))                # el más viejo
+        memoria[llave] = funcion(lib, *args, **kwargs)
+    return memoria[llave]
+
+
+def _congelar(valor):
+    """Una versión que sirve de llave: las listas, conjuntos y diccionarios (p. ej. los filtros) no la sirven."""
+    if isinstance(valor, dict):
+        return tuple(sorted((k, _congelar(v)) for k, v in valor.items()))
+    if isinstance(valor, (list, tuple)):
+        return tuple(_congelar(v) for v in valor)
+    if isinstance(valor, (set, frozenset)):
+        return frozenset(_congelar(v) for v in valor)
+    return valor
 
 
 def _intentar(accion: Callable[[Libro], T], exito: str | None) -> tuple[bool, T | None]:

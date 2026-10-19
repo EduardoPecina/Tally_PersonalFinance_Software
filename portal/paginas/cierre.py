@@ -11,7 +11,7 @@ import streamlit as st
 from motor import categorias, cierre, consultas
 from motor.cierre import Reporte
 from portal import navegacion
-from portal.componentes import candado, exportar, formato
+from portal.componentes import candado, estado, exportar, formato
 from portal.componentes.sesion import ejecutar, libro
 
 PENDIENTES = {"calendario": "📅", "temporal": "↩️", "tarjeta": "💳"}
@@ -39,21 +39,11 @@ def mostrar() -> None:
     _estado(r)
     _veredicto(r)
     _recomendaciones(r)
-    gasto, presupuestos, ingresos, deudas, metas, pendientes = st.tabs([
+    numero, pestana = estado.pestanas("cierre", [
         "💸 A dónde se fue", "🎯 Presupuestos", "💰 Ingresos", "💳 Deudas", "🏆 Metas y patrimonio",
         f"✅ Para cerrar bien ({len(r.pendientes)})" if r.pendientes else "✅ Para cerrar bien"])
-    with gasto:
-        _gasto(r)
-    with presupuestos:
-        _presupuestos(r)
-    with ingresos:
-        _ingresos(r)
-    with deudas:
-        _deudas(r)
-    with metas:
-        _metas(r)
-    with pendientes:
-        _pendientes(r)
+    with pestana:
+        (_gasto, _presupuestos, _ingresos, _deudas, _metas, _pendientes)[numero](r)
     st.divider()
     _descargar(r)
     _historial(lista)

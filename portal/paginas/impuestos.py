@@ -11,7 +11,7 @@ import streamlit as st
 from motor import categorias, comprobantes, impuestos
 from motor.dinero import a_pesos
 from motor.modelo import ClaseCategoria, ConceptoDeducible, PerfilImpuestos
-from portal.componentes import exportar, formato
+from portal.componentes import estado, exportar, formato
 from portal.componentes.sesion import ejecutar, libro, sesion
 from portal.navegacion import enlace
 
@@ -33,16 +33,10 @@ def mostrar() -> None:
     st.title("Impuestos")
     st.caption("Tus gastos deducibles del año y el cálculo de un recibo o factura, para cualquier país: tú pones las "
                "reglas, con ejemplos para guiarte. " + impuestos.AVISO)
-    deducibles, recibo, fisco, configurar = st.tabs(["🧾 Gastos deducibles", "🧮 Calcular y revisar un recibo",
-                                                     "📅 Pagos al fisco", "⚙️ Configurar"])
-    with deducibles:
-        _deducibles()
-    with recibo:
-        _recibo()
-    with fisco:
-        _pagos_al_fisco()
-    with configurar:
-        _configurar()
+    numero, pestana = estado.pestanas("impuestos", ["🧾 Gastos deducibles", "🧮 Calcular y revisar un recibo",
+                                                    "📅 Pagos al fisco", "⚙️ Configurar"])
+    with pestana:
+        (_deducibles, _recibo, _pagos_al_fisco, _configurar)[numero]()
 
 
 # ------------------------------------------------------------- deducibles
@@ -501,20 +495,20 @@ def _formulario_perfil(p: PerfilImpuestos | None) -> None:
     st.text_input("Notas", key=f"imp_{clave}_notas")
     _recordatorio(clave)
     if st.button("Guardar cambios" if p else "Guardar perfil", type="primary", key=f"imp_{clave}_guardar"):
-        estado = st.session_state
-        datos = [{"nombre": str(estado.get(f"imp_{clave}_{n}_nombre") or "").strip(),
-                  "tasa": str(estado.get(f"imp_{clave}_{n}_tasa") or "0").strip() or "0",
-                  "sobre": "" if estado.get(f"imp_{clave}_{n}_sobre", SUBTOTAL) == SUBTOTAL
-                  else estado[f"imp_{clave}_{n}_sobre"],
-                  "retenido": estado.get(f"imp_{clave}_{n}_efecto") == RETIENE,
-                  "a_cargo": estado.get(f"imp_{clave}_{n}_efecto") == CARGO} for n in filas]
-        frecuencia = estado.get(f"imp_{clave}_frecuencia", "")
+        valores = st.session_state
+        datos = [{"nombre": str(valores.get(f"imp_{clave}_{n}_nombre") or "").strip(),
+                  "tasa": str(valores.get(f"imp_{clave}_{n}_tasa") or "0").strip() or "0",
+                  "sobre": "" if valores.get(f"imp_{clave}_{n}_sobre", SUBTOTAL) == SUBTOTAL
+                  else valores[f"imp_{clave}_{n}_sobre"],
+                  "retenido": valores.get(f"imp_{clave}_{n}_efecto") == RETIENE,
+                  "a_cargo": valores.get(f"imp_{clave}_{n}_efecto") == CARGO} for n in filas]
+        frecuencia = valores.get(f"imp_{clave}_frecuencia", "")
         if ejecutar(lambda li: impuestos.guardar_perfil(
-                li, estado.get(f"imp_{clave}_nombre_perfil", ""), datos, notas=estado.get(f"imp_{clave}_notas", ""),
+                li, valores.get(f"imp_{clave}_nombre_perfil", ""), datos, notas=valores.get(f"imp_{clave}_notas", ""),
                 perfil_id=p.id if p else None, frecuencia=frecuencia,
-                subcategorias=estado.get(f"imp_{clave}_subcategorias", []) if frecuencia else (),
-                registro=estado.get(f"imp_{clave}_registro", "recibido"),
-                dia_limite=estado.get(f"imp_{clave}_dia", 17), meses_despues=estado.get(f"imp_{clave}_meses", 1)),
+                subcategorias=valores.get(f"imp_{clave}_subcategorias", []) if frecuencia else (),
+                registro=valores.get(f"imp_{clave}_registro", "recibido"),
+                dia_limite=valores.get(f"imp_{clave}_dia", 17), meses_despues=valores.get(f"imp_{clave}_meses", 1)),
                 "Perfil guardado"):
             _olvidar_formulario(clave)                          # que se vuelva a llenar con lo guardado
             st.rerun()
@@ -561,25 +555,28 @@ def _recordatorio(clave: str) -> None:
 
 
 def _renglones_del_formulario(p: PerfilImpuestos | None, clave: str) -> list[int]:
-    """Los renglones del formulario (se llenan una vez con lo guardado y luego se quedan como los dejes)."""
-    estado = st.session_state
-    if f"imp_{clave}_filas" not in estado:
+    """Los renglones del formulario (se llenan una vez con lo guardado y luego se quedan como los dejes).
+
+    Se vuelven a llenar si Streamlit ya olvidó los campos: lo hace en cuanto el formulario deja de verse (otra
+    página u otra pestaña). Antes el formulario reaparecía vacío al regresar."""
+    valores = st.session_state
+    if f"imp_{clave}_filas" not in valores or f"imp_{clave}_nombre_perfil" not in valores:
         lista = list(p.impuestos) if p else []
-        estado[f"imp_{clave}_nombre_perfil"] = p.nombre if p else ""
-        estado[f"imp_{clave}_notas"] = p.notas if p else ""
+        valores[f"imp_{clave}_nombre_perfil"] = p.nombre if p else ""
+        valores[f"imp_{clave}_notas"] = p.notas if p else ""
         for n, i in enumerate(lista):
-            estado[f"imp_{clave}_{n}_nombre"] = i.nombre
-            estado[f"imp_{clave}_{n}_tasa"] = _tasa_texto(i.tasa)
-            estado[f"imp_{clave}_{n}_sobre"] = i.sobre or SUBTOTAL
-            estado[f"imp_{clave}_{n}_efecto"] = _efecto(i)
-        estado[f"imp_{clave}_frecuencia"] = p.frecuencia if p else ""
-        estado[f"imp_{clave}_subcategorias"] = [i for i in (p.subcategorias if p else ()) if _existe(i)]
-        estado[f"imp_{clave}_registro"] = p.registro if p else "recibido"
-        estado[f"imp_{clave}_dia"] = p.dia_limite if p else 17
-        estado[f"imp_{clave}_meses"] = p.meses_despues if p else 1
-        estado[f"imp_{clave}_filas"] = list(range(max(len(lista), 1)))
-        estado[f"imp_{clave}_siguiente"] = max(len(lista), 1)
-    return estado[f"imp_{clave}_filas"]
+            valores[f"imp_{clave}_{n}_nombre"] = i.nombre
+            valores[f"imp_{clave}_{n}_tasa"] = _tasa_texto(i.tasa)
+            valores[f"imp_{clave}_{n}_sobre"] = i.sobre or SUBTOTAL
+            valores[f"imp_{clave}_{n}_efecto"] = _efecto(i)
+        valores[f"imp_{clave}_frecuencia"] = p.frecuencia if p else ""
+        valores[f"imp_{clave}_subcategorias"] = [i for i in (p.subcategorias if p else ()) if _existe(i)]
+        valores[f"imp_{clave}_registro"] = p.registro if p else "recibido"
+        valores[f"imp_{clave}_dia"] = p.dia_limite if p else 17
+        valores[f"imp_{clave}_meses"] = p.meses_despues if p else 1
+        valores[f"imp_{clave}_filas"] = list(range(max(len(lista), 1)))
+        valores[f"imp_{clave}_siguiente"] = max(len(lista), 1)
+    return valores[f"imp_{clave}_filas"]
 
 
 def _existe(categoria_id: str) -> bool:

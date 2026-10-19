@@ -10,7 +10,7 @@ from motor.consultas import ETIQUETA_TIPO_OPERACION, ORDENES
 from motor.modelo import TipoCuenta, TipoOperacion
 from portal.componentes import comprobantes as panel_comprobantes
 from portal.componentes import estado, formato
-from portal.componentes.sesion import ejecutar, libro
+from portal.componentes.sesion import calculado, ejecutar, libro
 
 FILTROS = "historial"
 TABLA = "historial_tabla"
@@ -78,7 +78,7 @@ def mostrar() -> None:
     st.title("Historial")
     st.caption("Todos tus movimientos. Los filtros se conservan aunque cambies de página.")
     filtros = _filtros()
-    filas = consultas.buscar(libro(), **filtros)
+    filas = calculado(consultas.buscar, **filtros)
 
     totales = consultas.total(filas)
     st.markdown(

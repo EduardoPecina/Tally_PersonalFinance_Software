@@ -10,7 +10,7 @@ from motor import cierre, copia_externa, cuentas, ingresos, plan_deudas, reporte
 from motor.modelo import TipoCuenta
 from portal.componentes import estado, formato, graficas, por_recuperar
 from portal.componentes import tarjeta as estado_tarjeta
-from portal.componentes.sesion import libro, sesion
+from portal.componentes.sesion import calculado, libro, sesion
 from portal.navegacion import enlace
 from portal.paginas import ayuda, calendario, impuestos, presupuestos, salud
 
@@ -140,7 +140,7 @@ def _quincenas() -> None:
     nombre = ingresos.nombre_principal(lib)
     cada = f"cada pago de {nombre}" if nombre else "cada pago de tu ingreso principal"
     for cuenta in cuentas.listar(lib):
-        sobrantes = reportes.sobrantes_de_quincena(lib, cuenta.id, lib.hoy() - timedelta(days=200))[-6:]
+        sobrantes = calculado(reportes.sobrantes_de_quincena, cuenta.id, lib.hoy() - timedelta(days=200))[-6:]
         if len(sobrantes) < 2:
             continue
         st.subheader(f"Lo que te sobró antes de {cada} · {cuenta.nombre}")
@@ -183,15 +183,17 @@ def mostrar() -> None:
         st.markdown("**Por clasificación**")
         graficas.barras([(g, v) for g, v in reportes.gastos_por_grupo(lib, desde, hasta).items() if v > 0], "Gasto",
                         "Clasificación")
-    with st.expander("Ver por subcategoría"):
-        graficas.barras([(t.nombre, t.total) for t in reportes.gastos_por_categoria(lib, desde, hasta)
-                         if t.total > 0], "Gasto", "Subcategoría")
+    subcategorias = st.expander("Ver por subcategoría", key="inicio_subcategorias", on_change="rerun")
+    if subcategorias.open:                                  # la gráfica se arma solo si la abres
+        with subcategorias:
+            graficas.barras([(t.nombre, t.total) for t in reportes.gastos_por_categoria(lib, desde, hasta)
+                             if t.total > 0], "Gasto", "Subcategoría")
 
     # Al menos tres meses de contexto, aunque el periodo elegido sea más corto.
     hasta_grafica = max(desde, min(hasta, lib.hoy()))
     desde_grafica = min(desde, hasta_grafica - timedelta(days=90))
     st.markdown(f"**Evolución de tu patrimonio** · {formato.rango(desde_grafica, hasta_grafica)}")
-    graficas.linea([(p.fecha, p.patrimonio_neto) for p in reportes.evolucion(lib, desde_grafica, hasta_grafica)])
+    graficas.linea([(p.fecha, p.patrimonio_neto) for p in calculado(reportes.evolucion, desde_grafica, hasta_grafica)])
 
     presupuestos.avance(*reportes.rango_periodo(libro(), "mes_actual"))
     _tarjetas()

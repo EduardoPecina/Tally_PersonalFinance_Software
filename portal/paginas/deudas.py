@@ -10,7 +10,7 @@ import streamlit as st
 from motor import categorias, cuentas, plan_deudas, planeacion, prestamos, tarjetas
 from motor.modelo import ClaseCategoria, TipoCuenta
 from portal import navegacion
-from portal.componentes import formato, graficas
+from portal.componentes import estado, formato, graficas
 from portal.componentes.sesion import ejecutar, libro
 
 ELEGIDO = "deuda_elegida"
@@ -194,17 +194,17 @@ def _tarjetas() -> None:
         st.caption("No tienes tarjetas de crédito registradas.")
         return
     for tarjeta in lista:
-        estado = tarjetas.estado(lib, tarjeta.id)
+        situacion = tarjetas.estado(lib, tarjeta.id)
         minimo = tarjetas.pago_minimo_estimado(lib, tarjeta.id)
         with st.container(border=True):
             st.markdown(f"**{formato.md(tarjeta.nombre)}**" + (f" · CAT {tarjeta.cat.normalize():f} %"
                                                                if tarjeta.cat else ""))
             a, b, c = st.columns(3)
-            a.metric("Debes hoy", formato.dinero_metrica(estado.deuda))
+            a.metric("Debes hoy", formato.dinero_metrica(situacion.deuda))
             if minimo is None:
                 b.metric("Para no generar intereses", formato.dinero_metrica(0))
                 c.metric("Pago mínimo estimado", "—")
-                corte = estado.corte
+                corte = situacion.corte
                 if corte is not None and corte.deuda_al_corte:
                     st.success(f"Ya pagaste el corte del {formato.fecha(corte.fin)}: no generas intereses. Lo que "
                                "gastes ahora va a tu siguiente corte.", icon="✅")
@@ -310,18 +310,13 @@ def _detalle(cuenta_id: str) -> None:
                                                               if e.proximo_pago else ""))
     if not e.liquidado:
         _recomendaciones(cuenta_id, e)
-    pagar, cargo, simular, tabla, datos = st.tabs(["Registrar pago", "Cargo o mora", "Simulador",
-                                                   "Tabla de amortización", "Datos del contrato"])
-    with pagar:
-        _pagar(cuenta_id)
-    with cargo:
-        _cargo(cuenta_id)
-    with simular:
-        _simulador(cuenta_id, e)
-    with tabla:
-        _tabla(cuenta_id)
-    with datos:
-        _datos(cuenta_id)
+    numero, pestana = estado.pestanas("deudas_prestamo", ["Registrar pago", "Cargo o mora", "Simulador",
+                                                          "Tabla de amortización", "Datos del contrato"])
+    with pestana:
+        if numero == 2:
+            _simulador(cuenta_id, e)
+        else:
+            (_pagar, _cargo, None, _tabla, _datos)[numero](cuenta_id)
 
 
 def _recomendaciones(cuenta_id: str, e: prestamos.Estado) -> None:

@@ -156,6 +156,47 @@ def test_historial_filtra_y_conserva_filtros(con_datos):
     assert at.dataframe[0].value.shape[0] == 6
 
 
+def test_lo_calculado_se_olvida_al_cambiar_tus_datos(raiz, con_datos):
+    """El Historial (y otras páginas) recuerdan lo calculado mientras tus datos no cambien: al registrar algo, ya
+    se ve, sin datos viejos."""
+    from portal.componentes import sesion as sesion_portal
+
+    at = abrir(_pagina("historial"))
+    assert at.dataframe[0].value.shape[0] == 6
+    assert sesion_portal.CALCULOS in at.session_state
+    at.switch_page(_pagina("registrar")).run()
+    next(s for s in at.selectbox if s.label == "Subcategoría").set_value(con_datos["cat"]["ALIMENTOS"])
+    next(n for n in at.number_input if n.label == "Importe").set_value(42)
+    next(t for t in at.text_input if t.label == "Descripción").input("Recién registrado")
+    boton(at, "Guardar").click().run()
+    sin_errores(at)
+    at.switch_page(_pagina("historial")).run()
+    tabla = at.dataframe[0].value
+    assert tabla.shape[0] == 7 and "Recién registrado" in list(tabla["Descripción"])
+
+
+def test_calculado_recuerda_y_usa_llaves_con_listas(raiz, con_datos, monkeypatch):
+    from portal.componentes import sesion as sesion_portal
+
+    llamadas = []
+
+    def contar(lib, cuentas, *, filtros):
+        llamadas.append((tuple(cuentas), dict(filtros)))
+        return len(llamadas)
+
+    estado: dict = {}
+    monkeypatch.setattr(sesion_portal.st, "session_state", estado)
+    sesion_ = sesion_en(raiz)
+    monkeypatch.setattr(sesion_portal, "sesion", lambda: sesion_)
+    assert sesion_portal.calculado(contar, ["a", "b"], filtros={"x": [1]}) == 1
+    assert sesion_portal.calculado(contar, ["a", "b"], filtros={"x": [1]}) == 1      # recordado
+    assert sesion_portal.calculado(contar, ["a"], filtros={"x": [1]}) == 2           # otra llave
+    with sesion_.cambio() as lib:                                                    # tus datos cambian
+        perfil.ajustar(lib, ingreso_esperado=1)
+    assert sesion_portal.calculado(contar, ["a", "b"], filtros={"x": [1]}) == 3
+    assert len(llamadas) == 3
+
+
 def test_historial_las_subcategorias_siguen_al_tipo(raiz, con_datos):
     from motor import categorias
     from motor.modelo import ClaseCategoria
@@ -245,9 +286,12 @@ def _pagina(nombre: str) -> str:
     return f"vistas/{nombre}.py"
 
 
-def en_pestana(at: AppTest, pestana: str) -> AppTest:
-    """Categorías solo arma la pestaña que está a la vista y recuerda la última: así se elige otra."""
-    at.session_state["_categorias_pestana_recordada"] = pestana
+def en_pestana(at: AppTest, pestana: str, grupo: str = "categorias") -> AppTest:
+    """Las páginas solo arman la pestaña que está a la vista y recuerdan la última (componentes/estado.pestanas):
+    así se elige otra. ``grupo`` es el de la página (``categorias``, ``contabilidad``…)."""
+    memoria = dict(at.session_state[f"_mem_{grupo}"]) if f"_mem_{grupo}" in at.session_state else {}
+    memoria["pestana"] = [t.label for t in at.tabs].index(pestana)
+    at.session_state[f"_mem_{grupo}"] = memoria
     return at.run()
 
 
@@ -973,10 +1017,12 @@ def test_rubros_contables_como_cajas_en_categorias(raiz, con_datos):
 
     # En Contabilidad técnica, el Estado de Resultados ya va por rubro.
     at.switch_page(_pagina("contabilidad")).run()
+    en_pestana(at, "Resultados", "contabilidad")
     sin_errores(at)
-    conceptos = [c.strip() for c in at.dataframe[1].value["Concepto"]]
+    conceptos = [c.strip() for c in at.dataframe[0].value["Concepto"]]
     assert "Vivienda ficticia" in conceptos and "Ingresos por tu trabajo" in conceptos
-    assert "Rubro" in at.dataframe[3].value.columns                     # la Balanza dice dónde cae cada renglón
+    en_pestana(at, "Balanza de comprobación", "contabilidad")
+    assert "Rubro" in at.dataframe[0].value.columns                     # la Balanza dice dónde cae cada renglón
 
 
 def test_los_rubros_de_tally_se_editan_en_categorias(raiz, con_datos):
@@ -1204,13 +1250,17 @@ def test_contabilidad_tecnica(raiz, con_datos):
     assert [t.label for t in at.tabs] == ["Situación financiera", "Resultados", "Flujo de efectivo",
                                           "Balanza de comprobación", "Bienes"]
     assert any("Activo = Pasivo + Patrimonio" in s.value for s in at.success)
-    assert any("Sumas iguales" in s.value for s in at.success)
+    assert not any("Sumas iguales" in s.value for s in at.success)     # solo se arma la pestaña que está a la vista
     assert any(m.label == "Lo que vales (Patrimonio)" for m in at.metric)
     situacion = at.dataframe[0].value
     fila = list(situacion["Concepto"]).index("\u2003\u2003Débito Ficticio")
     seleccionar(at, "conta_sel_situacion", fila)
     sin_errores(at)
     assert any(m.value == "#### Detalle de Débito Ficticio" for m in at.markdown)
+    for pestana in ("Resultados", "Flujo de efectivo", "Bienes", "Balanza de comprobación"):
+        en_pestana(at, pestana, "contabilidad")
+        sin_errores(at)
+    assert any("Sumas iguales" in s.value for s in at.success)
     balanza = next(d.value for d in at.dataframe if "Cuenta" in d.value.columns and "Debe" in d.value.columns)
     assert balanza["Cuenta"].iloc[-1] == "SUMAS IGUALES"
     assert balanza["Debe"].iloc[-1] == balanza["Haber"].iloc[-1]
@@ -1218,8 +1268,10 @@ def test_contabilidad_tecnica(raiz, con_datos):
     sin_errores(at)
     assert any(set(d.value.columns) >= {"Debe", "Haber", "Contrapartida"} for d in at.dataframe)
     at.toggle(key="conta_subcuentas").set_value(True).run()
+    en_pestana(at, "Resultados", "contabilidad")
     at.toggle(key="conta_resultados_sub").set_value(True).run()
     sin_errores(at)
+    en_pestana(at, "Balanza de comprobación", "contabilidad")
     for periodo in ("anio_pasado", "mes", "mes_pasado", "12m"):
         at.selectbox(key="conta_periodo").set_value(periodo).run()
         sin_errores(at)
@@ -1237,6 +1289,7 @@ def test_contabilidad_tecnica(raiz, con_datos):
 
 def test_bienes_desde_contabilidad_tecnica(raiz, con_datos):
     at = abrir(_pagina("contabilidad"))
+    en_pestana(at, "Bienes", "contabilidad")
     at.selectbox(key="bien_nuevo_clase").set_value("auto").run()
     formulario = [t for t in at.text_input if t.label == "Nombre"][0]
     formulario.set_value("Auto Ficticio")
@@ -1251,6 +1304,7 @@ def test_bienes_desde_contabilidad_tecnica(raiz, con_datos):
     boton(at, "Guardar avalúo").click().run()
     sin_errores(at)
     assert sesion_en(raiz).libro.bien(bien.cuenta_id).avaluos[0].valor == 21_000_000
+    en_pestana(at, "Situación financiera", "contabilidad")                  # con el bien, todo sigue cuadrando
     assert any(s.value.startswith("Cuadra") for s in at.success)
 
 
@@ -1316,6 +1370,7 @@ def test_ingresos_quincenas_distintas_y_registrar_la_nomina(raiz, con_datos):
     at = abrir(_pagina("ingresos"))
     sin_errores(at)
     assert [t.label for t in at.tabs][:2] == ["📆 ¿Cuánto te tiene que durar?", "💼 Tu ingreso principal"]
+    en_pestana(at, "💼 Tu ingreso principal", "ingresos")
     next(s for s in at.selectbox if s.label == "Subcategoría").set_value(con_datos["cat"]["NOMINA"])
     next(n for n in at.number_input if n.label == "1.ª quincena (la del 15)").set_value(5000.73)
     next(n for n in at.number_input if n.label == "2.ª quincena (la de fin de mes)").set_value(5000.56)
@@ -1325,7 +1380,9 @@ def test_ingresos_quincenas_distintas_y_registrar_la_nomina(raiz, con_datos):
     (r,) = lib.recurrentes()
     assert (r.monto, r.monto_2, r.frecuencia, r.fin_de_semana) == (500073, 500056, "quincenal", "antes")
     assert lib.categoria(con_datos["cat"]["NOMINA"]).principal
+    en_pestana(at, "📆 ¿Cuánto te tiene que durar?", "ingresos")
     assert any(m.label == "Te pagan" for m in at.metric)
+    en_pestana(at, "🎯 Tu ingreso al mes", "ingresos")
     assert any(m.label == "Ingreso esperado al mes" for m in at.metric)
 
     at.switch_page(_pagina("registrar")).run()
@@ -1353,6 +1410,7 @@ def test_ingresos_con_un_ingreso_fijo_cuya_subcategoria_se_borro(raiz, con_datos
         ingresos.guardar(lib, "Renta del depa", renta, 4_000, con_datos["debito"], "mensual")
         categorias.eliminar(lib, renta)
     at = abrir(_pagina("ingresos"))
+    en_pestana(at, "➕ Otros ingresos fijos", "ingresos")
     sin_errores(at)
     tabla = next(d.value for d in at.dataframe if "Subcategoría" in d.value.columns)
     assert list(tabla["Subcategoría"]) == ["❓ Elige la subcategoría"]
@@ -1769,6 +1827,7 @@ def test_calendario_agregar_un_pago_fijo_y_registrarlo(raiz, con_datos):
     at = abrir(_pagina("calendario"))
     sin_errores(at)
     assert [t.label for t in at.tabs][:2] == ["📅 Próximos 30 días", "🔁 Mis pagos fijos y suscripciones"]
+    en_pestana(at, "🔁 Mis pagos fijos y suscripciones", "calendario")
     campo_ = [t for t in at.text_input if t.label == "Nombre"][-1]
     campo_.input("Internet Ficticio")
     [n for n in at.number_input if n.label == "Importe (aproximado)"][-1].set_value(599.0)
@@ -1782,6 +1841,7 @@ def test_calendario_agregar_un_pago_fijo_y_registrarlo(raiz, con_datos):
     assert (r.nombre, r.monto, r.suscripcion, r.inicio) == ("Internet Ficticio", 59_900, True, lib.hoy())
     assert any(m.label == "Suscripciones al mes" and m.value == "$599.00" for m in at.metric)
     # En el calendario, hoy toca: se registra con un clic.
+    en_pestana(at, "📅 Próximos 30 días", "calendario")
     assert any("Internet Ficticio" in str(v) for v in at.dataframe[0].value["Qué"])
     boton(at, "Registrar").click().run()
     sin_errores(at)
@@ -1802,6 +1862,7 @@ def test_calendario_sugerencias_y_aviso_en_el_resumen(raiz, con_datos):
                                         con_datos["cat"]["STREAMING DE VIDEO"], 219, "STREAMING FICTICIO")
     at = abrir(_pagina("calendario"))
     assert "✨ Sugerencias (1)" in [t.label for t in at.tabs]
+    en_pestana(at, "✨ Sugerencias (1)", "calendario")
     next(b for b in at.button if b.key == "cal_sugerencia_0").click().run()
     sin_errores(at)
     (r,) = sesion_en(raiz).libro.recurrentes()
@@ -1886,12 +1947,15 @@ def test_impuestos_deducibles_y_recibo_hechos_a_mano_y_borrables(raiz, con_datos
     sin_errores(at)
     assert [t.label for t in at.tabs][:4] == ["🧾 Gastos deducibles", "🧮 Calcular y revisar un recibo",
                                               "📅 Pagos al fisco", "⚙️ Configurar"]
+    en_pestana(at, "⚙️ Configurar", "impuestos")
     assert not any(k.key and "plantilla" in k.key for k in at.selectbox)            # sin plantillas
     next(t for t in at.text_input if t.label == "Nombre").input("Médicos")
     next(m for m in at.multiselect if m.label == "Subcategorías que cuentan").set_value([dentista])
     boton(at, "Agregar concepto").click().run()
     sin_errores(at)
+    en_pestana(at, "🧾 Gastos deducibles", "impuestos")
     assert any(m.label == "Gastos deducibles" and m.value == "$1,500.00" for m in at.metric)
+    en_pestana(at, "🧮 Calcular y revisar un recibo", "impuestos")
     at.number_input(key="imp_monto").set_value(10_000.0).run()
     tabla = next(d.value for d in at.dataframe if "Concepto" in d.value.columns and "Importe" in d.value.columns
                  and "Subtotal" in list(d.value["Concepto"]))
@@ -1904,6 +1968,7 @@ def test_impuestos_deducibles_y_recibo_hechos_a_mano_y_borrables(raiz, con_datos
     boton(at, "Revisar").click().run()
     assert any("Retención ISR: dice" in e.value for e in at.error)
     # Todo lo que agregaste se puede borrar.
+    en_pestana(at, "⚙️ Configurar", "impuestos")
     fiscal = sesion_en(raiz).libro.fiscal
     (perfil,), (concepto,) = fiscal.perfiles, fiscal.conceptos
     next(b for b in at.button if b.key == f"imp_borrar_perfil_{perfil.id}").click().run()
@@ -1921,6 +1986,7 @@ def test_perfil_de_impuestos_con_renglones_normales(raiz, con_datos):
     from decimal import Decimal as Dec
 
     at = abrir(_pagina("impuestos"))
+    en_pestana(at, "⚙️ Configurar", "impuestos")
     at.text_input(key="imp_nuevo_nombre_perfil").input("RESICO ficticio")
     at.text_input(key="imp_nuevo_0_nombre").input("IVA")
     at.text_input(key="imp_nuevo_0_tasa").input("16")
@@ -1962,6 +2028,7 @@ def test_recordatorio_de_pago_al_fisco(raiz, con_datos):
                                                                     Impuesto("IVA", Decimal(16))])
     # Se configura desde el formulario del perfil.
     at = abrir(_pagina("impuestos"))
+    en_pestana(at, "⚙️ Configurar", "impuestos")
     at.selectbox(key=f"imp_{perfil_.id}_frecuencia").set_value("mensual").run()
     at.multiselect(key=f"imp_{perfil_.id}_subcategorias").set_value([honorarios])
     at.radio(key=f"imp_{perfil_.id}_registro").set_value("subtotal")
@@ -1981,6 +2048,7 @@ def test_recordatorio_de_pago_al_fisco(raiz, con_datos):
     assert len(sesion_en(raiz).libro.operaciones()) == 7                     # no registró nada
 
     at.switch_page(_pagina("impuestos")).run()
+    en_pestana(at, "📅 Pagos al fisco", "impuestos")
     tabla = next(d.value for d in at.dataframe if "A pagar" in d.value.columns)
     assert list(tabla["Estado"])[:2] == ["En curso", "Pagado ✓"] and list(tabla["A pagar"])[1] == "$1,725.00"
 
@@ -2026,8 +2094,31 @@ def test_impuestos_con_un_deducible_que_apunta_a_una_subcategoria_borrada(raiz, 
         dentista = next(c.id for c in lib.categorias() if c.nombre == "DENTISTA")
         lib.fiscal = replace(lib.fiscal, conceptos=(ConceptoDeducible("medicos", "Médicos", ("borrada", dentista)),))
     at = abrir(_pagina("impuestos"))
+    en_pestana(at, "⚙️ Configurar", "impuestos")
     sin_errores(at)
     assert any(m.value == [dentista] for m in at.multiselect if m.label == "Subcategorías que cuentan")
+
+
+def test_el_formulario_de_un_perfil_de_impuestos_no_se_vacia_al_regresar(raiz, con_datos):
+    """Streamlit olvida los campos que dejan de verse (otra página u otra pestaña): al regresar, el perfil se vuelve
+    a llenar con lo guardado. Antes aparecía vacío y «Guardar cambios» lo dejaba sin nombre."""
+    from motor import impuestos
+    from motor.modelo import Impuesto
+
+    s = sesion_en(raiz)
+    with s.cambio() as lib:
+        perfil_ = impuestos.guardar_perfil(lib, "RESICO ficticio", [Impuesto("IVA", Decimal(16))])
+    at = abrir(_pagina("impuestos"))
+    en_pestana(at, "⚙️ Configurar", "impuestos")
+    assert at.text_input(key=f"imp_{perfil_.id}_nombre_perfil").value == "RESICO ficticio"
+    at.switch_page(_pagina("inicio")).run()
+    at.switch_page(_pagina("impuestos")).run()                       # vuelve a la pestaña donde estaba
+    sin_errores(at)
+    assert at.text_input(key=f"imp_{perfil_.id}_nombre_perfil").value == "RESICO ficticio"
+    assert at.text_input(key=f"imp_{perfil_.id}_0_nombre").value == "IVA"
+    en_pestana(at, "🧾 Gastos deducibles", "impuestos")
+    en_pestana(at, "⚙️ Configurar", "impuestos")
+    assert at.text_input(key=f"imp_{perfil_.id}_0_tasa").value == "16"
 
 
 # ------------------------------------------------------------ cierre de mes

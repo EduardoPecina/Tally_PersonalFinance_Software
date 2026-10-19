@@ -1,4 +1,5 @@
-"""Portal de TALLY. Se inicia con ``portal/iniciar.py`` (o ``streamlit run portal/app.py``)."""
+"""Portal de TALLY. Se inicia con ``portal/iniciar.py`` (que corre ``portal/servidor.py``) o con
+``streamlit run portal/app.py``."""
 
 from __future__ import annotations
 
@@ -8,6 +9,10 @@ from pathlib import Path
 RAIZ = Path(__file__).resolve().parents[1]
 if str(RAIZ) not in sys.path:
     sys.path.insert(0, str(RAIZ))
+
+from portal.servidor import esperar_precarga  # noqa: E402
+
+esperar_precarga()        # la primera vista no carga lo mismo que portal/servidor.py al mismo tiempo
 
 import streamlit as st  # noqa: E402
 

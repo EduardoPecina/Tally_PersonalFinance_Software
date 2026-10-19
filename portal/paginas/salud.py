@@ -9,7 +9,7 @@ import streamlit as st
 
 from motor import consultas, efectivo, movimientos, salud
 from portal.componentes import formato
-from portal.componentes.sesion import aplicar, avisar, ejecutar, libro, sesion
+from portal.componentes.sesion import aplicar, avisar, calculado, ejecutar, libro
 from portal.navegacion import enlace
 
 DESTINOS = {"historial": ("Ir al Historial", "📋"), "cuentas": ("Ir a Cuentas", "🏦"),
@@ -21,13 +21,7 @@ MAXIMO_POR_GRUPO = 15
 
 def revision_actual() -> salud.Revision:
     """La revisión de hoy, calculada una vez por cada versión de tus datos (el Resumen la consulta seguido)."""
-    lib = libro()
-    llave = (id(sesion()), sesion().almacen.revision, lib.hoy())
-    guardada = st.session_state.get("_salud")
-    if guardada is None or guardada[0] != llave:
-        guardada = (llave, salud.revisar(lib))
-        st.session_state["_salud"] = guardada
-    return guardada[1]
+    return calculado(salud.revisar)
 
 
 def aviso_en_el_resumen() -> None:

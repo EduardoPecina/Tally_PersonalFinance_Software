@@ -7,8 +7,9 @@
 Así no queda un portal olvidado ocupando el puerto y bloqueando archivos de ``_Programa`` (lo que impediría
 actualizar). Tus datos no corren riesgo: cada cambio ya se guardó al momento de hacerlo.
 
-Los procesos del portal se reconocen por su línea de comando: Python corriendo ``portal/app.py`` o
-``portal/iniciar.py`` de ESTA instalación. Cualquier otro Python (por ejemplo, el de VS Code) no se toca.
+Los procesos del portal se reconocen por su línea de comando: Python corriendo ``portal/app.py``,
+``portal/servidor.py`` o ``portal/iniciar.py`` de ESTA instalación. Cualquier otro Python (por ejemplo, el de VS
+Code) no se toca.
 
 Basado en el apagado del Portal de Honorarios.
 """
@@ -21,7 +22,7 @@ import time
 from pathlib import Path
 
 PORTAL = Path(__file__).resolve().parent
-SCRIPTS_DEL_PORTAL = {os.path.normcase(str(PORTAL / nombre)) for nombre in ("app.py", "iniciar.py")}
+SCRIPTS_DEL_PORTAL = {os.path.normcase(str(PORTAL / nombre)) for nombre in ("app.py", "servidor.py", "iniciar.py")}
 
 INACTIVIDAD = int(os.environ.get("TALLY_INACTIVIDAD_MIN", "15")) * 60     # segundos
 REVISION = min(30, max(INACTIVIDAD // 2, 1))                             # cada cuánto se revisa
@@ -73,7 +74,8 @@ def vigilar_inactividad() -> None:
 
 
 def es_del_portal(linea_de_comando: list[str], carpeta: str) -> bool:
-    """True si el proceso es Python corriendo portal/app.py o portal/iniciar.py de esta instalación."""
+    """True si el proceso es Python corriendo portal/app.py, portal/servidor.py o portal/iniciar.py de esta
+    instalación."""
     if not linea_de_comando or not Path(linea_de_comando[0]).name.lower().startswith("py"):
         return False                                    # python.exe, pythonw.exe, py.exe, pyw.exe
     for argumento in linea_de_comando[1:]:

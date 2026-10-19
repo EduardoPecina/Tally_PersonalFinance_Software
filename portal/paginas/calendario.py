@@ -10,8 +10,8 @@ from motor import categorias, impuestos, recurrentes
 from motor.dinero import a_pesos
 from motor.modelo import ClaseCategoria, Recurrente, TipoCuenta, TipoOperacion
 from portal import navegacion
-from portal.componentes import formato, graficas
-from portal.componentes.sesion import aplicar, ejecutar, libro
+from portal.componentes import estado, formato, graficas
+from portal.componentes.sesion import aplicar, calculado, ejecutar, libro
 
 ESTADOS = {recurrentes.PAGADO: "✅ Pagado", recurrentes.PENDIENTE: "⏳ Pendiente", recurrentes.VENCIDO: "🔴 Vencido"}
 TIPOS = {TipoOperacion.GASTO: "Un pago o gasto", TipoOperacion.INGRESO: "Un ingreso",
@@ -25,15 +25,17 @@ def mostrar() -> None:
     st.title("Calendario de pagos")
     st.caption("Lo que te toca pagar y cobrar, y cómo quedaría tu dinero día con día. TALLY junta tus pagos fijos y "
                "suscripciones con los pagos de tus tarjetas, tus préstamos y lo que le toca pagar al fisco.")
-    sugerencias = recurrentes.detectar(libro())
-    proximos, fijos, sugeridos = st.tabs(["📅 Próximos 30 días", "🔁 Mis pagos fijos y suscripciones",
-                                          f"✨ Sugerencias ({len(sugerencias)})" if sugerencias else "✨ Sugerencias"])
-    with proximos:
-        _proximos()
-    with fijos:
-        _fijos()
-    with sugeridos:
-        _sugerencias(sugerencias)
+    sugerencias = calculado(recurrentes.detectar)
+    numero, pestana = estado.pestanas("calendario", [
+        "📅 Próximos 30 días", "🔁 Mis pagos fijos y suscripciones",
+        f"✨ Sugerencias ({len(sugerencias)})" if sugerencias else "✨ Sugerencias"])
+    with pestana:
+        if numero == 0:
+            _proximos()
+        elif numero == 1:
+            _fijos()
+        else:
+            _sugerencias(sugerencias)
 
 
 # ------------------------------------------------------------- próximos 30 días

@@ -6,6 +6,11 @@ port = 8765             # puerto fijo, distinto del 8501 por defecto
 headless = true
 runOnSave = false
 
+[runner]
+# Sin la limpieza de memoria forzada que Streamlit hace después de cada vista: con años de movimientos en memoria
+# tardaba ~0.1 s en cada clic. Python la sigue haciendo por su cuenta cuando hace falta.
+postScriptGC = false
+
 [browser]
 gatherUsageStats = false   # sin telemetría
 serverAddress = "localhost"
