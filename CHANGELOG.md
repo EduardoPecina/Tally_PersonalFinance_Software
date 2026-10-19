@@ -2,6 +2,13 @@
 
 Todos los cambios relevantes de TALLY se documentan aquí.
 
+## [0.30.1] — Sin publicar
+
+- **Mac: TALLY queda en el Dock al instalarlo.** Al terminar `INSTALAR.command`, el ícono de TALLY ya está en el
+  Dock, sin arrastrar nada (el Dock se reinicia un instante para mostrarlo). Solo la primera vez: si ya está, no se
+  duplica, y si lo quitas, las actualizaciones lo respetan. En Windows no cambia nada (el acceso directo sigue en el
+  Escritorio).
+
 ## [0.30.0] — Sin publicar
 
 - **TALLY para Mac (con chip de Apple: M1 o más nuevo).** Por dentro es el mismo TALLY; cambia cómo se instala y

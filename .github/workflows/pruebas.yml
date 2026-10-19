@@ -79,6 +79,9 @@ jobs:
           plutil -lint "$HOME/Applications/TALLY.app/Contents/Info.plist"
           ./INSTALAR.command
           grep -c "RESULTADO: terminó bien" "$HOME/TALLY/instalacion.log" | grep -qx 2
+          # En el Dock una sola vez, aunque se instaló dos veces.
+          test -f "$HOME/TALLY/.tally_en_el_dock"
+          test "$(defaults export com.apple.dock - | grep -c "casa/Applications/TALLY.app")" = 1
       - name: Abrir TALLY con la app y comprobar que responde
         run: |
           export HOME="$RUNNER_TEMP/casa"

@@ -11,5 +11,7 @@ escribe `instalacion.log`.
   de python.org, comprueba su firma y lo instala con la contraseña de la Mac),
   crea el Python de TALLY en `~/TALLY/_Python` y llama a `instalar.py` con
   `requirements-lock-mac.txt`. Todo vive en `~/TALLY` y la app
-  `~/Applications/TALLY.app` abre el portal. `INSTALAR.command --probar-descarga`
+  `~/Applications/TALLY.app` abre el portal; la primera vez se pone en el Dock
+  (`defaults write com.apple.dock persistent-apps`), sin duplicarla y sin volver
+  a ponerla si el usuario la quitó (`~/TALLY/.tally_en_el_dock`). `INSTALAR.command --probar-descarga`
   solo descarga y verifica Python (lo usan las pruebas en GitHub).
