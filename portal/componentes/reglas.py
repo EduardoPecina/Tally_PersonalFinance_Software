@@ -8,8 +8,8 @@ import streamlit as st
 from motor import categorias, reglas_categorias
 from motor.dinero import a_pesos
 from motor.modelo import ClaseCategoria, Regla
-from portal.componentes import formato
-from portal.componentes.sesion import aplicar, avisar, ejecutar, libro
+from portal.componentes import estado, formato
+from portal.componentes.sesion import aplicar, avisar, calculado, ejecutar, libro
 
 TODAS = "En todas mis cuentas"
 MAXIMO_VISTA = 300                    # renglones de la vista previa de «Corregir mi historial»
@@ -44,7 +44,7 @@ def mostrar() -> None:
     _nueva()
     _lista()
     _sugerencias()
-    cambios = reglas_categorias.pendientes(libro())
+    cambios = calculado(reglas_categorias.pendientes)
     izquierda, derecha = st.columns(2)
     with izquierda, st.container(border=True):
         _probar()
@@ -58,24 +58,27 @@ def mostrar() -> None:
 
 
 def _nueva() -> None:
-    with st.expander("➕ Nueva regla", expanded=not libro().reglas()):
-        opciones, cuentas = _subcategorias(), _cuentas()
-        with st.form("regla_nueva", clear_on_submit=True, border=False):
-            izquierda, centro, derecha = st.columns(3)
-            texto = izquierda.text_input(
-                "Si la descripción dice…", max_chars=60, placeholder="Ej. OXXO, NETFLIX, UBER",
-                help="Como aparece en tu banco. Da igual mayúsculas, acentos y signos. Busca palabras que empiecen "
-                     "así: «UBER» encuentra «UBER EATS» y «UBERTRIP», pero no «SUBERO».")
-            categoria = centro.selectbox("…va a la subcategoría", list(opciones), index=None,
-                                         format_func=opciones.get, placeholder="Escribe para buscar…")
-            cuenta = derecha.selectbox("¿En qué cuenta?", list(cuentas), format_func=cuentas.get,
-                                       help="Por ejemplo, «AMAZON» en la tarjeta del trabajo puede ir a otra "
-                                            "subcategoría que en tus demás cuentas.")
-            if st.form_submit_button("Agregar regla", type="primary"):
-                if categoria is None:
-                    st.error("Elige a qué subcategoría va.")
-                else:
-                    _crear(texto, categoria, cuenta)
+    estado.desplegable("➕ Nueva regla", "regla_nueva_caja", _formulario_nueva, abierto=not libro().reglas())
+
+
+def _formulario_nueva() -> None:
+    opciones, cuentas = _subcategorias(), _cuentas()
+    with st.form("regla_nueva", clear_on_submit=True, border=False):
+        izquierda, centro, derecha = st.columns(3)
+        texto = izquierda.text_input(
+            "Si la descripción dice…", max_chars=60, placeholder="Ej. OXXO, NETFLIX, UBER",
+            help="Como aparece en tu banco. Da igual mayúsculas, acentos y signos. Busca palabras que empiecen "
+                 "así: «UBER» encuentra «UBER EATS» y «UBERTRIP», pero no «SUBERO».")
+        categoria = centro.selectbox("…va a la subcategoría", list(opciones), index=None,
+                                     format_func=opciones.get, placeholder="Escribe para buscar…")
+        cuenta = derecha.selectbox("¿En qué cuenta?", list(cuentas), format_func=cuentas.get,
+                                   help="Por ejemplo, «AMAZON» en la tarjeta del trabajo puede ir a otra "
+                                        "subcategoría que en tus demás cuentas.")
+        if st.form_submit_button("Agregar regla", type="primary"):
+            if categoria is None:
+                st.error("Elige a qué subcategoría va.")
+            else:
+                _crear(texto, categoria, cuenta)
 
 
 def _crear(texto: str, categoria_id: str, cuenta_id: str | None = None) -> None:
@@ -99,7 +102,7 @@ def _lista() -> None:
     if not reglas:
         st.info("Todavía no tienes reglas. Agrega una arriba, o crea alguna de las sugerencias de abajo.")
         return
-    cuentas, usos = _cuentas(), reglas_categorias.contar(lib)
+    cuentas, usos = _cuentas(), calculado(reglas_categorias.contar)
     st.markdown(f"**Tus reglas** · {len(reglas)}")
     tabla = pd.DataFrame({
         "Si dice": [r.texto for r in reglas],
@@ -189,54 +192,63 @@ def _historial_resumen(cambios: list[reglas_categorias.Cambio]) -> None:
 
 
 def _historial(cambios: list[reglas_categorias.Cambio]) -> None:
-    lib = libro()
-    with st.expander(f"🧹 Revisar y corregir {len(cambios)} movimiento(s)"):
-        reglas = {c.regla.id: c.regla for c in cambios}
-        filtro = st.selectbox("De la regla", [None, *reglas], key="regla_historial_filtro",
-                              format_func=lambda i: "Todas" if i is None else f"«{reglas[i].texto}»")
-        if filtro is not None:
-            cambios = [c for c in cambios if c.regla.id == filtro]
-        nombres = {c.id: c.nombre for c in lib.cuentas()}
-        vista = cambios[:MAXIMO_VISTA]
-        tabla = pd.DataFrame({
-            "Fecha": [formato.fecha(c.operacion.fecha) for c in vista],
-            "Descripción": [c.operacion.descripcion for c in vista],
-            "Cuenta": [nombres.get(c.operacion.partidas_de_cuenta()[0].cuenta_id, "") for c in vista],
-            "Importe": [formato.dinero(a_pesos(c.operacion.partidas_de_cuenta()[0].importe)) for c in vista],
-            "Ahora": [categorias.etiqueta(lib, c.categoria_actual) for c in vista],
-            "Pasaría a": [categorias.etiqueta(lib, c.categoria_nueva) for c in vista],
-            "Regla": [f"«{c.regla.texto}»" for c in vista],
-        })
-        st.dataframe(formato.pintar(tabla, ["Importe"]), hide_index=True, width="stretch")
-        if len(cambios) > MAXIMO_VISTA:
-            st.caption(f"Se muestran los {MAXIMO_VISTA} más recientes de {len(cambios)}.")
-        st.caption("Solo cambia la subcategoría: fecha, importe, cuenta y descripción se quedan igual. Si un mes ya "
-                   "lo cerraste, en su cierre aparecerá como cambio posterior.")
-        confirmar = st.checkbox(f"Quiero pasar estos {len(cambios)} movimiento(s) a la subcategoría de su regla",
-                                key="regla_historial_confirmar")
-        if st.button(f"Corregir {len(cambios)} movimiento(s)", type="primary", disabled=not confirmar,
-                     key="regla_historial_aplicar", icon=":material/auto_fix_high:"):
-            hechos = aplicar(lambda lib_: reglas_categorias.aplicar(lib_, cambios))
-            if hechos is not None:
-                avisar(f"Se corrigieron {hechos} movimiento(s).", "🧹")
-                st.session_state.pop("regla_historial_confirmar", None)
-                st.rerun()
+    estado.desplegable(f"🧹 Revisar y corregir {len(cambios)} movimiento(s)", "regla_revisar",
+                       lambda: _revisar(cambios))
 
 
 # ------------------------------------------------------------------ sugerencias
 
 
+def _revisar(cambios: list[reglas_categorias.Cambio]) -> None:
+    lib = libro()
+    reglas = {c.regla.id: c.regla for c in cambios}
+    filtro = st.selectbox("De la regla", [None, *reglas], key="regla_historial_filtro",
+                          format_func=lambda i: "Todas" if i is None else f"«{reglas[i].texto}»")
+    if filtro is not None:
+        cambios = [c for c in cambios if c.regla.id == filtro]
+    nombres = {c.id: c.nombre for c in lib.cuentas()}
+    vista = cambios[:MAXIMO_VISTA]
+    tabla = pd.DataFrame({
+        "Fecha": [formato.fecha(c.operacion.fecha) for c in vista],
+        "Descripción": [c.operacion.descripcion for c in vista],
+        "Cuenta": [nombres.get(c.operacion.partidas_de_cuenta()[0].cuenta_id, "") for c in vista],
+        "Importe": [formato.dinero(a_pesos(c.operacion.partidas_de_cuenta()[0].importe)) for c in vista],
+        "Ahora": [categorias.etiqueta(lib, c.categoria_actual) for c in vista],
+        "Pasaría a": [categorias.etiqueta(lib, c.categoria_nueva) for c in vista],
+        "Regla": [f"«{c.regla.texto}»" for c in vista],
+    })
+    st.dataframe(formato.pintar(tabla, ["Importe"]), hide_index=True, width="stretch")
+    if len(cambios) > MAXIMO_VISTA:
+        st.caption(f"Se muestran los {MAXIMO_VISTA} más recientes de {len(cambios)}.")
+    st.caption("Solo cambia la subcategoría: fecha, importe, cuenta y descripción se quedan igual. Si un mes ya "
+               "lo cerraste, en su cierre aparecerá como cambio posterior.")
+    confirmar = st.checkbox(f"Quiero pasar estos {len(cambios)} movimiento(s) a la subcategoría de su regla",
+                            key="regla_historial_confirmar")
+    if st.button(f"Corregir {len(cambios)} movimiento(s)", type="primary", disabled=not confirmar,
+                 key="regla_historial_aplicar", icon=":material/auto_fix_high:"):
+        hechos = aplicar(lambda lib_: reglas_categorias.aplicar(lib_, cambios))
+        if hechos is not None:
+            avisar(f"Se corrigieron {hechos} movimiento(s).", "🧹")
+            st.session_state.pop("regla_historial_confirmar", None)
+            st.rerun()
+
+
 def _sugerencias() -> None:
     lib = libro()
-    sugerencias = reglas_categorias.sugerencias(lib)
+    sugerencias = calculado(reglas_categorias.sugerencias)
     if not sugerencias:
         return
-    with st.expander(f"💡 Sugerencias de reglas · {len(sugerencias)}", expanded=not lib.reglas()):
-        st.caption("Textos que se repiten en tus movimientos y casi siempre van a la misma subcategoría. Créalas con "
-                   "un clic; luego puedes editarlas.")
-        for n, s in enumerate(sugerencias):
-            texto, boton = st.columns([4, 1], vertical_alignment="center")
-            texto.markdown(f"«**{formato.md(s.texto)}**» → {formato.md(categorias.etiqueta(lib, s.categoria_id))} "
-                           f"· {s.iguales} de {s.veces} movimiento(s)")
-            if boton.button("Crear", key=f"regla_sugerida_{n}", icon=":material/bolt:"):
-                _crear(s.texto, s.categoria_id)
+    estado.desplegable(f"💡 Sugerencias de reglas · {len(sugerencias)}", "regla_sugerencias",
+                       lambda: _lista_de_sugerencias(sugerencias), abierto=not lib.reglas())
+
+
+def _lista_de_sugerencias(sugerencias: list) -> None:
+    lib = libro()
+    st.caption("Textos que se repiten en tus movimientos y casi siempre van a la misma subcategoría. Créalas con "
+               "un clic; luego puedes editarlas.")
+    for n, s in enumerate(sugerencias):
+        texto, boton = st.columns([4, 1], vertical_alignment="center")
+        texto.markdown(f"«**{formato.md(s.texto)}**» → {formato.md(categorias.etiqueta(lib, s.categoria_id))} "
+                       f"· {s.iguales} de {s.veces} movimiento(s)")
+        if boton.button("Crear", key=f"regla_sugerida_{n}", icon=":material/bolt:"):
+            _crear(s.texto, s.categoria_id)

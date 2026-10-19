@@ -87,17 +87,8 @@ def _deducibles() -> None:
     for r in reporte.renglones:
         if not r.pagos:
             continue
-        with st.expander(f"{r.concepto.nombre} · {len(r.pagos)} pago(s)"):
-            if r.concepto.notas:
-                st.caption(r.concepto.notas)
-            st.dataframe(formato.pintar(pd.DataFrame({
-                "Fecha": [p.fecha for p in r.pagos], "Descripción": [p.descripcion for p in r.pagos],
-                "Subcategoría": [p.subcategoria for p in r.pagos], "Cuenta": [p.cuenta for p in r.pagos],
-                "Importe": [formato.dinero(p.importe) for p in r.pagos],
-                "📎": [str(adjuntos.get(p.operacion_id, "")) for p in r.pagos],
-                "": ["💵 en efectivo" if p.en_efectivo and r.concepto.sin_efectivo else "" for p in r.pagos],
-            })), hide_index=True, width="stretch",
-                column_config={"Fecha": st.column_config.DateColumn(format="DD/MM/YYYY")})
+        estado.desplegable(f"{r.concepto.nombre} · {len(r.pagos)} pago(s)", f"imp_ded_{r.concepto.id}",
+                           lambda r=r: _pagos_deducibles(r, adjuntos))
     filas = [{"Concepto": r.concepto.nombre, "Fecha": p.fecha, "Descripción": p.descripcion,
               "Subcategoría": p.subcategoria, "Cuenta": p.cuenta, "Importe": float(p.importe),
               "En efectivo": "Sí" if p.en_efectivo else ""} for r in reporte.renglones for p in r.pagos]
@@ -108,6 +99,19 @@ def _deducibles() -> None:
     _comprobantes_del_anio(anio)
     if lib.fiscal.notas:
         st.caption(f"📌 {lib.fiscal.notas}")
+
+
+def _pagos_deducibles(r, adjuntos: dict) -> None:
+    if r.concepto.notas:
+        st.caption(r.concepto.notas)
+    st.dataframe(formato.pintar(pd.DataFrame({
+        "Fecha": [p.fecha for p in r.pagos], "Descripción": [p.descripcion for p in r.pagos],
+        "Subcategoría": [p.subcategoria for p in r.pagos], "Cuenta": [p.cuenta for p in r.pagos],
+        "Importe": [formato.dinero(p.importe) for p in r.pagos],
+        "📎": [str(adjuntos.get(p.operacion_id, "")) for p in r.pagos],
+        "": ["💵 en efectivo" if p.en_efectivo and r.concepto.sin_efectivo else "" for p in r.pagos],
+    })), hide_index=True, width="stretch",
+        column_config={"Fecha": st.column_config.DateColumn(format="DD/MM/YYYY")})
 
 
 def _comprobantes_del_anio(anio: int) -> None:
@@ -123,13 +127,8 @@ def _comprobantes_del_anio(anio: int) -> None:
         if faltan:
             st.caption("Sin comprobante, tu autoridad fiscal puede no aceptar el deducible. Adjúntalo desde "
                        "**Historial** (elige el movimiento → 📎 Comprobantes).")
-            with st.expander(f"Ver los {len(faltan)} sin comprobante"):
-                st.dataframe(formato.pintar(pd.DataFrame({
-                    "Concepto": [d.concepto for d in faltan], "Fecha": [d.pago.fecha for d in faltan],
-                    "Descripción": [d.pago.descripcion for d in faltan], "Cuenta": [d.pago.cuenta for d in faltan],
-                    "Importe": [formato.dinero(d.pago.importe) for d in faltan],
-                })), hide_index=True, width="stretch",
-                    column_config={"Fecha": st.column_config.DateColumn(format="DD/MM/YYYY")})
+            estado.desplegable(f"Ver los {len(faltan)} sin comprobante", "imp_sin_comprobante",
+                               lambda: _sin_comprobante(faltan))
         if len(faltan) < len(lista):
             st.download_button(
                 "Descargar los comprobantes del año (.zip)", lambda: comprobantes.zip_de_deducibles(sesion(), anio),
@@ -137,6 +136,15 @@ def _comprobantes_del_anio(anio: int) -> None:
                 icon=":material/folder_zip:", key="imp_zip_comprobantes",
                 help="Una carpeta por concepto y un índice (indice.csv, se abre en Excel) con cada pago y su archivo. "
                      "Para tu contador o tu declaración.")
+
+
+def _sin_comprobante(faltan: list) -> None:
+    st.dataframe(formato.pintar(pd.DataFrame({
+        "Concepto": [d.concepto for d in faltan], "Fecha": [d.pago.fecha for d in faltan],
+        "Descripción": [d.pago.descripcion for d in faltan], "Cuenta": [d.pago.cuenta for d in faltan],
+        "Importe": [formato.dinero(d.pago.importe) for d in faltan],
+    })), hide_index=True, width="stretch",
+        column_config={"Fecha": st.column_config.DateColumn(format="DD/MM/YYYY")})
 
 
 def _explicar_tope(lib, ingreso: Decimal) -> str:
@@ -358,8 +366,8 @@ def _conceptos() -> None:
                     help=f"Borra «{c.nombre}». Tus gastos no se tocan."):
             if ejecutar(lambda li, c=c: impuestos.eliminar_concepto(li, c.id), f"Se borró «{c.nombre}»"):
                 st.rerun()
-    with st.expander("➕ Nuevo concepto deducible", expanded=not lib.fiscal.conceptos):
-        _formulario_concepto(None)
+    estado.desplegable("➕ Nuevo concepto deducible", "imp_concepto_nuevo", lambda: _formulario_concepto(None),
+                       abierto=not lib.fiscal.conceptos)
     with st.form("imp_topes", border=False):
         st.markdown("**Tope total** para todos tus deducibles juntos (opcional; si pones los dos, cuenta el menor)")
         a, b = st.columns(2)
@@ -439,15 +447,19 @@ def _perfiles() -> None:
         c.metric("Tu tasa aproximada", f"{pagado / ingreso * 100:.2f} %" if ingreso else "—")
     for p in lib.fiscal.perfiles:
         a, b = st.columns([6, 1])
-        with a.expander(f"✏️ {p.nombre}"):
-            st.caption(_describir(p))
-            _formulario_perfil(p)
+        with a:
+            estado.desplegable(f"✏️ {p.nombre}", f"imp_perfil_{p.id}", lambda p=p: _editar_perfil(p))
         if b.button("Borrar", key=f"imp_borrar_perfil_{p.id}", icon=":material/delete:", width="stretch",
                     help=f"Borra el perfil «{p.nombre}»."):
             if ejecutar(lambda li, p=p: impuestos.eliminar_perfil(li, p.id), f"Se borró «{p.nombre}»"):
                 st.rerun()
-    with st.expander("➕ Nuevo perfil", expanded=not lib.fiscal.perfiles):
-        _formulario_perfil(None)
+    estado.desplegable("➕ Nuevo perfil", "imp_perfil_nuevo", lambda: _formulario_perfil(None),
+                       abierto=not lib.fiscal.perfiles)
+
+
+def _editar_perfil(p: PerfilImpuestos) -> None:
+    st.caption(_describir(p))
+    _formulario_perfil(p)
 
 
 def _tasa_texto(tasa: Decimal) -> str:

@@ -20,7 +20,7 @@ from __future__ import annotations
 import calendar
 from collections import defaultdict
 from dataclasses import dataclass, field, replace
-from datetime import date, datetime, timedelta
+from datetime import date, timedelta
 from decimal import Decimal
 
 from motor import categorias, metas, monedas, planeacion, recurrentes, reportes, tarjetas, temporales
@@ -517,20 +517,15 @@ def cerrado(libro: Libro, fecha: date) -> CierreMes | None:
     return libro.cierre(clave(fecha.year, fecha.month))
 
 
-def huella(libro: Libro) -> dict[str, tuple[date, datetime | None]]:
-    """Para saber qué movimientos cambió una acción: id → (fecha, última modificación)."""
-    return {op.id: (op.fecha, op.modificado_en) for op in libro.operaciones()}
+def huella(libro: Libro) -> int:
+    """Antes de una acción, para saber después qué meses tocó (:func:`meses_tocados`)."""
+    return libro.marca_de_cambios()
 
 
-def meses_tocados(libro: Libro, antes: dict[str, tuple[date, datetime | None]]) -> list[str]:
-    """Los meses cerrados donde una acción agregó, cambió o borró movimientos (comparando con ``antes``)."""
-    despues = huella(libro)
-    fechas = [antes[i][0] for i in antes.keys() - despues.keys()]               # borrados
-    fechas += [despues[i][0] for i in despues.keys() - antes.keys()]            # nuevos
-    for i in antes.keys() & despues.keys():
-        if antes[i] != despues[i]:
-            fechas += [antes[i][0], despues[i][0]]                              # cambió (quizá de fecha)
-    return sorted({clave(f.year, f.month) for f in fechas if cerrado(libro, f)})
+def meses_tocados(libro: Libro, antes: int) -> list[str]:
+    """Los meses cerrados donde una acción agregó, cambió (aunque sea de fecha) o borró movimientos desde la
+    ``huella`` de ``antes``."""
+    return sorted({clave(f.year, f.month) for f in set(libro.fechas_tocadas(antes)) if cerrado(libro, f)})
 
 
 def recordar(libro: Libro, hoy: date | None = None) -> tuple[int, int] | None:

@@ -61,6 +61,9 @@ class Libro:
         # acumulado de cada cuenta. Con años de datos, el Resumen pide cientos de saldos y rangos en cada vista.
         self._orden: tuple[list[Operacion], list[date]] | None = None
         self._por_cuenta: dict[str, tuple[list[Operacion], list[date]]] | None = None
+        # La fecha de cada movimiento que se agrega, cambia (la de antes y la de después) o borra, en orden: para
+        # saber qué meses tocó una acción (motor/cierre.py) sin comparar todos los movimientos.
+        self._fechas_tocadas: list[date] = []
         self._acumulados: dict[str, tuple[list[date], list[int]]] | None = None
         self._valores: dict[str, OperacionValor] = {}
         self._plazos: dict[str, InversionPlazo] = {}
@@ -534,10 +537,19 @@ class Libro:
                             fechas.append(op.fecha)
         return self._por_cuenta.get(cuenta_id, ([], []))
 
-    def _movimientos_cambiaron(self) -> None:
+    def _movimientos_cambiaron(self, *fechas: date) -> None:
         self._orden = None
         self._por_cuenta = None
         self._acumulados = None
+        self._fechas_tocadas.extend(fechas)
+
+    def marca_de_cambios(self) -> int:
+        """Para :meth:`fechas_tocadas`: cuántos cambios de movimientos van."""
+        return len(self._fechas_tocadas)
+
+    def fechas_tocadas(self, desde: int) -> list[date]:
+        """Las fechas de los movimientos agregados, cambiados (antes y después) o borrados desde la ``marca``."""
+        return self._fechas_tocadas[desde:]
 
     def agregar_operacion(self, op: Operacion) -> Operacion:
         op = replace(op, fecha=_solo_fecha(op.fecha))
@@ -554,7 +566,7 @@ class Libro:
             modificado_en=momento,
         )
         self._operaciones[op.id] = op
-        self._movimientos_cambiaron()
+        self._movimientos_cambiaron(op.fecha)
         return op
 
     def reemplazar_operacion(self, operacion_id: str, nueva: Operacion) -> Operacion:
@@ -570,14 +582,14 @@ class Libro:
         )
         validar_operacion(self, nueva, original)
         self._operaciones[operacion_id] = nueva
-        self._movimientos_cambiaron()
+        self._movimientos_cambiaron(original.fecha, nueva.fecha)
         self._seguir_aportes(operacion_id, nueva)
         return nueva
 
     def eliminar_operacion(self, operacion_id: str) -> Operacion:
         op = self.operacion(operacion_id)
         del self._operaciones[operacion_id]
-        self._movimientos_cambiaron()
+        self._movimientos_cambiaron(op.fecha)
         self._seguir_aportes(operacion_id, None)
         for c in [c for c in self._comprobantes.values() if c.operacion_id == operacion_id]:
             self.quitar_comprobante(c.id)           # sus comprobantes se van con él

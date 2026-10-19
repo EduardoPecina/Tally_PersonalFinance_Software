@@ -104,8 +104,7 @@ def _plan() -> None:
     otra = calculado.de(plan_deudas.BOLA_DE_NIEVE if elegida == plan_deudas.AVALANCHA else plan_deudas.AVALANCHA)
     _resumen_del_plan(calculado, resultado, otra, elegida)
     _orden_del_plan(calculado, resultado)
-    with st.expander("📈 Cómo baja lo que debes"):
-        _grafica_del_plan(calculado)
+    estado.desplegable("📈 Cómo baja lo que debes", "deudas_grafica_plan", lambda: _grafica_del_plan(calculado))
     if guardado == (calculado.presupuesto, elegida):
         izquierda, derecha = st.columns([3, 1], vertical_alignment="center")
         izquierda.caption("✅ Este es tu plan guardado: el Resumen te dice cada mes a qué deuda va lo extra.")
@@ -229,21 +228,25 @@ def _tarjetas() -> None:
 
 
 def _tasa_de_tarjeta(tarjeta) -> None:
-    with st.expander("Tasa, CAT e IVA de esta tarjeta"):
-        with st.form(f"tasa_{tarjeta.id}", border=False):
-            a, b = st.columns(2)
-            tasa = a.number_input("Tasa de interés anual (%)", min_value=0.0, max_value=1000.0, step=1.0,
-                                  format="%.2f", value=float(tarjeta.tasa_anual) if tarjeta.tasa_anual else None,
-                                  help="La tasa ordinaria anual de tu contrato o estado de cuenta.")
-            cat = b.number_input("CAT (%) · informativo", min_value=0.0, max_value=1000.0, step=1.0, format="%.2f",
-                                 value=float(tarjeta.cat) if tarjeta.cat else None,
-                                 help="Costo Anual Total (México). En otros países: TAE (España), CAE (Chile), CFT "
-                                      "(Argentina), TEA (Perú, Colombia).")
-            incluye = st.checkbox("La tasa ya incluye IVA", value=tarjeta.tasa_incluye_iva)
-            if st.form_submit_button("Guardar"):
-                if ejecutar(lambda lib: cuentas.editar(lib, tarjeta.id, tasa_anual=tasa, cat=cat,
-                                                       tasa_incluye_iva=incluye), exito="Tasa guardada"):
-                    st.rerun()
+    estado.desplegable("Tasa, CAT e IVA de esta tarjeta", f"deudas_tasa_{tarjeta.id}",
+                       lambda: _formulario_tasa(tarjeta))
+
+
+def _formulario_tasa(tarjeta) -> None:
+    with st.form(f"tasa_{tarjeta.id}", border=False):
+        a, b = st.columns(2)
+        tasa = a.number_input("Tasa de interés anual (%)", min_value=0.0, max_value=1000.0, step=1.0,
+                              format="%.2f", value=float(tarjeta.tasa_anual) if tarjeta.tasa_anual else None,
+                              help="La tasa ordinaria anual de tu contrato o estado de cuenta.")
+        cat = b.number_input("CAT (%) · informativo", min_value=0.0, max_value=1000.0, step=1.0, format="%.2f",
+                             value=float(tarjeta.cat) if tarjeta.cat else None,
+                             help="Costo Anual Total (México). En otros países: TAE (España), CAE (Chile), CFT "
+                                  "(Argentina), TEA (Perú, Colombia).")
+        incluye = st.checkbox("La tasa ya incluye IVA", value=tarjeta.tasa_incluye_iva)
+        if st.form_submit_button("Guardar"):
+            if ejecutar(lambda lib: cuentas.editar(lib, tarjeta.id, tasa_anual=tasa, cat=cat,
+                                                   tasa_incluye_iva=incluye), exito="Tasa guardada"):
+                st.rerun()
 
 
 def _tiempo(meses: int) -> str:
@@ -259,8 +262,7 @@ def _tiempo(meses: int) -> str:
 def _prestamos() -> None:
     lib = libro()
     st.subheader("Préstamos")
-    with st.expander("➕ Agregar un préstamo", expanded=not lib.prestamos()):
-        _formulario_nuevo()
+    estado.desplegable("➕ Agregar un préstamo", "deudas_nuevo_prestamo", _formulario_nuevo, abierto=not lib.prestamos())
     todos = [p for p in lib.prestamos() if lib.cuenta(p.cuenta_id).activa]
     if not todos:
         return

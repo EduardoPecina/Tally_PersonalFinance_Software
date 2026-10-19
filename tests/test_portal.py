@@ -252,6 +252,7 @@ def test_cuentas_y_categorias_y_respaldos_cargan(con_datos):
 def test_crear_cuenta_desde_cuentas(raiz, con_datos):
     at = abrir()
     at.switch_page(_pagina("cuentas")).run()
+    abrir_desplegable(at, "cuentas_nueva")                      # con cuentas, «➕ Nueva cuenta» empieza cerrado
     at.selectbox(key="cuentas_tipo_nueva").set_value("credito").run()
     next(t for t in at.text_input if t.label == "Nombre" and not t.value).input("TDC Nueva")
     next(n for n in at.number_input if n.label == "¿Cuánto debes hoy?").set_value(450.0)
@@ -286,6 +287,15 @@ def _pagina(nombre: str) -> str:
     return f"vistas/{nombre}.py"
 
 
+def abrir_desplegable(at: AppTest, clave: str) -> AppTest:
+    """Lo de adentro de algunos desplegables solo se arma al abrirlos, y se recuerda que quedaron abiertos
+    (componentes/estado.desplegable): así se abre uno."""
+    memoria = dict(at.session_state["_mem_desplegables"]) if "_mem_desplegables" in at.session_state else {}
+    memoria[clave] = True
+    at.session_state["_mem_desplegables"] = memoria
+    return at.run()
+
+
 def en_pestana(at: AppTest, pestana: str, grupo: str = "categorias") -> AppTest:
     """Las páginas solo arman la pestaña que está a la vista y recuerdan la última (componentes/estado.pestanas):
     así se elige otra. ``grupo`` es el de la página (``categorias``, ``contabilidad``…)."""
@@ -298,6 +308,7 @@ def en_pestana(at: AppTest, pestana: str, grupo: str = "categorias") -> AppTest:
 def test_tarjeta_con_10_dias_naturales_despues_del_corte(raiz, con_datos):
     at = abrir()
     at.switch_page(_pagina("cuentas")).run()
+    abrir_desplegable(at, "cuentas_nueva")                      # con cuentas, «➕ Nueva cuenta» empieza cerrado
     at.selectbox(key="cuentas_tipo_nueva").set_value("credito").run()
     assert at.radio(key="cuentas_modo_pago").value == "dias"
     next(t for t in at.text_input if t.label == "Nombre" and not t.value).input("TDC con plazo")
@@ -312,6 +323,7 @@ def test_tarjeta_con_10_dias_naturales_despues_del_corte(raiz, con_datos):
 
 def nueva_subcategoria(at: AppTest, rubro_id: str, nombre: str) -> None:
     """Llena el formulario «Nueva subcategoría» de la pestaña Gastos (la primera)."""
+    abrir_desplegable(at, "cat_nueva_sub_gasto")
     next(s for s in at.selectbox if s.label == "Dentro de la categoría").set_value(rubro_id)
     next(t for t in at.text_input if t.label == "Nombre de la subcategoría").input(nombre)
     boton(at, "Agregar subcategoría").click().run()
@@ -1061,6 +1073,7 @@ def test_rubro_contable_al_crear_y_editar_una_subcategoria(raiz, con_datos):
     from motor import rubros_contables as rc
 
     at = abrir(_pagina("categorias"))
+    abrir_desplegable(at, "cat_nueva_sub_gasto")
     finanzas = next(r.id for r in sesion_en(raiz).libro.rubros() if r.nombre == "FINANZAS")
     at.selectbox[0].set_value(finanzas)                                   # «Dentro de la categoría» (Gastos)
     next(t for t in at.text_input if t.label == "Nombre de la subcategoría").input("Cargo por pago tardío")
@@ -1894,6 +1907,7 @@ def test_metas_fondo_de_emergencia_y_una_meta(raiz, con_datos):
     sin_errores(at)
     assert at.subheader[0].value == "🛟 Fondo de emergencia"
     # Crear el fondo.
+    abrir_desplegable(at, "metas_crear_fondo")
     nombre = next(t for t in at.text_input if t.value == "Fondo de emergencia")
     assert nombre
     objetivo = [n for n in at.number_input if n.label == "¿Cuánto quieres juntar?"][0]
@@ -1912,6 +1926,7 @@ def test_metas_fondo_de_emergencia_y_una_meta(raiz, con_datos):
     sin_errores(at)
     viaje = next(m for m in sesion_en(raiz).libro.metas() if m.nombre == "Viaje Ficticio")
     ahorro_antes = sesion_en(raiz).libro.saldo_centavos(con_datos["ahorro"])
+    abrir_desplegable(at, f"meta_acciones_{viaje.id}")
     aporte = [n for n in at.number_input if n.label == "¿Cuánto?"]
     origen = [s for s in at.selectbox if s.label == "¿De qué cuenta sale?"]
     aporte[-2].set_value(5_000.0)                                       # la tarjeta del viaje (última meta)
@@ -2003,9 +2018,11 @@ def test_perfil_de_impuestos_con_renglones_normales(raiz, con_datos):
     assert perfil.nombre == "RESICO ficticio"
     assert [(i.nombre, i.tasa.quantize(Dec("0.01")), i.sobre, i.retenido) for i in perfil.impuestos] == [
         ("IVA", Dec("16.00"), "", False), ("Retención IVA", Dec("66.67"), "IVA", True)]
+    abrir_desplegable(at, "imp_perfil_nuevo")                    # ya hay un perfil: «➕ Nuevo perfil» empieza cerrado
     assert at.text_input(key="imp_nuevo_nombre_perfil").value == ""                   # el formulario se limpia
 
     # Al editarlo aparecen sus renglones; se puede quitar uno.
+    abrir_desplegable(at, f"imp_perfil_{perfil.id}")
     assert at.text_input(key=f"imp_{perfil.id}_1_nombre").value == "Retención IVA"
     at.button(key=f"imp_{perfil.id}_1_quitar").click().run()
     at.button(key=f"imp_{perfil.id}_guardar").click().run()
@@ -2029,6 +2046,7 @@ def test_recordatorio_de_pago_al_fisco(raiz, con_datos):
     # Se configura desde el formulario del perfil.
     at = abrir(_pagina("impuestos"))
     en_pestana(at, "⚙️ Configurar", "impuestos")
+    abrir_desplegable(at, f"imp_perfil_{perfil_.id}")
     at.selectbox(key=f"imp_{perfil_.id}_frecuencia").set_value("mensual").run()
     at.multiselect(key=f"imp_{perfil_.id}_subcategorias").set_value([honorarios])
     at.radio(key=f"imp_{perfil_.id}_registro").set_value("subtotal")
@@ -2110,6 +2128,7 @@ def test_el_formulario_de_un_perfil_de_impuestos_no_se_vacia_al_regresar(raiz, c
         perfil_ = impuestos.guardar_perfil(lib, "RESICO ficticio", [Impuesto("IVA", Decimal(16))])
     at = abrir(_pagina("impuestos"))
     en_pestana(at, "⚙️ Configurar", "impuestos")
+    abrir_desplegable(at, f"imp_perfil_{perfil_.id}")
     assert at.text_input(key=f"imp_{perfil_.id}_nombre_perfil").value == "RESICO ficticio"
     at.switch_page(_pagina("inicio")).run()
     at.switch_page(_pagina("impuestos")).run()                       # vuelve a la pestaña donde estaba
@@ -2236,6 +2255,7 @@ def test_reglas_automaticas_desde_categorias(raiz, con_datos):
     assert any("por tu regla «PIZZA»" in m.value and "Si es un gasto" in m.value for m in at.markdown)
 
     # Corregir el historial: la «Pizza» que ya estaba en ALIMENTOS pasa a RESTAURANTES.
+    abrir_desplegable(at, "regla_revisar")
     at.checkbox(key="regla_historial_confirmar").check().run()
     at.button(key="regla_historial_aplicar").click().run()
     sin_errores(at)

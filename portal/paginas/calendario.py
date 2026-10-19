@@ -174,8 +174,8 @@ def _fijos() -> None:
         filas = seleccion.selection.rows if seleccion else []
         if filas:
             _editar(lista[filas[0]])
-    with st.expander("➕ Agregar un pago fijo, suscripción o ingreso", expanded=not lista):
-        _formulario(None)
+    estado.desplegable("➕ Agregar un pago fijo, suscripción o ingreso", "cal_nuevo", lambda: _formulario(None),
+                       abierto=not lista)
 
 
 def _destino(lib, r: Recurrente) -> str:

@@ -217,8 +217,8 @@ def _otros() -> None:
                     if ejecutar(lambda li: recurrentes.eliminar(li, r.id), f"Se borró «{r.nombre}»"):
                         st.session_state.pop("ing_sel", None)
                         st.rerun()
-    with st.expander("➕ Agregar otro ingreso fijo", expanded=not lista):
-        _formulario(None, principal=False)
+    estado.desplegable("➕ Agregar otro ingreso fijo", "ing_nuevo", lambda: _formulario(None, principal=False),
+                       abierto=not lista)
 
 
 def _importe(r: Recurrente) -> str:

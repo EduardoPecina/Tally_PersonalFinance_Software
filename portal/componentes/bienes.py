@@ -13,7 +13,7 @@ import streamlit as st
 
 from motor import bienes, cuentas
 from motor.modelo import MetodoDepreciacion, TipoCuenta
-from portal.componentes import formato, graficas
+from portal.componentes import estado, formato, graficas
 from portal.componentes.sesion import ejecutar, libro
 
 ELEGIDO = "bien_elegido"
@@ -25,8 +25,7 @@ def mostrar() -> None:
     st.caption("Tu casa, auto, laptop, muebles… lo que tienes y no es dinero. Comprarlo no es gasto (cambias dinero "
                "por una cosa); con el tiempo pierde valor (**depreciación**) o lo gana (**plusvalía**, con un "
                "avalúo). Todo se calcula solo: no llena tu Historial ni cuenta como gasto en tu Resumen.")
-    with st.expander("➕ Agregar un bien", expanded=not lib.bienes()):
-        _formulario_nuevo()
+    estado.desplegable("➕ Agregar un bien", "bien_nuevo", _formulario_nuevo, abierto=not lib.bienes())
     st.caption("¿Ya lo habías registrado como gasto? Búscalo en **Historial**, ábrelo y usa «Convertir en un bien».")
     todos = lib.bienes()
     if not todos:

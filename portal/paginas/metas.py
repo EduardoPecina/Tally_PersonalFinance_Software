@@ -7,7 +7,7 @@ import streamlit as st
 from motor import metas
 from motor.dinero import a_pesos
 from motor.modelo import Meta, TipoCuenta
-from portal.componentes import formato
+from portal.componentes import estado, formato
 from portal.componentes.sesion import avisar, ejecutar, libro
 
 CUENTAS_DE_AHORRO = (TipoCuenta.DEBITO, TipoCuenta.AHORRO, TipoCuenta.INVERSION, TipoCuenta.EFECTIVO, TipoCuenta.OTRA)
@@ -45,8 +45,8 @@ def _fondo() -> None:
         else:
             st.info("Cuando registres tus gastos de algunos meses, TALLY calculará cuánto te conviene juntar. Mientras, "
                     "escribe tú el objetivo.", icon="💡")
-        with st.expander("Crear mi fondo de emergencia", expanded=False):
-            _formulario(None, emergencia=True, sugerido=f.recomendado_minimo)
+        estado.desplegable("Crear mi fondo de emergencia", "metas_crear_fondo",
+                           lambda: _formulario(None, emergencia=True, sugerido=f.recomendado_minimo))
         return
     _tarjeta(f.meta, cubiertos=f.meses_cubiertos, esencial=f.esencial_al_mes)
 
@@ -65,18 +65,21 @@ def _metas() -> None:
             _tarjeta(m)
     else:
         st.caption("Aún no tienes metas. Crea la primera abajo.")
-    with st.expander("➕ Nueva meta", expanded=not activas):
-        _formulario(None)
+    estado.desplegable("➕ Nueva meta", "metas_nueva", lambda: _formulario(None), abierto=not activas)
     terminadas = [m for m in lib.metas() if not m.activa]
     if terminadas:
-        with st.expander(f"Logradas y archivadas ({len(terminadas)})"):
-            for m in terminadas:
-                a, b = st.columns([4, 1], vertical_alignment="center")
-                a.markdown(f"**{formato.md(m.nombre)}** · {formato.dinero_md(a_pesos(metas.ahorrado(m)))} de "
-                           f"{formato.dinero_md(a_pesos(m.objetivo))}")
-                if b.button("Reactivar", key=f"meta_reactivar_{m.id}"):
-                    if ejecutar(lambda li, m=m: metas.editar(li, m.id, activa=True), "Meta reactivada"):
-                        st.rerun()
+        estado.desplegable(f"Logradas y archivadas ({len(terminadas)})", "metas_archivadas",
+                           lambda: _terminadas(terminadas))
+
+
+def _terminadas(terminadas: list[Meta]) -> None:
+    for m in terminadas:
+        a, b = st.columns([4, 1], vertical_alignment="center")
+        a.markdown(f"**{formato.md(m.nombre)}** · {formato.dinero_md(a_pesos(metas.ahorrado(m)))} de "
+                   f"{formato.dinero_md(a_pesos(m.objetivo))}")
+        if b.button("Reactivar", key=f"meta_reactivar_{m.id}"):
+            if ejecutar(lambda li, m=m: metas.editar(li, m.id, activa=True), "Meta reactivada"):
+                st.rerun()
 
 
 def _tarjeta(m: Meta, *, cubiertos=None, esencial=None) -> None:
@@ -114,23 +117,25 @@ def _tarjeta(m: Meta, *, cubiertos=None, esencial=None) -> None:
                 st.info(texto + " Ya tienes lo mínimo recomendado; lo ideal son 6.", icon="🛟")
             else:
                 st.warning(texto + " Lo recomendable son al menos 3.", icon="🛟")
-        with st.expander("Aportar, retirar o editar"):
-            aportar, retirar, editar = st.tabs(["➕ Aportar", "➖ Retirar", "✏️ Editar"])
-            with aportar:
-                _movimiento(m, retiro=False)
-            with retirar:
-                _movimiento(m, retiro=True)
-            with editar:
-                _formulario(m, emergencia=m.emergencia)
-                a, b = st.columns(2)
-                if a.button("Archivar" if not e.lograda else "Archivar (lograda)", key=f"meta_archivar_{m.id}"):
-                    if ejecutar(lambda li: metas.editar(li, m.id, activa=False), "Meta archivada"):
-                        st.rerun()
-                if b.button("Borrar", key=f"meta_borrar_{m.id}",
-                            help="Borra la meta. Las transferencias que hiciste no se borran: el dinero sigue en su "
-                                 "cuenta."):
-                    if ejecutar(lambda li: metas.eliminar(li, m.id), f"Se borró «{m.nombre}»"):
-                        st.rerun()
+        estado.desplegable("Aportar, retirar o editar", f"meta_acciones_{m.id}", lambda: _acciones(m, e.lograda))
+
+
+def _acciones(m: Meta, lograda: bool) -> None:
+    aportar, retirar, editar = st.tabs(["➕ Aportar", "➖ Retirar", "✏️ Editar"])
+    with aportar:
+        _movimiento(m, retiro=False)
+    with retirar:
+        _movimiento(m, retiro=True)
+    with editar:
+        _formulario(m, emergencia=m.emergencia)
+        a, b = st.columns(2)
+        if a.button("Archivar" if not lograda else "Archivar (lograda)", key=f"meta_archivar_{m.id}"):
+            if ejecutar(lambda li: metas.editar(li, m.id, activa=False), "Meta archivada"):
+                st.rerun()
+        if b.button("Borrar", key=f"meta_borrar_{m.id}",
+                    help="Borra la meta. Las transferencias que hiciste no se borran: el dinero sigue en su cuenta."):
+            if ejecutar(lambda li: metas.eliminar(li, m.id), f"Se borró «{m.nombre}»"):
+                st.rerun()
 
 
 def _cuentas() -> list[str]:

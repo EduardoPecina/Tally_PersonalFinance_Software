@@ -75,10 +75,12 @@ def _arbol(clase: ClaseCategoria) -> None:
     st.caption(f"{len(rubros)} categorías · {len(propias)} subcategorías. {REGLA_NOMBRES}")
 
     izquierda, derecha = st.columns(2)
-    with izquierda, st.expander("➕ Nueva subcategoría"):
-        _nueva_subcategoria(clase, rubros)
-    with derecha, st.expander("➕ Nueva categoría (una caja que agrupa)"):
-        _nueva_categoria(clase)
+    with izquierda:
+        estado.desplegable("➕ Nueva subcategoría", f"cat_nueva_sub_{clase.value}",
+                           lambda: _nueva_subcategoria(clase, rubros))
+    with derecha:
+        estado.desplegable("➕ Nueva categoría (una caja que agrupa)", f"cat_nueva_{clase.value}",
+                           lambda: _nueva_categoria(clase))
 
     buscado = st.text_input("Buscar", key=f"buscar_{clase.value}", placeholder="Ej. gym, dentista, uber…")
     if buscado.strip():

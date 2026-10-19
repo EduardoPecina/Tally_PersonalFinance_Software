@@ -6,7 +6,7 @@ import pandas as pd
 import streamlit as st
 
 from motor import analisis, reportes
-from portal.componentes import exportar, filtros, formato
+from portal.componentes import estado, exportar, filtros, formato
 from portal.componentes.sesion import calculado, libro
 
 GUARDADO = "_pivot"
@@ -66,8 +66,7 @@ def mostrar() -> None:
         if columnas[i % 3].button(nombre, key=f"rapida_{i}", width="stretch"):
             config.update(opciones)
             st.rerun()
-    with st.expander("Personalizar", expanded=False):
-        _formulario(config)
+    estado.desplegable("Personalizar", "pivots_personalizar", lambda: _formulario(config))
 
     lib = libro()
     desde, hasta = filtros.fechas(lib, config)

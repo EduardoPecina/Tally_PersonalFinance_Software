@@ -13,7 +13,7 @@ from motor import cotizaciones, cuentas, monedas, perfil, portafolio
 from motor.dinero import a_pesos
 from motor.modelo import Cuenta, TipoOperacionValor
 from portal import navegacion
-from portal.componentes import formato
+from portal.componentes import estado, formato
 from portal.componentes.sesion import ejecutar, libro
 
 TRANSPARENCIA = (f"⚡ Precios obtenidos desde **{cotizaciones.PROVEEDOR}**. La consulta solo envía los **símbolos "
@@ -31,10 +31,12 @@ def mostrar(cuenta: Cuenta) -> None:
                "y ver su rendimiento en el tiempo.")
     if cuenta.activa:
         izquierda, derecha = st.columns(2)
-        with izquierda, st.expander("➕ Compra o venta de títulos"):
-            _formulario_valor(cuenta)
-        with derecha, st.expander("➕ CETES, pagaré o certificado"):
-            _formulario_plazo(cuenta)
+        with izquierda:
+            estado.desplegable("➕ Compra o venta de títulos", f"portafolio_valor_{cuenta.id}",
+                               lambda: _formulario_valor(cuenta))
+        with derecha:
+            estado.desplegable("➕ CETES, pagaré o certificado", f"portafolio_plazo_{cuenta.id}",
+                               lambda: _formulario_plazo(cuenta))
 
     abiertas = [p for p in portafolio.posiciones(lib, cuenta.id) if p.titulos]
     plazos = lib.plazos(cuenta.id)
@@ -248,33 +250,38 @@ def _historial(cuenta: Cuenta) -> None:
     lib = libro()
     valores = lib.valores(cuenta.id)
     plazos = lib.plazos(cuenta.id)
-    with st.expander(f"Compras, ventas e inversiones a plazo registradas ({len(valores) + len(plazos)})"):
-        if valores:
-            st.dataframe(formato.pintar(pd.DataFrame({
-                "Fecha": [formato.fecha(v.fecha) for v in valores],
-                "Operación": ["Compra" if v.tipo is TipoOperacionValor.COMPRA else "Venta" for v in valores],
-                "Símbolo": [v.simbolo for v in valores],
-                "Títulos": [f"{v.titulos.normalize():f}" for v in valores],
-                "Precio": [f"{v.precio:,.4f} {v.moneda}" for v in valores],
-                "Tipo de cambio": [f"{v.tipo_cambio.normalize():f}" if v.moneda != monedas.de(lib) else ""
-                                   for v in valores],
-                "Comisión": [f"{v.comision:,.2f}" if v.comision else "" for v in valores],
-                "Notas": [v.notas for v in valores],
-            })), hide_index=True, width="stretch")
-        if not cuenta.activa:
-            return
-        opciones = {**{v.id: f"{formato.fecha(v.fecha)} · {'Compra' if v.tipo is TipoOperacionValor.COMPRA else 'Venta'} "
-                             f"{v.titulos.normalize():f} {v.simbolo}" for v in valores},
-                    **{p.id: f"{formato.fecha(p.fecha_inicio)} · {p.nombre}" for p in plazos}}
-        elegido = st.selectbox("Borrar un registro", list(opciones), index=None, format_func=opciones.get,
-                               placeholder="Elige uno para borrarlo", key=f"borrar_valor_{cuenta.id}")
-        if elegido and st.button("Borrar", key=f"borrar_valor_boton_{cuenta.id}"):
-            accion = portafolio.eliminar_plazo if elegido in {p.id for p in plazos} else portafolio.eliminar_valor
-            if ejecutar(lambda lib: accion(lib, elegido), exito="Registro borrado"):
-                st.rerun()
+    estado.desplegable(f"Compras, ventas e inversiones a plazo registradas ({len(valores) + len(plazos)})",
+                       f"portafolio_registros_{cuenta.id}", lambda: _registros(cuenta, valores, plazos))
 
 
 # --------------------------------------------------------------- formularios
+
+
+def _registros(cuenta: Cuenta, valores: list, plazos: list) -> None:
+    lib = libro()
+    if valores:
+        st.dataframe(formato.pintar(pd.DataFrame({
+            "Fecha": [formato.fecha(v.fecha) for v in valores],
+            "Operación": ["Compra" if v.tipo is TipoOperacionValor.COMPRA else "Venta" for v in valores],
+            "Símbolo": [v.simbolo for v in valores],
+            "Títulos": [f"{v.titulos.normalize():f}" for v in valores],
+            "Precio": [f"{v.precio:,.4f} {v.moneda}" for v in valores],
+            "Tipo de cambio": [f"{v.tipo_cambio.normalize():f}" if v.moneda != monedas.de(lib) else ""
+                               for v in valores],
+            "Comisión": [f"{v.comision:,.2f}" if v.comision else "" for v in valores],
+            "Notas": [v.notas for v in valores],
+        })), hide_index=True, width="stretch")
+    if not cuenta.activa:
+        return
+    opciones = {**{v.id: f"{formato.fecha(v.fecha)} · {'Compra' if v.tipo is TipoOperacionValor.COMPRA else 'Venta'} "
+                         f"{v.titulos.normalize():f} {v.simbolo}" for v in valores},
+                **{p.id: f"{formato.fecha(p.fecha_inicio)} · {p.nombre}" for p in plazos}}
+    elegido = st.selectbox("Borrar un registro", list(opciones), index=None, format_func=opciones.get,
+                           placeholder="Elige uno para borrarlo", key=f"borrar_valor_{cuenta.id}")
+    if elegido and st.button("Borrar", key=f"borrar_valor_boton_{cuenta.id}"):
+        accion = portafolio.eliminar_plazo if elegido in {p.id for p in plazos} else portafolio.eliminar_valor
+        if ejecutar(lambda lib: accion(lib, elegido), exito="Registro borrado"):
+            st.rerun()
 
 
 def _formulario_valor(cuenta: Cuenta) -> None:
