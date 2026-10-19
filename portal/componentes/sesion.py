@@ -7,6 +7,8 @@ errores del motor como mensajes amables.
 
 from __future__ import annotations
 
+import threading
+import weakref
 from collections.abc import Callable
 from pathlib import Path
 from typing import TypeVar
@@ -62,8 +64,10 @@ def sesion() -> Sesion:
 
 
 def olvidar_sesion() -> None:
-    """Cierra la sesión en memoria (p. ej. tras apartar un archivo dañado, o al bloquear TALLY)."""
+    """Cierra la sesión en memoria (p. ej. tras apartar un archivo dañado, o al bloquear TALLY), con lo calculado."""
     _abrir.clear()
+    with _CANDADO_CALCULOS:
+        _CALCULOS.clear()
 
 
 def llave_actual() -> bytes | None:
@@ -78,8 +82,11 @@ def libro() -> Libro:
     return sesion().libro
 
 
-CALCULOS = "_calculos"
 MAXIMO_CALCULOS = 64          # por versión de tus datos: los filtros que vas probando en un rato
+# Lo calculado, junto a la sesión de la que salió: se comparte entre pestañas y se va con ella (al bloquear TALLY o
+# recargar tus datos no queda nada en memoria).
+_CALCULOS: weakref.WeakKeyDictionary[Sesion, tuple[tuple, dict]] = weakref.WeakKeyDictionary()
+_CANDADO_CALCULOS = threading.Lock()
 
 
 def calculado(funcion: Callable[..., T], *args, **kwargs) -> T:
@@ -87,19 +94,23 @@ def calculado(funcion: Callable[..., T], *args, **kwargs) -> T:
 
     Para lo que tarda y se vuelve a pedir en cada clic de la misma página (elegir un renglón, abrir una pestaña,
     volver a la página). Cualquier cambio a tus datos lo olvida todo. Lo que regresa no se debe modificar."""
-    lib = libro()
-    version = (id(sesion()), id(lib), sesion().almacen.revision, lib.hoy())
-    guardados = st.session_state.get(CALCULOS)
-    if guardados is None or guardados[0] != version:
-        guardados = (version, {})
-        st.session_state[CALCULOS] = guardados
+    actual = sesion()
+    lib = actual.libro
+    version = (id(lib), actual.almacen.revision, lib.hoy())
     llave = (funcion.__module__, funcion.__qualname__, _congelar(args), _congelar(kwargs))
-    memoria = guardados[1]
-    if llave not in memoria:
+    with _CANDADO_CALCULOS:
+        guardados = _CALCULOS.get(actual)
+        if guardados is None or guardados[0] != version:
+            guardados = _CALCULOS[actual] = (version, {})
+        memoria = guardados[1]
+        if llave in memoria:
+            return memoria[llave]
+    resultado = funcion(lib, *args, **kwargs)
+    with _CANDADO_CALCULOS:
         if len(memoria) >= MAXIMO_CALCULOS:
             memoria.pop(next(iter(memoria)))                # el más viejo
-        memoria[llave] = funcion(lib, *args, **kwargs)
-    return memoria[llave]
+        memoria[llave] = resultado
+    return resultado
 
 
 def _congelar(valor):

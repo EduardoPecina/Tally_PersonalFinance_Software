@@ -163,7 +163,7 @@ def test_lo_calculado_se_olvida_al_cambiar_tus_datos(raiz, con_datos):
 
     at = abrir(_pagina("historial"))
     assert at.dataframe[0].value.shape[0] == 6
-    assert sesion_portal.CALCULOS in at.session_state
+    assert len(sesion_portal._CALCULOS) == 1                       # junto a la sesión abierta
     at.switch_page(_pagina("registrar")).run()
     next(s for s in at.selectbox if s.label == "Subcategoría").set_value(con_datos["cat"]["ALIMENTOS"])
     next(n for n in at.number_input if n.label == "Importe").set_value(42)
@@ -184,8 +184,6 @@ def test_calculado_recuerda_y_usa_llaves_con_listas(raiz, con_datos, monkeypatch
         llamadas.append((tuple(cuentas), dict(filtros)))
         return len(llamadas)
 
-    estado: dict = {}
-    monkeypatch.setattr(sesion_portal.st, "session_state", estado)
     sesion_ = sesion_en(raiz)
     monkeypatch.setattr(sesion_portal, "sesion", lambda: sesion_)
     assert sesion_portal.calculado(contar, ["a", "b"], filtros={"x": [1]}) == 1
@@ -195,6 +193,8 @@ def test_calculado_recuerda_y_usa_llaves_con_listas(raiz, con_datos, monkeypatch
         perfil.ajustar(lib, ingreso_esperado=1)
     assert sesion_portal.calculado(contar, ["a", "b"], filtros={"x": [1]}) == 3
     assert len(llamadas) == 3
+    sesion_portal.olvidar_sesion()                                                   # al bloquear TALLY
+    assert sesion_ not in sesion_portal._CALCULOS
 
 
 def test_historial_las_subcategorias_siguen_al_tipo(raiz, con_datos):
