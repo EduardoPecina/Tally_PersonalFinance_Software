@@ -10,6 +10,7 @@ ruta.
 from __future__ import annotations
 
 import os
+import posixpath
 import subprocess
 import sys
 import tempfile
@@ -74,7 +75,7 @@ def _elegir_en_mac(titulo: str, inicial: str) -> str | None:
     except (OSError, subprocess.SubprocessError):
         return None
     if resultado.returncode == 0 and resultado.stdout.strip():
-        return os.path.normpath(resultado.stdout.strip())
+        return posixpath.normpath(resultado.stdout.strip())     # ruta de Mac: «/Volumes/NAS/Respaldos/» sin la «/»
     if "-128" in resultado.stderr:                       # «User canceled»: le dio Cancelar
         return ""
     return None

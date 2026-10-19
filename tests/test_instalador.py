@@ -571,7 +571,8 @@ def test_en_mac_crea_la_app_con_el_python_de_tally(en_mac, tmp_path):
     assert (info["CFBundleExecutable"], info["CFBundleIconFile"], info["CFBundlePackageType"]) == ("TALLY", "tally",
                                                                                                     "APPL")
     lanzador = app / "Contents" / "MacOS" / "TALLY"
-    assert lanzador.stat().st_mode & 0o111                               # se puede ejecutar
+    if sys.platform != "win32":                                         # Windows no guarda «se puede ejecutar»
+        assert lanzador.stat().st_mode & 0o111
     texto = lanzador.read_text(encoding="utf-8")
     assert texto.startswith("#!/bin/bash") and sys.executable in texto
     assert str(base / "_Programa" / "portal" / "iniciar.py") in texto
