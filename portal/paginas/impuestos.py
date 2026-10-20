@@ -11,7 +11,7 @@ import streamlit as st
 from motor import categorias, comprobantes, impuestos
 from motor.dinero import a_pesos
 from motor.modelo import ClaseCategoria, ConceptoDeducible, PerfilImpuestos
-from portal.componentes import exportar, formato
+from portal.componentes import estado, exportar, formato
 from portal.componentes.sesion import ejecutar, libro, sesion
 from portal.navegacion import enlace
 
@@ -33,16 +33,10 @@ def mostrar() -> None:
     st.title("Impuestos")
     st.caption("Tus gastos deducibles del año y el cálculo de un recibo o factura, para cualquier país: tú pones las "
                "reglas, con ejemplos para guiarte. " + impuestos.AVISO)
-    deducibles, recibo, fisco, configurar = st.tabs(["🧾 Gastos deducibles", "🧮 Calcular y revisar un recibo",
-                                                     "📅 Pagos al fisco", "⚙️ Configurar"])
-    with deducibles:
-        _deducibles()
-    with recibo:
-        _recibo()
-    with fisco:
-        _pagos_al_fisco()
-    with configurar:
-        _configurar()
+    numero, pestana = estado.pestanas("impuestos", ["🧾 Gastos deducibles", "🧮 Calcular y revisar un recibo",
+                                                    "📅 Pagos al fisco", "⚙️ Configurar"])
+    with pestana:
+        (_deducibles, _recibo, _pagos_al_fisco, _configurar)[numero]()
 
 
 # ------------------------------------------------------------- deducibles
@@ -93,17 +87,8 @@ def _deducibles() -> None:
     for r in reporte.renglones:
         if not r.pagos:
             continue
-        with st.expander(f"{r.concepto.nombre} · {len(r.pagos)} pago(s)"):
-            if r.concepto.notas:
-                st.caption(r.concepto.notas)
-            st.dataframe(formato.pintar(pd.DataFrame({
-                "Fecha": [p.fecha for p in r.pagos], "Descripción": [p.descripcion for p in r.pagos],
-                "Subcategoría": [p.subcategoria for p in r.pagos], "Cuenta": [p.cuenta for p in r.pagos],
-                "Importe": [formato.dinero(p.importe) for p in r.pagos],
-                "📎": [str(adjuntos.get(p.operacion_id, "")) for p in r.pagos],
-                "": ["💵 en efectivo" if p.en_efectivo and r.concepto.sin_efectivo else "" for p in r.pagos],
-            })), hide_index=True, width="stretch",
-                column_config={"Fecha": st.column_config.DateColumn(format="DD/MM/YYYY")})
+        estado.desplegable(f"{r.concepto.nombre} · {len(r.pagos)} pago(s)", f"imp_ded_{r.concepto.id}",
+                           lambda r=r: _pagos_deducibles(r, adjuntos))
     filas = [{"Concepto": r.concepto.nombre, "Fecha": p.fecha, "Descripción": p.descripcion,
               "Subcategoría": p.subcategoria, "Cuenta": p.cuenta, "Importe": float(p.importe),
               "En efectivo": "Sí" if p.en_efectivo else ""} for r in reporte.renglones for p in r.pagos]
@@ -114,6 +99,19 @@ def _deducibles() -> None:
     _comprobantes_del_anio(anio)
     if lib.fiscal.notas:
         st.caption(f"📌 {lib.fiscal.notas}")
+
+
+def _pagos_deducibles(r, adjuntos: dict) -> None:
+    if r.concepto.notas:
+        st.caption(r.concepto.notas)
+    st.dataframe(formato.pintar(pd.DataFrame({
+        "Fecha": [p.fecha for p in r.pagos], "Descripción": [p.descripcion for p in r.pagos],
+        "Subcategoría": [p.subcategoria for p in r.pagos], "Cuenta": [p.cuenta for p in r.pagos],
+        "Importe": [formato.dinero(p.importe) for p in r.pagos],
+        "📎": [str(adjuntos.get(p.operacion_id, "")) for p in r.pagos],
+        "": ["💵 en efectivo" if p.en_efectivo and r.concepto.sin_efectivo else "" for p in r.pagos],
+    })), hide_index=True, width="stretch",
+        column_config={"Fecha": st.column_config.DateColumn(format="DD/MM/YYYY")})
 
 
 def _comprobantes_del_anio(anio: int) -> None:
@@ -129,13 +127,8 @@ def _comprobantes_del_anio(anio: int) -> None:
         if faltan:
             st.caption("Sin comprobante, tu autoridad fiscal puede no aceptar el deducible. Adjúntalo desde "
                        "**Historial** (elige el movimiento → 📎 Comprobantes).")
-            with st.expander(f"Ver los {len(faltan)} sin comprobante"):
-                st.dataframe(formato.pintar(pd.DataFrame({
-                    "Concepto": [d.concepto for d in faltan], "Fecha": [d.pago.fecha for d in faltan],
-                    "Descripción": [d.pago.descripcion for d in faltan], "Cuenta": [d.pago.cuenta for d in faltan],
-                    "Importe": [formato.dinero(d.pago.importe) for d in faltan],
-                })), hide_index=True, width="stretch",
-                    column_config={"Fecha": st.column_config.DateColumn(format="DD/MM/YYYY")})
+            estado.desplegable(f"Ver los {len(faltan)} sin comprobante", "imp_sin_comprobante",
+                               lambda: _sin_comprobante(faltan))
         if len(faltan) < len(lista):
             st.download_button(
                 "Descargar los comprobantes del año (.zip)", lambda: comprobantes.zip_de_deducibles(sesion(), anio),
@@ -143,6 +136,15 @@ def _comprobantes_del_anio(anio: int) -> None:
                 icon=":material/folder_zip:", key="imp_zip_comprobantes",
                 help="Una carpeta por concepto y un índice (indice.csv, se abre en Excel) con cada pago y su archivo. "
                      "Para tu contador o tu declaración.")
+
+
+def _sin_comprobante(faltan: list) -> None:
+    st.dataframe(formato.pintar(pd.DataFrame({
+        "Concepto": [d.concepto for d in faltan], "Fecha": [d.pago.fecha for d in faltan],
+        "Descripción": [d.pago.descripcion for d in faltan], "Cuenta": [d.pago.cuenta for d in faltan],
+        "Importe": [formato.dinero(d.pago.importe) for d in faltan],
+    })), hide_index=True, width="stretch",
+        column_config={"Fecha": st.column_config.DateColumn(format="DD/MM/YYYY")})
 
 
 def _explicar_tope(lib, ingreso: Decimal) -> str:
@@ -364,8 +366,8 @@ def _conceptos() -> None:
                     help=f"Borra «{c.nombre}». Tus gastos no se tocan."):
             if ejecutar(lambda li, c=c: impuestos.eliminar_concepto(li, c.id), f"Se borró «{c.nombre}»"):
                 st.rerun()
-    with st.expander("➕ Nuevo concepto deducible", expanded=not lib.fiscal.conceptos):
-        _formulario_concepto(None)
+    estado.desplegable("➕ Nuevo concepto deducible", "imp_concepto_nuevo", lambda: _formulario_concepto(None),
+                       abierto=not lib.fiscal.conceptos)
     with st.form("imp_topes", border=False):
         st.markdown("**Tope total** para todos tus deducibles juntos (opcional; si pones los dos, cuenta el menor)")
         a, b = st.columns(2)
@@ -445,15 +447,19 @@ def _perfiles() -> None:
         c.metric("Tu tasa aproximada", f"{pagado / ingreso * 100:.2f} %" if ingreso else "—")
     for p in lib.fiscal.perfiles:
         a, b = st.columns([6, 1])
-        with a.expander(f"✏️ {p.nombre}"):
-            st.caption(_describir(p))
-            _formulario_perfil(p)
+        with a:
+            estado.desplegable(f"✏️ {p.nombre}", f"imp_perfil_{p.id}", lambda p=p: _editar_perfil(p))
         if b.button("Borrar", key=f"imp_borrar_perfil_{p.id}", icon=":material/delete:", width="stretch",
                     help=f"Borra el perfil «{p.nombre}»."):
             if ejecutar(lambda li, p=p: impuestos.eliminar_perfil(li, p.id), f"Se borró «{p.nombre}»"):
                 st.rerun()
-    with st.expander("➕ Nuevo perfil", expanded=not lib.fiscal.perfiles):
-        _formulario_perfil(None)
+    estado.desplegable("➕ Nuevo perfil", "imp_perfil_nuevo", lambda: _formulario_perfil(None),
+                       abierto=not lib.fiscal.perfiles)
+
+
+def _editar_perfil(p: PerfilImpuestos) -> None:
+    st.caption(_describir(p))
+    _formulario_perfil(p)
 
 
 def _tasa_texto(tasa: Decimal) -> str:
@@ -501,20 +507,20 @@ def _formulario_perfil(p: PerfilImpuestos | None) -> None:
     st.text_input("Notas", key=f"imp_{clave}_notas")
     _recordatorio(clave)
     if st.button("Guardar cambios" if p else "Guardar perfil", type="primary", key=f"imp_{clave}_guardar"):
-        estado = st.session_state
-        datos = [{"nombre": str(estado.get(f"imp_{clave}_{n}_nombre") or "").strip(),
-                  "tasa": str(estado.get(f"imp_{clave}_{n}_tasa") or "0").strip() or "0",
-                  "sobre": "" if estado.get(f"imp_{clave}_{n}_sobre", SUBTOTAL) == SUBTOTAL
-                  else estado[f"imp_{clave}_{n}_sobre"],
-                  "retenido": estado.get(f"imp_{clave}_{n}_efecto") == RETIENE,
-                  "a_cargo": estado.get(f"imp_{clave}_{n}_efecto") == CARGO} for n in filas]
-        frecuencia = estado.get(f"imp_{clave}_frecuencia", "")
+        valores = st.session_state
+        datos = [{"nombre": str(valores.get(f"imp_{clave}_{n}_nombre") or "").strip(),
+                  "tasa": str(valores.get(f"imp_{clave}_{n}_tasa") or "0").strip() or "0",
+                  "sobre": "" if valores.get(f"imp_{clave}_{n}_sobre", SUBTOTAL) == SUBTOTAL
+                  else valores[f"imp_{clave}_{n}_sobre"],
+                  "retenido": valores.get(f"imp_{clave}_{n}_efecto") == RETIENE,
+                  "a_cargo": valores.get(f"imp_{clave}_{n}_efecto") == CARGO} for n in filas]
+        frecuencia = valores.get(f"imp_{clave}_frecuencia", "")
         if ejecutar(lambda li: impuestos.guardar_perfil(
-                li, estado.get(f"imp_{clave}_nombre_perfil", ""), datos, notas=estado.get(f"imp_{clave}_notas", ""),
+                li, valores.get(f"imp_{clave}_nombre_perfil", ""), datos, notas=valores.get(f"imp_{clave}_notas", ""),
                 perfil_id=p.id if p else None, frecuencia=frecuencia,
-                subcategorias=estado.get(f"imp_{clave}_subcategorias", []) if frecuencia else (),
-                registro=estado.get(f"imp_{clave}_registro", "recibido"),
-                dia_limite=estado.get(f"imp_{clave}_dia", 17), meses_despues=estado.get(f"imp_{clave}_meses", 1)),
+                subcategorias=valores.get(f"imp_{clave}_subcategorias", []) if frecuencia else (),
+                registro=valores.get(f"imp_{clave}_registro", "recibido"),
+                dia_limite=valores.get(f"imp_{clave}_dia", 17), meses_despues=valores.get(f"imp_{clave}_meses", 1)),
                 "Perfil guardado"):
             _olvidar_formulario(clave)                          # que se vuelva a llenar con lo guardado
             st.rerun()
@@ -561,25 +567,28 @@ def _recordatorio(clave: str) -> None:
 
 
 def _renglones_del_formulario(p: PerfilImpuestos | None, clave: str) -> list[int]:
-    """Los renglones del formulario (se llenan una vez con lo guardado y luego se quedan como los dejes)."""
-    estado = st.session_state
-    if f"imp_{clave}_filas" not in estado:
+    """Los renglones del formulario (se llenan una vez con lo guardado y luego se quedan como los dejes).
+
+    Se vuelven a llenar si Streamlit ya olvidó los campos: lo hace en cuanto el formulario deja de verse (otra
+    página u otra pestaña). Antes el formulario reaparecía vacío al regresar."""
+    valores = st.session_state
+    if f"imp_{clave}_filas" not in valores or f"imp_{clave}_nombre_perfil" not in valores:
         lista = list(p.impuestos) if p else []
-        estado[f"imp_{clave}_nombre_perfil"] = p.nombre if p else ""
-        estado[f"imp_{clave}_notas"] = p.notas if p else ""
+        valores[f"imp_{clave}_nombre_perfil"] = p.nombre if p else ""
+        valores[f"imp_{clave}_notas"] = p.notas if p else ""
         for n, i in enumerate(lista):
-            estado[f"imp_{clave}_{n}_nombre"] = i.nombre
-            estado[f"imp_{clave}_{n}_tasa"] = _tasa_texto(i.tasa)
-            estado[f"imp_{clave}_{n}_sobre"] = i.sobre or SUBTOTAL
-            estado[f"imp_{clave}_{n}_efecto"] = _efecto(i)
-        estado[f"imp_{clave}_frecuencia"] = p.frecuencia if p else ""
-        estado[f"imp_{clave}_subcategorias"] = [i for i in (p.subcategorias if p else ()) if _existe(i)]
-        estado[f"imp_{clave}_registro"] = p.registro if p else "recibido"
-        estado[f"imp_{clave}_dia"] = p.dia_limite if p else 17
-        estado[f"imp_{clave}_meses"] = p.meses_despues if p else 1
-        estado[f"imp_{clave}_filas"] = list(range(max(len(lista), 1)))
-        estado[f"imp_{clave}_siguiente"] = max(len(lista), 1)
-    return estado[f"imp_{clave}_filas"]
+            valores[f"imp_{clave}_{n}_nombre"] = i.nombre
+            valores[f"imp_{clave}_{n}_tasa"] = _tasa_texto(i.tasa)
+            valores[f"imp_{clave}_{n}_sobre"] = i.sobre or SUBTOTAL
+            valores[f"imp_{clave}_{n}_efecto"] = _efecto(i)
+        valores[f"imp_{clave}_frecuencia"] = p.frecuencia if p else ""
+        valores[f"imp_{clave}_subcategorias"] = [i for i in (p.subcategorias if p else ()) if _existe(i)]
+        valores[f"imp_{clave}_registro"] = p.registro if p else "recibido"
+        valores[f"imp_{clave}_dia"] = p.dia_limite if p else 17
+        valores[f"imp_{clave}_meses"] = p.meses_despues if p else 1
+        valores[f"imp_{clave}_filas"] = list(range(max(len(lista), 1)))
+        valores[f"imp_{clave}_siguiente"] = max(len(lista), 1)
+    return valores[f"imp_{clave}_filas"]
 
 
 def _existe(categoria_id: str) -> bool:

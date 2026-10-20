@@ -11,8 +11,11 @@ from __future__ import annotations
 
 import re
 import unicodedata
+from functools import lru_cache
 
 from motor.errores import ErrorValidacion
+
+_NO_ALFANUMERICO = re.compile(r"[^0-9A-Z]+")
 
 
 def normalizar_nombre(nombre: str) -> str:
@@ -24,13 +27,13 @@ def normalizar_nombre(nombre: str) -> str:
 
 
 def _sin_acentos(texto: str, *, conservar_enie: bool) -> str:
-    letras = []
-    for letra in unicodedata.normalize("NFC", str(texto)):
-        if conservar_enie and letra in "ñÑ":
-            letras.append(letra)
-        else:
-            letras.append("".join(c for c in unicodedata.normalize("NFD", letra) if not unicodedata.combining(c)))
-    return "".join(letras)
+    texto = unicodedata.normalize("NFC", str(texto))
+    if texto.isascii():                     # lo más común: nada que quitar
+        return texto
+    separado = unicodedata.normalize("NFD", texto)
+    if conservar_enie:                      # la Ñ no es un acento: se vuelve a juntar antes de quitar los demás
+        separado = separado.replace("n\u0303", "ñ").replace("N\u0303", "Ñ")
+    return "".join(c for c in separado if not unicodedata.combining(c))
 
 
 def estandarizar(nombre: str) -> str:
@@ -41,7 +44,10 @@ def estandarizar(nombre: str) -> str:
     return limpio
 
 
+@lru_cache(maxsize=16_384)
 def clave(texto: str) -> str:
-    """Forma de comparar nombres: «Cafés & Snacks» → «CAFES SNACKS»; «Niñera» → «NINERA»."""
+    """Forma de comparar nombres: «Cafés & Snacks» → «CAFES SNACKS»; «Niñera» → «NINERA».
+
+    Se recuerda: las mismas descripciones se comparan miles de veces (reglas, duplicados, salud de tus datos)."""
     sencillo = _sin_acentos(texto, conservar_enie=False).upper()
-    return " ".join(re.sub(r"[^0-9A-Z]+", " ", sencillo).split())
+    return " ".join(_NO_ALFANUMERICO.sub(" ", sencillo).split())

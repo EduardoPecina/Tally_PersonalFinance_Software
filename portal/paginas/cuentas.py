@@ -8,7 +8,7 @@ import streamlit as st
 from motor import bienes, categorias, consultas, cuentas, movimientos, tarjetas
 from motor.consultas import ETIQUETA_TIPO_CUENTA
 from motor.modelo import TIPOS_DISPONIBLES_POR_DEFECTO, Cuenta, TipoCuenta
-from portal.componentes import candado, exportar, formato
+from portal.componentes import candado, estado, exportar, formato
 from portal.componentes import tarjeta as estado_tarjeta
 from portal.componentes.sesion import aplicar, avisar, ejecutar, libro
 from portal.paginas import estado_cuenta
@@ -358,8 +358,8 @@ def mostrar() -> None:
     st.title("Cuentas")
     st.caption("¿Cuánto tengo en cada cuenta?")
 
-    with st.expander("➕ Nueva cuenta", expanded=not cuentas.listar(libro())):
-        formulario_nueva_cuenta()
+    estado.desplegable("➕ Nueva cuenta", "cuentas_nueva", formulario_nueva_cuenta,
+                       abierto=not cuentas.listar(libro()))
 
     archivadas = st.toggle("Mostrar eliminadas", key="cuentas_mostrar_archivadas",
                            help="Las cuentas eliminadas que tenían movimientos: su historial se conserva y se pueden "

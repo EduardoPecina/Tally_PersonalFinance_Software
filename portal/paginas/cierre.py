@@ -11,7 +11,7 @@ import streamlit as st
 from motor import categorias, cierre, consultas
 from motor.cierre import Reporte
 from portal import navegacion
-from portal.componentes import candado, exportar, formato
+from portal.componentes import candado, estado, exportar, formato
 from portal.componentes.sesion import ejecutar, libro
 
 PENDIENTES = {"calendario": "📅", "temporal": "↩️", "tarjeta": "💳"}
@@ -39,21 +39,11 @@ def mostrar() -> None:
     _estado(r)
     _veredicto(r)
     _recomendaciones(r)
-    gasto, presupuestos, ingresos, deudas, metas, pendientes = st.tabs([
+    numero, pestana = estado.pestanas("cierre", [
         "💸 A dónde se fue", "🎯 Presupuestos", "💰 Ingresos", "💳 Deudas", "🏆 Metas y patrimonio",
         f"✅ Para cerrar bien ({len(r.pendientes)})" if r.pendientes else "✅ Para cerrar bien"])
-    with gasto:
-        _gasto(r)
-    with presupuestos:
-        _presupuestos(r)
-    with ingresos:
-        _ingresos(r)
-    with deudas:
-        _deudas(r)
-    with metas:
-        _metas(r)
-    with pendientes:
-        _pendientes(r)
+    with pestana:
+        (_gasto, _presupuestos, _ingresos, _deudas, _metas, _pendientes)[numero](r)
     st.divider()
     _descargar(r)
     _historial(lista)
@@ -97,16 +87,8 @@ def _estado(r: Reporte) -> None:
                    "y, si están bien, vuelve a cerrar el mes.", icon="🔒")
         ops = cambios.nuevos + cambios.editados
         if ops:
-            with st.expander("Ver los movimientos que cambiaron"):
-                filas = {f.id: f for f in consultas.buscar(libro(), desde=r.desde, hasta=r.hasta)}
-                st.dataframe(formato.pintar(pd.DataFrame({
-                    "": ["Nuevo" if op in cambios.nuevos else "Corregido" for op in ops],
-                    "Fecha": [op.fecha for op in ops],
-                    "Descripción": [op.descripcion for op in ops],
-                    "Importe": [formato.dinero_con_signo(filas[op.id].monto, filas[op.id].sentido)
-                                if op.id in filas else "" for op in ops],
-                })), hide_index=True, width="stretch",
-                    column_config={"Fecha": st.column_config.DateColumn(format="DD/MM/YYYY")})
+            estado.desplegable("Ver los movimientos que cambiaron", f"cierre_cambios_{r.anio}_{r.mes}",
+                               lambda: _cambiaron(r, cambios, ops))
     a, b, _ = st.columns([1, 1, 2])
     if cambios.hay and a.button("Volver a cerrar con los cambios", type="primary", key="cierre_volver",
                                 width="stretch"):
@@ -116,6 +98,18 @@ def _estado(r: Reporte) -> None:
                 help="Tus movimientos no se tocan: solo deja de estar marcado como cerrado."):
         if ejecutar(lambda li: cierre.reabrir(li, r.anio, r.mes), f"Se quitó el cierre de {nombre.lower()}"):
             st.rerun()
+
+
+def _cambiaron(r: Reporte, cambios, ops: list) -> None:
+    filas = {f.id: f for f in consultas.buscar(libro(), desde=r.desde, hasta=r.hasta)}
+    st.dataframe(formato.pintar(pd.DataFrame({
+        "": ["Nuevo" if op in cambios.nuevos else "Corregido" for op in ops],
+        "Fecha": [op.fecha for op in ops],
+        "Descripción": [op.descripcion for op in ops],
+        "Importe": [formato.dinero_con_signo(filas[op.id].monto, filas[op.id].sentido)
+                    if op.id in filas else "" for op in ops],
+    })), hide_index=True, width="stretch",
+        column_config={"Fecha": st.column_config.DateColumn(format="DD/MM/YYYY")})
 
 
 # ------------------------------------------------------------- veredicto
@@ -409,15 +403,18 @@ def _movimientos(r: Reporte) -> pd.DataFrame:
 
 
 def _historial(lista: list[tuple[int, int]]) -> None:
+    estado.desplegable("📚 Tus meses anteriores", "cierre_meses_anteriores", lambda: _meses_anteriores(lista))
+
+
+def _meses_anteriores(lista: list[tuple[int, int]]) -> None:
     lib = libro()
-    with st.expander("📚 Tus meses anteriores"):
-        filas = []
-        for anio, mes in lista[:24]:
-            n = cierre.resultado(lib, *cierre.rango(anio, mes))
-            c = lib.cierre(cierre.clave(anio, mes))
-            filas.append({"Mes": formato.mes(anio, mes), "Entró": formato.dinero(n.ingresos),
-                          "Salió": formato.dinero(n.gastos), "Ahorraste": formato.dinero(n.ahorro),
-                          "%": f"{n.tasa} %" if n.tasa is not None else "—",
-                          "Cierre": f"✅ {formato.fecha(c.cerrado_en.date())}" if c else ""})
-        st.dataframe(formato.pintar(pd.DataFrame(filas)), hide_index=True, width="stretch")
-        st.caption("Elige un mes arriba para ver su cierre completo.")
+    filas = []
+    for anio, mes in lista[:24]:
+        n = cierre.resultado(lib, *cierre.rango(anio, mes))
+        c = lib.cierre(cierre.clave(anio, mes))
+        filas.append({"Mes": formato.mes(anio, mes), "Entró": formato.dinero(n.ingresos),
+                      "Salió": formato.dinero(n.gastos), "Ahorraste": formato.dinero(n.ahorro),
+                      "%": f"{n.tasa} %" if n.tasa is not None else "—",
+                      "Cierre": f"✅ {formato.fecha(c.cerrado_en.date())}" if c else ""})
+    st.dataframe(formato.pintar(pd.DataFrame(filas)), hide_index=True, width="stretch")
+    st.caption("Elige un mes arriba para ver su cierre completo.")

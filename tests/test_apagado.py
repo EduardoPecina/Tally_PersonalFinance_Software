@@ -10,12 +10,15 @@ from portal import apagado
 
 APP = str(apagado.PORTAL / "app.py")
 INICIAR = str(apagado.PORTAL / "iniciar.py")
+SERVIDOR = str(apagado.PORTAL / "servidor.py")
 
 
 @pytest.mark.parametrize(
     ("linea", "carpeta", "esperado"),
     [
         (["C:/Python313/pythonw.exe", "-m", "streamlit", "run", APP, "--server.port", "8765"], "/", True),
+        (["C:/Python313/pythonw.exe", SERVIDOR, "run", APP, "--server.port", "8765"], "/", True),
+        (["python3.13", SERVIDOR, "run", "otro/app.py"], "/", True),           # aunque falte la ruta de app.py
         (["pythonw.exe", "portal/iniciar.py"], str(apagado.PORTAL.parent), True),
         (["python3.13", INICIAR], "/", True),
         (["python.exe", "otro_proyecto/app.py"], "/tmp", False),          # otro Python (p. ej. VS Code)

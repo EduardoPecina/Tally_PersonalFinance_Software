@@ -13,7 +13,7 @@ from motor import rubros_contables as rc
 from motor.errores import ErrorTally
 from motor.modelo import Categoria, ClaseCategoria, Rubro
 from motor.textos import clave
-from portal.componentes import candado, contabilidad_categorias, formato, reglas
+from portal.componentes import candado, contabilidad_categorias, estado, formato, reglas
 from portal.componentes.sesion import aplicar, avisar, ejecutar, libro, sesion
 
 SIN_CLASIFICACION = "— Sin clasificación —"
@@ -23,8 +23,6 @@ ABIERTA = "_categorias_ventana"   # (SUBCATEGORIA o CATEGORIA, id, desde dónde)
 BUSCAR = "buscar"                  # el ⚙️ Administrar de un resultado de la búsqueda (si no, el id de su categoría)
 SUBCATEGORIA, CATEGORIA = "subcategoria", "categoria"
 CAJA_ABIERTA = "_categorias_caja"   # la de la última ⚙️ Administrar: sigue abierta aunque cambie su número
-PESTANA = "categorias_pestana"
-PESTANA_RECORDADA = "_categorias_pestana_recordada"   # al volver a Categorías, sigue en la que estabas
 AYUDA_MOVER = ("La caja donde está. Cámbiala para moverla a otra categoría: sus movimientos se van con ella y "
                "nada se pierde.")
 AYUDA_CONTABLE = ("En qué renglón de tu Contabilidad técnica cae (Estado de Resultados, Flujo y Balanza). TALLY lo "
@@ -77,10 +75,12 @@ def _arbol(clase: ClaseCategoria) -> None:
     st.caption(f"{len(rubros)} categorías · {len(propias)} subcategorías. {REGLA_NOMBRES}")
 
     izquierda, derecha = st.columns(2)
-    with izquierda, st.expander("➕ Nueva subcategoría"):
-        _nueva_subcategoria(clase, rubros)
-    with derecha, st.expander("➕ Nueva categoría (una caja que agrupa)"):
-        _nueva_categoria(clase)
+    with izquierda:
+        estado.desplegable("➕ Nueva subcategoría", f"cat_nueva_sub_{clase.value}",
+                           lambda: _nueva_subcategoria(clase, rubros))
+    with derecha:
+        estado.desplegable("➕ Nueva categoría (una caja que agrupa)", f"cat_nueva_{clase.value}",
+                           lambda: _nueva_categoria(clase))
 
     buscado = st.text_input("Buscar", key=f"buscar_{clase.value}", placeholder="Ej. gym, dentista, uber…")
     if buscado.strip():
@@ -403,16 +403,9 @@ def mostrar() -> None:
                "MEDICINAS Y FARMACIA). A cada movimiento le pones una subcategoría y los reportes suman por ambas.")
     # Solo se arma la pestaña que está a la vista: armar las cinco (con las cajas de Clasificaciones y Contabilidad,
     # de cientos de etiquetas) hacía lenta la página.
-    pestanas = st.tabs(list(PESTANAS), key=PESTANA, default=st.session_state.get(PESTANA_RECORDADA, "Gastos"),
-                       on_change=_al_cambiar_de_pestana)
-    for pestana, mostrar_pestana in zip(pestanas, PESTANAS.values()):
-        if pestana.open:
-            with pestana:
-                mostrar_pestana()
-
-
-def _al_cambiar_de_pestana() -> None:
-    st.session_state[PESTANA_RECORDADA] = st.session_state[PESTANA]
+    numero, pestana = estado.pestanas("categorias", list(PESTANAS))
+    with pestana:
+        list(PESTANAS.values())[numero]()
 
 
 PESTANAS = {                                  # cada pestaña y lo que muestra (después de definir las funciones)

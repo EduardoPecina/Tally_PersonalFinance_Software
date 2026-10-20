@@ -182,12 +182,14 @@ class RespaldoEnCurso:
     no queda un respaldo a medias y se vuelve a intentar la próxima vez que lo abras.
     """
 
-    def __init__(self, ruta_datos: Path, carpeta: Path, momento: datetime, conservar: int) -> None:
+    def __init__(self, ruta_datos: Path, carpeta: Path, momento: datetime, conservar: int,
+                 retraso: float = 0) -> None:
         self.carpeta = carpeta
         self.ruta: Path | None = None
         self.error: Exception | None = None
-        self._hilo = threading.Thread(target=self._hacer, args=(ruta_datos, momento, conservar),
-                                      name="TALLY-respaldo-del-dia", daemon=True)
+        # Empieza ``retraso`` segundos después (Timer: esperarlo también espera ese rato).
+        self._hilo = threading.Timer(retraso, self._hacer, args=(ruta_datos, momento, conservar))
+        self._hilo.name, self._hilo.daemon = "TALLY-respaldo-del-dia", True
 
     def _hacer(self, ruta_datos: Path, momento: datetime, conservar: int) -> None:
         try:
@@ -210,10 +212,13 @@ class RespaldoEnCurso:
 
 _EN_CURSO: dict[Path, RespaldoEnCurso] = {}
 _CANDADO = threading.Lock()
+RETRASO_DEL_DIA = 3           # segundos: al abrir TALLY, el respaldo del día empieza ya dibujada la primera vista
 
 
-def iniciar_respaldo_del_dia(sesion: Sesion, carpeta: Path | str | None = None) -> RespaldoEnCurso | None:
+def iniciar_respaldo_del_dia(sesion: Sesion, carpeta: Path | str | None = None, *,
+                             retraso: float = 0) -> RespaldoEnCurso | None:
     """Como :func:`respaldo_del_dia`, pero en segundo plano: TALLY abre de inmediato, aunque tengas años de datos.
+    Con ``retraso``, empieza esos segundos después (para no quitarle velocidad a la primera vista).
 
     Si ya se está haciendo uno en esa carpeta (otra pestaña), regresa ese mismo.
     """
@@ -225,7 +230,7 @@ def iniciar_respaldo_del_dia(sesion: Sesion, carpeta: Path | str | None = None) 
         if not _toca_respaldo_del_dia(sesion, carpeta):
             return None
         nuevo = RespaldoEnCurso(sesion.almacen.ruta, carpeta, sesion.libro.ahora(),
-                                sesion.libro.perfil.respaldos_a_conservar)
+                                sesion.libro.perfil.respaldos_a_conservar, retraso)
         _EN_CURSO[carpeta.resolve()] = nuevo
         nuevo._hilo.start()
         return nuevo

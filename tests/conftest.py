@@ -22,11 +22,13 @@ def D(valor) -> Decimal:
 
 
 @pytest.fixture(autouse=True)
-def _sin_respaldos_pendientes():
-    """El portal hace el respaldo del día en segundo plano: ninguna prueba termina con uno a medias."""
-    yield
+def _sin_respaldos_pendientes(monkeypatch):
+    """El portal hace el respaldo del día en segundo plano (unos segundos después de abrir; en las pruebas, al
+    momento): ninguna prueba termina con uno a medias."""
     from motor import respaldos
 
+    monkeypatch.setattr(respaldos, "RETRASO_DEL_DIA", 0)
+    yield
     respaldos.esperar_en_curso()
 
 

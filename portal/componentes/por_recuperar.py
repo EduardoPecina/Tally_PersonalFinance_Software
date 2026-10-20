@@ -7,7 +7,7 @@ import streamlit as st
 from motor import categorias, cuentas, temporales
 from motor.modelo import TipoOperacion
 from portal.componentes import candado, formato
-from portal.componentes.sesion import ejecutar, libro
+from portal.componentes.sesion import calculado, ejecutar, libro
 
 ABIERTA = "_por_recuperar_ventana"
 DEVOLVER, GASTO = "devolver", "gasto"
@@ -15,14 +15,14 @@ DEVOLVER, GASTO = "devolver", "gasto"
 
 def avisos() -> None:
     """Los que ya pasaron del plazo para reclamar, hasta arriba del Resumen."""
-    for cargo in temporales.vencidos(libro()):
+    for cargo in calculado(temporales.vencidos):
         st.warning(f"**{formato.md(cargo.descripcion)}**: el cargo temporal de {formato.dinero_md(cargo.monto)} "
                    f"({formato.md(cargo.cuenta)}) lleva {cargo.dias} días sin devolverse. Conviene reclamarlo.",
                    icon="↩️")
 
 
 def mostrar() -> None:
-    pendientes = temporales.pendientes(libro())
+    pendientes = calculado(temporales.pendientes)
     if not pendientes:
         cerrar()
         return
@@ -60,7 +60,7 @@ def _guardado() -> None:
 
 
 def _cargo(cargo_id: str) -> temporales.CargoTemporal | None:
-    return next((c for c in temporales.pendientes(libro()) if c.operacion_id == cargo_id), None)
+    return next((c for c in calculado(temporales.pendientes) if c.operacion_id == cargo_id), None)
 
 
 @st.dialog("Ya me lo devolvieron", on_dismiss=cerrar)

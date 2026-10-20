@@ -290,6 +290,16 @@ def test_respaldo_del_dia_en_segundo_plano(sesion, tmp_path):
     assert respaldos.iniciar_respaldo_del_dia(sesion, carpeta) is None            # desactivado
 
 
+def test_el_del_dia_puede_esperar_unos_segundos(sesion, tmp_path):
+    """Al abrir TALLY empieza un poco después (para no quitarle velocidad a la primera vista); esperarlo, o cerrar
+    TALLY, también espera ese rato: nunca se queda sin hacer."""
+    carpeta = tmp_path / "Respaldos"
+    en_curso = respaldos.iniciar_respaldo_del_dia(sesion, carpeta, retraso=0.3)
+    assert not en_curso.terminado and not list(carpeta.glob("*.zip"))                # aún no empieza
+    respaldos.esperar_en_curso(carpeta)
+    assert en_curso.terminado and len(list(carpeta.glob("TALLY_automatico_*.zip"))) == 1
+
+
 @pytest.fixture
 def lento(monkeypatch):
     """El respaldo espera a que se le dé permiso: así se puede hacer algo mientras se está haciendo."""

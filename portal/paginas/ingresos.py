@@ -11,7 +11,7 @@ import streamlit as st
 from motor import categorias, ingresos, perfil, planeacion, recurrentes
 from motor.dinero import a_pesos
 from motor.modelo import ClaseCategoria, Recurrente, TipoCuenta
-from portal.componentes import formato
+from portal.componentes import estado, formato
 from portal.componentes.sesion import ejecutar, libro
 
 CADA = {"quincenal": "Quincena", "catorcenal": "Catorcena", "semanal": "Semana", "mensual": "Mes"}
@@ -23,16 +23,10 @@ def mostrar() -> None:
     st.title("Ingresos")
     st.caption("Cuánto ganas, cada cuánto te pagan y cuánto tiene que durarte cada pago. Con esto TALLY te llena el "
                "importe al registrar tu nómina y calcula tu capacidad de pago y tus presupuestos.")
-    durar, principal, otros, al_mes = st.tabs(["📆 ¿Cuánto te tiene que durar?", "💼 Tu ingreso principal",
-                                               "➕ Otros ingresos fijos", "🎯 Tu ingreso al mes"])
-    with durar:
-        _durar()
-    with principal:
-        _principal()
-    with otros:
-        _otros()
-    with al_mes:
-        _al_mes()
+    numero, pestana = estado.pestanas("ingresos", ["📆 ¿Cuánto te tiene que durar?", "💼 Tu ingreso principal",
+                                                   "➕ Otros ingresos fijos", "🎯 Tu ingreso al mes"])
+    with pestana:
+        (_durar, _principal, _otros, _al_mes)[numero]()
 
 
 # ------------------------------------------------------------- cuánto te tiene que durar
@@ -223,8 +217,8 @@ def _otros() -> None:
                     if ejecutar(lambda li: recurrentes.eliminar(li, r.id), f"Se borró «{r.nombre}»"):
                         st.session_state.pop("ing_sel", None)
                         st.rerun()
-    with st.expander("➕ Agregar otro ingreso fijo", expanded=not lista):
-        _formulario(None, principal=False)
+    estado.desplegable("➕ Agregar otro ingreso fijo", "ing_nuevo", lambda: _formulario(None, principal=False),
+                       abierto=not lista)
 
 
 def _importe(r: Recurrente) -> str:

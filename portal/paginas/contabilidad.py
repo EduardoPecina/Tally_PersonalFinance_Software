@@ -13,8 +13,8 @@ import streamlit as st
 
 from motor import contabilidad as cb
 from portal.componentes import bienes as bienes_ui
-from portal.componentes import exportar, formato
-from portal.componentes.sesion import libro
+from portal.componentes import estado, exportar, formato
+from portal.componentes.sesion import calculado, libro
 from portal.navegacion import enlace
 
 # Fondo de los renglones de título y total (con transparencia: se ve bien en tema claro y oscuro).
@@ -68,34 +68,40 @@ def mostrar() -> None:
             "- **Bienes**: tu casa, auto, laptop… lo que vale hoy, cuánto se ha depreciado y su plusvalía.\n\n"
             + TIP)
 
-    situacion = cb.situacion(lib, [p[1] for p in periodos], desde)
-    resultados = cb.resultados(lib, periodos)
-    flujo = cb.flujo(lib, periodos)
-    balanza = cb.balanza(lib, desde, hasta)
-    balanza_contra = cb.balanza(lib, *contra) if contra else None
-
-    pestanas = st.tabs(["Situación financiera", "Resultados", "Flujo de efectivo", "Balanza de comprobación",
-                        "Bienes"])
-    with pestanas[0]:
-        _situacion(situacion)
-    with pestanas[1]:
-        _resultados(resultados)
-    with pestanas[2]:
-        _flujo(flujo)
-    with pestanas[3]:
-        _balanza(balanza, balanza_contra)
-    with pestanas[4]:
-        bienes_ui.mostrar()
+    # Solo se calcula y se dibuja el reporte que está a la vista; el Excel arma los cuatro al descargarlo.
+    numero, pestana = estado.pestanas("contabilidad", PESTANAS)
+    with pestana:
+        if numero == 0:
+            _situacion(calculado(cb.situacion, [p[1] for p in periodos], desde))
+        elif numero == 1:
+            _resultados(calculado(cb.resultados, periodos))
+        elif numero == 2:
+            _flujo(calculado(cb.flujo, periodos))
+        elif numero == 3:
+            _balanza(calculado(cb.balanza, desde, hasta), calculado(cb.balanza, *contra) if contra else None)
+        else:
+            bienes_ui.mostrar()
 
     st.download_button(
         "Descargar los 4 reportes en Excel", on_click="ignore", icon=":material/table_view:",
-        data=lambda: exportar.excel({"Situación financiera": _exportable(_filas_situacion(situacion),
-                                                                 _columnas_fecha(situacion.fechas)),
-                             "Resultados": _exportable(_filas_resultados(resultados, detalle=True),
-                                                       _columnas_periodo(resultados.periodos)),
-                             "Flujo de efectivo": _exportable(_filas_flujo(flujo), _columnas_periodo(flujo.periodos)),
-                             "Balanza": _tabla_balanza(balanza, balanza_contra)}),
+        data=lambda: _excel(lib, periodos, desde, hasta, contra),
         file_name=f"TALLY_contabilidad_{desde:%Y-%m-%d}_a_{hasta:%Y-%m-%d}.xlsx")
+
+
+PESTANAS = ["Situación financiera", "Resultados", "Flujo de efectivo", "Balanza de comprobación", "Bienes"]
+
+
+def _excel(lib, periodos, desde: date, hasta: date, contra) -> bytes:
+    situacion = cb.situacion(lib, [p[1] for p in periodos], desde)
+    resultados = cb.resultados(lib, periodos)
+    flujo = cb.flujo(lib, periodos)
+    return exportar.excel({"Situación financiera": _exportable(_filas_situacion(situacion),
+                                                               _columnas_fecha(situacion.fechas)),
+                           "Resultados": _exportable(_filas_resultados(resultados, detalle=True),
+                                                     _columnas_periodo(resultados.periodos)),
+                           "Flujo de efectivo": _exportable(_filas_flujo(flujo), _columnas_periodo(flujo.periodos)),
+                           "Balanza": _tabla_balanza(cb.balanza(lib, desde, hasta),
+                                                     cb.balanza(lib, *contra) if contra else None)})
 
 
 # ------------------------------------------------------------ tabla y detalle

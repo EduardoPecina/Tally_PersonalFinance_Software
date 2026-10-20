@@ -95,6 +95,24 @@ def test_un_mes_con_deficit_y_otro_sin_problemas(libro, ctas, cat):
         "¡Buen mes! Ahorraste el 50.0 % de lo que entró. Si te sobra, súmalo a una meta o a tu fondo de emergencia."]
 
 
+def test_meses_tocados_al_mover_o_borrar_un_movimiento(libro, julio, reloj, cat):
+    """Cambiar un movimiento de un mes cerrado a otro (o borrarlo) también toca el mes cerrado."""
+    cierre.cerrar(libro, 2026, 7)
+    reloj.momento = datetime(2026, 8, 4, 10, 0)
+    renta = next(op for op in libro.operaciones(date(2026, 7, 3), date(2026, 7, 3)))
+    antes = cierre.huella(libro)
+    movimientos.editar(libro, renta.id, fecha=date(2026, 8, 3))                     # de julio (cerrado) a agosto
+    assert cierre.meses_tocados(libro, antes) == ["2026-07"]
+    antes = cierre.huella(libro)
+    movimientos.eliminar(libro, renta.id)                                            # ya está en agosto (abierto)
+    assert cierre.meses_tocados(libro, antes) == []
+    cafe = next(op for op in libro.operaciones(date(2026, 7, 16), date(2026, 7, 16)))
+    antes = cierre.huella(libro)
+    movimientos.eliminar(libro, cafe.id)
+    assert cierre.meses_tocados(libro, antes) == ["2026-07"]
+    assert cierre.meses_tocados(libro, cierre.huella(libro)) == []                   # sin cambios, nada
+
+
 def test_cerrar_no_bloquea_y_muestra_lo_que_cambio_despues(libro, julio, reloj, cat):
     assert cierre.recordar(libro) == (2026, 7)                     # 3 de agosto: toca cerrar julio
     c = cierre.cerrar(libro, 2026, 7, "  Revisado con el banco  ")

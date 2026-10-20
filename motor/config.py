@@ -3,7 +3,7 @@
 import sys
 
 APP_NOMBRE = "TALLY"
-VERSION = "0.30.1"
+VERSION = "0.31.0"
 MONEDA = "MXN"
 LEMA = "Your money. Your computer. Your data."
 PUERTO_PORTAL = 8765

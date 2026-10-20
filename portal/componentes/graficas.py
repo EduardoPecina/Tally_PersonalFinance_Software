@@ -1,7 +1,14 @@
-"""Gráficas sencillas (Altair). Una serie por gráfica, un solo tono, con tooltip."""
+"""Gráficas sencillas (Altair). Una serie por gráfica, un solo tono, con tooltip.
+
+Rapidez: las gráficas de TALLY siempre se arman igual y tests/test_graficas.py revisa que cada una esté bien
+escrita para Vega-Lite. Por eso Altair no las vuelve a revisar contra el esquema en cada vista (tardaba ~10 ms por
+gráfica al armarla y otro tanto al dibujarla). También por rapidez: los datos van en la capa de arriba (no en cada
+capa) y los canales como objetos de Altair (``alt.Text``…, no textos como ``"Texto:N"``).
+"""
 
 from __future__ import annotations
 
+import functools
 from collections import defaultdict
 from datetime import date
 from decimal import Decimal
@@ -16,6 +23,8 @@ from portal.componentes.formato import dinero
 COLOR = "#6B53F1"  # acento de la marca (.streamlit/config.toml)
 TEXTO_SECUNDARIO = "#52514e"
 SELECCION = "eleccion"
+
+alt.utils.schemapi.disable_debug_mode()      # sin revisar cada pieza al crearla (ver arriba)
 
 
 FECHAS = alt.TimeLocale(           # los ejes de fechas en español: «12 jul», no «12 Jul»
@@ -34,7 +43,18 @@ def _altair(grafica, **opciones):
     moneda = ["", f"{espacio}{m.simbolo}"] if m.despues else [f"{m.simbolo}{espacio}", ""]
     local = alt.Locale(number=alt.NumberLocale(decimal=m.decimal, thousands=m.miles, grouping=[3], currency=moneda),
                        time=FECHAS)
-    return st.altair_chart(grafica.configure(locale=local), **opciones)
+    return st.altair_chart(sin_revisar(grafica.configure(locale=local)), **opciones)
+
+
+def sin_revisar(grafica):
+    """La misma gráfica, pero Streamlit la convierte sin revisarla otra vez contra el esquema (ver arriba)."""
+    object.__setattr__(grafica, "to_dict", functools.partial(grafica.to_dict, validate=False))
+    return grafica
+
+
+def _opacidad(parametro: alt.Parameter, si: float, no: float) -> alt.OpacityValue:
+    """``alt.condition`` ya como objeto de Altair: como diccionario, Altair tarda ~6 ms en convertirlo."""
+    return alt.OpacityValue(**alt.condition(parametro, alt.value(si), alt.value(no)))
 
 
 def _clic(campo: str) -> alt.Parameter:
@@ -66,7 +86,7 @@ def barras(filas: list[tuple[str, Decimal]], titulo_valor: str = "Importe", titu
         {"Nombre": [n for n, _ in filas], "Valor": [float(v) for _, v in filas],
          "Texto": [dinero(v) for _, v in filas]}
     )
-    base = alt.Chart(datos).encode(
+    base = alt.Chart().encode(
         y=alt.Y("Nombre:N", sort=None, title=None, axis=alt.Axis(labelLimit=220, labelColor=TEXTO_SECUNDARIO)),
         x=alt.X("Valor:Q", title=None, axis=alt.Axis(format="$,.0f", grid=True, gridOpacity=0.4,
                                                     labelColor=TEXTO_SECUNDARIO)),
@@ -75,9 +95,9 @@ def barras(filas: list[tuple[str, Decimal]], titulo_valor: str = "Importe", titu
     barra = base.mark_bar(color=COLOR, cornerRadiusEnd=4, height={"band": 0.7})
     if clave is not None:
         clic = _clic("Nombre")
-        barra = barra.add_params(clic).encode(opacity=alt.condition(clic, alt.value(1.0), alt.value(0.45)))
-    grafica = barra + base.mark_text(align="left", dx=4, color=TEXTO_SECUNDARIO, fontSize=11).encode(text="Texto:N")
-    return _mostrar(grafica.properties(height=max(120, 28 * len(filas))), clave, "Nombre")
+        barra = barra.add_params(clic).encode(opacity=_opacidad(clic, 1.0, 0.45))
+    texto = base.mark_text(align="left", dx=4, color=TEXTO_SECUNDARIO, fontSize=11).encode(text=alt.Text("Texto:N"))
+    return _mostrar(alt.layer(barra, texto, data=datos).properties(height=max(120, 28 * len(filas))), clave, "Nombre")
 
 
 def linea(puntos: list[tuple[date, Decimal]], titulo_valor: str = "Patrimonio") -> None:
@@ -89,7 +109,7 @@ def linea(puntos: list[tuple[date, Decimal]], titulo_valor: str = "Patrimonio") 
         {"Fecha": [pd.Timestamp(f) for f, _ in puntos], "Valor": [float(v) for _, v in puntos],
          "Texto": [dinero(v) for _, v in puntos]}
     )
-    base = alt.Chart(datos).encode(
+    base = alt.Chart().encode(
         x=alt.X("Fecha:T", title=None, axis=alt.Axis(format="%d %b", labelColor=TEXTO_SECUNDARIO, grid=False)),
         y=alt.Y("Valor:Q", title=None, scale=alt.Scale(zero=False),
                 axis=alt.Axis(format="$,.0f", labelColor=TEXTO_SECUNDARIO, gridOpacity=0.4)),
@@ -97,11 +117,11 @@ def linea(puntos: list[tuple[date, Decimal]], titulo_valor: str = "Patrimonio") 
     cercano = alt.selection_point(nearest=True, on="pointerover", fields=["Fecha"], empty=False)
     trazo = base.mark_line(color=COLOR, strokeWidth=2)
     puntos_ocultos = base.mark_point(color=COLOR, size=60, filled=True).encode(
-        opacity=alt.condition(cercano, alt.value(1), alt.value(0)),
+        opacity=_opacidad(cercano, 1, 0),
         tooltip=[alt.Tooltip("Fecha:T", title="Fecha", format="%d/%m/%Y"),
                  alt.Tooltip("Texto:N", title=titulo_valor)],
     ).add_params(cercano)
-    _altair((trazo + puntos_ocultos).properties(height=260), width="stretch")
+    _altair(alt.layer(trazo, puntos_ocultos, data=datos).properties(height=260), width="stretch")
 
 
 # ------------------------------------------------------------ varias series
@@ -155,7 +175,7 @@ def dona(filas: list[tuple[str, Decimal]], titulo_valor: str = "Importe", titulo
     )
     if clave is not None:
         clic = _clic("Nombre")
-        grafica = grafica.add_params(clic).encode(opacity=alt.condition(clic, alt.value(1.0), alt.value(0.45)))
+        grafica = grafica.add_params(clic).encode(opacity=_opacidad(clic, 1.0, 0.45))
     return _mostrar(grafica.properties(height=360), clave, "Nombre")
 
 
@@ -179,7 +199,7 @@ def barras_por_periodo(datos: pd.DataFrame, orden: list[str], titulo_valor: str 
     )
     if clave is not None:
         clic = _clic("Grupo")
-        grafica = grafica.add_params(clic).encode(opacity=alt.condition(clic, alt.value(1.0), alt.value(0.45)))
+        grafica = grafica.add_params(clic).encode(opacity=_opacidad(clic, 1.0, 0.45))
     return _mostrar(grafica.properties(height=380), clave, "Grupo")
 
 
@@ -191,7 +211,7 @@ def lineas_por_periodo(datos: pd.DataFrame, orden: list[str], titulo_valor: str 
         return
     datos = datos.assign(Texto=[dinero(Decimal(str(round(v, 2)))) for v in datos["Valor"]])
     escala = _escala(list(datos["Grupo"].unique()))
-    base = alt.Chart(datos).encode(
+    base = alt.Chart().encode(
         x=alt.X("Periodo:N", sort=orden, title=None, axis=alt.Axis(labelAngle=0, labelColor=TEXTO_SECUNDARIO)),
         y=alt.Y("Valor:Q", title=None, axis=alt.Axis(format="$,.0f", labelColor=TEXTO_SECUNDARIO, gridOpacity=0.4)),
         color=alt.Color("Grupo:N", scale=escala, legend=_leyenda()),
@@ -199,7 +219,7 @@ def lineas_por_periodo(datos: pd.DataFrame, orden: list[str], titulo_valor: str 
     puntos = base.mark_point(size=70, filled=True).encode(
         tooltip=[alt.Tooltip("Periodo:N", title="Periodo"), alt.Tooltip("Grupo:N", title=titulo_grupo),
                  alt.Tooltip("Texto:N", title=titulo_valor)])
-    _altair((base.mark_line(strokeWidth=2) + puntos).properties(height=360), width="stretch")
+    _altair(alt.layer(base.mark_line(strokeWidth=2), puntos, data=datos).properties(height=360), width="stretch")
 
 
 def ingresos_y_gastos(datos: pd.DataFrame, orden: list[str]) -> None:
@@ -260,8 +280,9 @@ def valor_y_lo_invertido(puntos: list[tuple[date, Decimal, Decimal]]) -> None:
         strokeDash=alt.StrokeDash("Serie:N", scale=alt.Scale(domain=nombres, range=[[1, 0], [5, 4]]), legend=None))
     cercano = alt.selection_point(nearest=True, on="pointerover", fields=["Fecha"], empty=False)
     regla = alt.Chart(ancho).mark_rule(color=GRIS).encode(x=x).transform_filter(cercano)
-    marcas = alt.Chart(ancho).mark_point(color=COLOR, size=70, filled=True).encode(
-        x=x, y=y, opacity=alt.condition(cercano, alt.value(1), alt.value(0)),
+    # Con nombre propio: si no, Altair le inventa uno a partir de todos sus datos (lento).
+    marcas = alt.Chart(ancho, name="puntos").mark_point(color=COLOR, size=70, filled=True).encode(
+        x=x, y=y, opacity=_opacidad(cercano, 1, 0),
         tooltip=[alt.Tooltip("Fecha:T", title="Fecha", format="%d/%m/%Y"), alt.Tooltip("Texto:N", title="Valor"),
                  alt.Tooltip("Metiste:N", title="Lo que metiste"), alt.Tooltip("Ganancia:N", title="Ganancia")],
     ).add_params(cercano)
@@ -283,18 +304,18 @@ def valor_por_serie(series: dict[str, list[tuple[date, Decimal]]]) -> None:
     datos = pd.DataFrame([{"Fecha": f, "Grupo": g, "Valor": v} for (f, g), v in filas.items()])
     datos["Texto"] = [dinero(Decimal(str(round(v, 2)))) for v in datos["Valor"]]
     dias = (datos["Fecha"].max() - datos["Fecha"].min()).days
-    base = alt.Chart(datos).encode(
+    base = alt.Chart().encode(
         x=alt.X("Fecha:T", title=None, axis=_eje_fecha(dias)),
         y=alt.Y("Valor:Q", title=None, axis=alt.Axis(format="$,.0f", labelColor=TEXTO_SECUNDARIO, gridOpacity=0.4)),
         color=alt.Color("Grupo:N", scale=_escala(list(datos["Grupo"].unique())), legend=_leyenda()),
     )
     cercano = alt.selection_point(nearest=True, on="pointerover", fields=["Fecha", "Grupo"], empty=False)
     marcas = base.mark_point(size=70, filled=True).encode(
-        opacity=alt.condition(cercano, alt.value(1), alt.value(0)),
+        opacity=_opacidad(cercano, 1, 0),
         tooltip=[alt.Tooltip("Fecha:T", title="Fecha", format="%d/%m/%Y"), alt.Tooltip("Grupo:N", title="Qué"),
                  alt.Tooltip("Texto:N", title="Valor")],
     ).add_params(cercano)
-    _altair((base.mark_line(strokeWidth=2) + marcas).properties(height=320), width="stretch")
+    _altair(alt.layer(base.mark_line(strokeWidth=2), marcas, data=datos).properties(height=320), width="stretch")
 
 
 def ganancias(filas: list[tuple[str, Decimal]]) -> None:
@@ -314,5 +335,5 @@ def ganancias(filas: list[tuple[str, Decimal]]) -> None:
                         legend=_leyenda()),
         tooltip=[alt.Tooltip("Periodo:N", title="Periodo"), alt.Tooltip("Texto:N", title="Ganancia")],
     )
-    cero = alt.Chart(pd.DataFrame({"y": [0]})).mark_rule(color=GRIS).encode(y="y:Q")
+    cero = alt.Chart(pd.DataFrame({"y": [0]})).mark_rule(color=GRIS).encode(y=alt.Y("y:Q"))
     _altair((barras_ + cero).properties(height=300), width="stretch")

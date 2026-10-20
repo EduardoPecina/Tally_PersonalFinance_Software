@@ -142,8 +142,8 @@ def detener_portal_trabado() -> bool:
 
 
 def iniciar_servidor() -> subprocess.Popen:
-    comando = [
-        sys.executable, "-m", "streamlit", "run", str(PROGRAMA / "portal" / "app.py"),
+    comando = [                     # como «streamlit run», pero dejando listo lo pesado mientras abre el navegador
+        sys.executable, str(PROGRAMA / "portal" / "servidor.py"), "run", str(PROGRAMA / "portal" / "app.py"),
         "--server.port", str(PUERTO_PORTAL), "--server.address", "localhost", "--server.headless", "true",
         "--browser.gatherUsageStats", "false",
     ]

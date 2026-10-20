@@ -7,7 +7,10 @@ errores del motor como mensajes amables.
 
 from __future__ import annotations
 
+import threading
+import weakref
 from collections.abc import Callable
+from pathlib import Path
 from typing import TypeVar
 
 import streamlit as st
@@ -20,11 +23,35 @@ from motor.sesion import Sesion
 T = TypeVar("T")
 
 
+_PRECARGADAS: dict[str, Sesion] = {}         # abiertas antes de la primera vista (portal/servidor.py)
+
+
 @st.cache_resource(show_spinner=False)
 def _abrir(ruta: str) -> Sesion:
     from portal.componentes import candado              # la llave, si tus datos tienen contraseña
 
+    precargada = _PRECARGADAS.pop(ruta, None)
+    if precargada is not None and candado.llave() is None and _al_dia(precargada):
+        return precargada
     return Sesion.abrir(ruta, llave=candado.llave())
+
+
+def precargar() -> None:
+    """Abre tus datos antes de la primera vista, mientras tu navegador abre (portal/servidor.py). Solo si ya existen
+    y no tienen contraseña (con contraseña hay que esperar a que la escribas)."""
+    from motor import seguridad
+
+    ruta = ruta_datos()
+    if Path(ruta).exists() and seguridad.config(ruta) is None:
+        _PRECARGADAS[ruta] = Sesion.abrir(ruta)
+
+
+def _al_dia(precargada: Sesion) -> bool:
+    """Que nadie haya cambiado el archivo desde que se precargó."""
+    try:
+        return precargada.almacen.revision == precargada.almacen.revision_en_disco()
+    except ErrorTally:
+        return False
 
 
 def ruta_datos() -> str:
@@ -37,8 +64,10 @@ def sesion() -> Sesion:
 
 
 def olvidar_sesion() -> None:
-    """Cierra la sesión en memoria (p. ej. tras apartar un archivo dañado, o al bloquear TALLY)."""
+    """Cierra la sesión en memoria (p. ej. tras apartar un archivo dañado, o al bloquear TALLY), con lo calculado."""
     _abrir.clear()
+    with _CANDADO_CALCULOS:
+        _CALCULOS.clear()
 
 
 def llave_actual() -> bytes | None:
@@ -51,6 +80,48 @@ def llave_actual() -> bytes | None:
 
 def libro() -> Libro:
     return sesion().libro
+
+
+MAXIMO_CALCULOS = 32          # por versión de tus datos (unos MB a lo más cada uno: el Historial completo ~3 MB)
+# Lo calculado, junto a la sesión de la que salió: se comparte entre pestañas y se va con ella (al bloquear TALLY o
+# recargar tus datos no queda nada en memoria).
+_CALCULOS: weakref.WeakKeyDictionary[Sesion, tuple[tuple, dict]] = weakref.WeakKeyDictionary()
+_CANDADO_CALCULOS = threading.Lock()
+
+
+def calculado(funcion: Callable[..., T], *args, **kwargs) -> T:
+    """``funcion(libro(), *args, **kwargs)``, recordado mientras tus datos no cambien (y el mismo día).
+
+    Para lo que tarda y se vuelve a pedir en cada clic de la misma página (elegir un renglón, abrir una pestaña,
+    volver a la página). Cualquier cambio a tus datos lo olvida todo. Lo que regresa no se debe modificar."""
+    actual = sesion()
+    lib = actual.libro
+    version = (id(lib), actual.almacen.revision, lib.hoy())
+    llave = (funcion.__module__, funcion.__qualname__, _congelar(args), _congelar(kwargs))
+    with _CANDADO_CALCULOS:
+        guardados = _CALCULOS.get(actual)
+        if guardados is None or guardados[0] != version:
+            guardados = _CALCULOS[actual] = (version, {})
+        memoria = guardados[1]
+        if llave in memoria:
+            return memoria[llave]
+    resultado = funcion(lib, *args, **kwargs)
+    with _CANDADO_CALCULOS:
+        if len(memoria) >= MAXIMO_CALCULOS:
+            memoria.pop(next(iter(memoria)))                # el más viejo
+        memoria[llave] = resultado
+    return resultado
+
+
+def _congelar(valor):
+    """Una versión que sirve de llave: las listas, conjuntos y diccionarios (p. ej. los filtros) no la sirven."""
+    if isinstance(valor, dict):
+        return tuple(sorted((k, _congelar(v)) for k, v in valor.items()))
+    if isinstance(valor, (list, tuple)):
+        return tuple(_congelar(v) for v in valor)
+    if isinstance(valor, (set, frozenset)):
+        return frozenset(_congelar(v) for v in valor)
+    return valor
 
 
 def _intentar(accion: Callable[[Libro], T], exito: str | None) -> tuple[bool, T | None]:

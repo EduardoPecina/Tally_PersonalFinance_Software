@@ -94,11 +94,11 @@ jobs:
           done
           curl -fsS http://127.0.0.1:8765/_stcore/health
           curl -fsS http://127.0.0.1:8765/ | grep -qi "<html"
-          pgrep -fl "streamlit run" || true
+          pgrep -fl "portal/app.py" || true
           # La app usa el Python de TALLY y el portal que corre es el instalado (en Mac, el proceso de Python se
           # llama «Python.app/…/Python» aunque venga de ~/TALLY/_Python: por eso se revisa el lanzador).
           grep -q "/TALLY/_Python/bin/python" "$HOME/Applications/TALLY.app/Contents/MacOS/TALLY"
-          pgrep -f "streamlit run $HOME/TALLY/_Programa/portal/app.py" >/dev/null
+          pgrep -f "portal/servidor.py run $HOME/TALLY/_Programa/portal/app.py" >/dev/null
           pkill -f "portal/app.py" || true
       - name: Bitácoras (si algo falló)
         if: failure()

@@ -6,8 +6,8 @@ import pandas as pd
 import streamlit as st
 
 from motor import analisis, reportes
-from portal.componentes import exportar, filtros, formato
-from portal.componentes.sesion import libro
+from portal.componentes import estado, exportar, filtros, formato
+from portal.componentes.sesion import calculado, libro
 
 GUARDADO = "_pivot"
 RAPIDAS = {
@@ -66,14 +66,13 @@ def mostrar() -> None:
         if columnas[i % 3].button(nombre, key=f"rapida_{i}", width="stretch"):
             config.update(opciones)
             st.rerun()
-    with st.expander("Personalizar", expanded=False):
-        _formulario(config)
+    estado.desplegable("Personalizar", "pivots_personalizar", lambda: _formulario(config))
 
     lib = libro()
     desde, hasta = filtros.fechas(lib, config)
-    pivot = analisis.pivot(lib, filas=config["filas"], columnas=config["columnas"], medida=config["medida"],
-                           desde=desde, hasta=hasta, cuentas=set(config["cuentas"]) or None,
-                           incluir_apartado=config["apartado"])
+    pivot = calculado(analisis.pivot, filas=config["filas"], columnas=config["columnas"], medida=config["medida"],
+                      desde=desde, hasta=hasta, cuentas=set(config["cuentas"]) or None,
+                      incluir_apartado=config["apartado"])
     titulo = f"{analisis.MEDIDAS[config['medida']]} por {analisis.FILAS[config['filas']].lower()}"
     if config["columnas"] != "ninguna":
         titulo += f" y {analisis.COLUMNAS[config['columnas']].lower()}"

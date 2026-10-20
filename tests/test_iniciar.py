@@ -88,7 +88,8 @@ def test_inicia_streamlit_solo_en_localhost(iniciar, monkeypatch, tmp_path):
     monkeypatch.setattr(iniciar.subprocess, "Popen", popen)
     iniciar.iniciar_servidor()
     comando = lanzado["comando"]
-    assert comando[1:4] == ["-m", "streamlit", "run"]
+    assert Path(comando[1]).name == "servidor.py" and comando[2] == "run"   # streamlit run, con la precarga
+    assert comando[3].endswith("app.py")
     assert comando[comando.index("--server.address") + 1] == "localhost"
     assert comando[comando.index("--server.port") + 1] == "8765"
     assert comando[comando.index("--browser.gatherUsageStats") + 1] == "false"

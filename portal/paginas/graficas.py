@@ -11,7 +11,7 @@ import streamlit as st
 
 from motor import analisis, reportes
 from portal.componentes import filtros, formato, graficas
-from portal.componentes.sesion import libro
+from portal.componentes.sesion import calculado, libro
 
 GUARDADO = "_grafica"
 TIPOS = {
@@ -145,8 +145,8 @@ def mostrar() -> None:
     st.caption(filtros.describir(lib, config))
 
     if tipo in ("dona", "barras"):
-        pivot = analisis.pivot(lib, filas=config["agrupar"], columnas="ninguna", medida=medida, desde=desde,
-                               hasta=hasta, cuentas=cuentas)
+        pivot = calculado(analisis.pivot, filas=config["agrupar"], columnas="ninguna", medida=medida, desde=desde,
+                          hasta=hasta, cuentas=cuentas)
         filas = [(f, pivot.total_fila[f]) for f in pivot.filas]
         if tipo == "dona":
             clic = graficas.dona(filas, SUMAR[medida], AGRUPAR[config["agrupar"]], clave="grafica_clic")
@@ -155,8 +155,8 @@ def mostrar() -> None:
                                    clave="grafica_clic")
         _desglose(config, pivot.total_fila, desde, hasta, cuentas, clic)
     elif tipo in ("apiladas", "lineas"):
-        pivot = analisis.pivot(lib, filas=config["agrupar"], columnas="mes", medida=medida, desde=desde,
-                               hasta=hasta, cuentas=cuentas)
+        pivot = calculado(analisis.pivot, filas=config["agrupar"], columnas="mes", medida=medida, desde=desde,
+                          hasta=hasta, cuentas=cuentas)
         if tipo == "apiladas":
             clic = graficas.barras_por_periodo(_largo(pivot), pivot.columnas, SUMAR[medida],
                                                AGRUPAR[config["agrupar"]], clave="grafica_clic")
@@ -165,8 +165,8 @@ def mostrar() -> None:
             graficas.lineas_por_periodo(_largo(pivot), pivot.columnas, SUMAR[medida], AGRUPAR[config["agrupar"]])
         _desglose(config, pivot.total_fila, desde, hasta, cuentas, clic)
     elif tipo == "ingresos_gastos":
-        pivot = analisis.pivot(lib, filas="clase", columnas="mes", medida="todo", desde=desde, hasta=hasta,
-                               cuentas=cuentas)
+        pivot = calculado(analisis.pivot, filas="clase", columnas="mes", medida="todo", desde=desde, hasta=hasta,
+                          cuentas=cuentas)
         datos = pd.DataFrame([{"Periodo": c, "Grupo": f, "Valor": float(v)} for (f, c), v in pivot.valores.items()],
                              columns=["Periodo", "Grupo", "Valor"])
         graficas.ingresos_y_gastos(datos, pivot.columnas)
@@ -178,6 +178,6 @@ def mostrar() -> None:
         primera = analisis.meses_con_datos(lib)
         inicio = desde or (primera[0] if primera else lib.hoy() - timedelta(days=90))
         fin = min(hasta or lib.hoy(), lib.hoy())
-        graficas.linea([(p.fecha, p.patrimonio_neto) for p in reportes.evolucion(lib, inicio, fin)])
+        graficas.linea([(p.fecha, p.patrimonio_neto) for p in calculado(reportes.evolucion, inicio, fin)])
         if cuentas:
             st.caption("El patrimonio siempre incluye todas tus cuentas.")

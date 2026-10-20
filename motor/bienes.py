@@ -255,7 +255,7 @@ def valuar(libro: Libro, cuenta_id: str, dia: date) -> Valuacion:
     bien = _bien(libro, cuenta_id)
     costo = a_pesos(libro.saldo_centavos(cuenta_id, dia))
     eventos = []                        # (fecha, orden, tipo, importe): compras/mejoras antes que avalúos del día
-    for op in libro.operaciones(hasta=dia):
+    for op in libro.operaciones(hasta=dia, cuenta_id=cuenta_id):
         if op.id in bien.operaciones_baja:
             continue
         entrada = sum(p.importe for p in op.partidas if p.cuenta_id == cuenta_id)
