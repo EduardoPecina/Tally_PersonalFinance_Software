@@ -2,6 +2,44 @@
 
 Todos los cambios relevantes de TALLY se documentan aquí.
 
+## [0.31.0] — Sin publicar
+
+Revisión completa de rapidez y de errores antes de la 1.0. Medido con datos ficticios grandes (5 años, unos 11,600
+movimientos y 14 cuentas), abrir las 21 páginas tarda en total **la mitad** que antes (de 13.9 s a unos 7 s); el
+Resumen, 75 % menos (de 2.2 s a ~0.55 s) y Contabilidad Técnica, 80 % menos (de 1.7 s a ~0.33 s). Abrir TALLY desde
+cero, de unos 2.8 s a 1.8 s.
+
+- **Cálculos mucho más rápidos con años de datos.**
+  - El valor de tus bienes (depreciación y avalúos) solo revisa los movimientos de cada bien. Antes recorría todos
+    tus movimientos cientos de veces: era lo que hacía lento al Resumen y a Contabilidad.
+  - Guardar un cambio con meses ya cerrados ya no compara todos tus movimientos para saber qué meses tocaste.
+  - Comparar nombres (reglas automáticas, duplicados, salud de tus datos) es más rápido y se recuerda.
+  - Lo que se calcula (Historial, Contabilidad, Gráficas, Tablas dinámicas, Calendario, reglas, salud de tus datos,
+    cargos por recuperar…) se recuerda mientras tus datos no cambien: elegir un renglón, abrir una pestaña o volver a
+    una página ya no lo recalcula. Cualquier cambio a tus datos lo vuelve a calcular, y al bloquear TALLY con
+    contraseña se olvida junto con tus datos.
+- **Las páginas solo arman lo que estás viendo.**
+  - Pestañas: Contabilidad Técnica, Impuestos, Calendario, Ingresos, Cierre de mes, el préstamo en Deudas y
+    Categorías calculan y dibujan solo la pestaña abierta, y recuerdan en cuál estabas aunque cambies de página.
+  - Desplegables con formularios, tablas o gráficas (➕ Nueva cuenta, ➕ Agregar un préstamo, la tasa de cada
+    tarjeta, aportar a una meta, bienes, inversiones, reglas, categorías, perfiles y conceptos de impuestos, tus meses
+    anteriores en el cierre…) se arman al abrirlos; abrirlos solo rehace ese desplegable, no toda la página, y si lo
+    dejas abierto sigue abierto al volver. La gráfica por subcategoría del Resumen, igual.
+- **Gráficas más ligeras.** Se arman y se mandan al navegador en menos de la mitad del tiempo (se ven igual). Que
+  cada gráfica esté bien escrita lo revisan las pruebas, no cada vista.
+- **Cada clic, ~0.1 s menos:** Streamlit ya no hace una limpieza de memoria forzada después de cada vista (Python la
+  hace por su cuenta cuando hace falta).
+- **Abre más rápido.** Mientras tu navegador abre, TALLY ya va cargando lo pesado (las librerías y, si tus datos no
+  tienen contraseña, tus datos) con el nuevo `portal/servidor.py`. El respaldo automático del día empieza unos
+  segundos después de abrir, para no quitarle velocidad a la primera vista (al cerrar TALLY se espera, como siempre).
+- **Arreglo:** el formulario de un perfil de Impuestos aparecía vacío si salías de la página y regresabas (y al
+  guardarlo quedaba sin nombre). Ahora se vuelve a llenar con lo guardado.
+- **Revisión de errores:** todas las páginas, pestañas y desplegables, con datos vacíos, chicos y grandes y con
+  contraseña, en las pruebas y en un navegador real, sin errores; fechas difíciles (29 de febrero, días 29–31) en
+  pagos fijos y cortes de tarjeta; y una prueba nueva con cientos de acciones al azar que compara los cálculos
+  rápidos contra los lentos.
+- No cambia el formato de tus datos ni de tus respaldos.
+
 ## [0.30.1] — Sin publicar
 
 - **Mac: TALLY queda en el Dock al instalarlo.** Al terminar `INSTALAR.command`, el ícono de TALLY ya está en el

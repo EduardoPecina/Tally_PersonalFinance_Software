@@ -290,7 +290,7 @@ Si PowerShell no deja activar el entorno, ejecuta una vez
 ```text
 .streamlit/   Configuración del portal local (localhost:8765, sin telemetría)
 motor/        Toda la lógica financiera y de persistencia; independiente de Streamlit
-portal/       Interfaz con Streamlit: páginas, componentes y lanzador (iniciar.py)
+portal/       Interfaz con Streamlit: páginas, componentes, lanzador (iniciar.py) y servidor (servidor.py)
 instalador/   Instalador para Windows y Mac (instalar.py; lo llaman INSTALAR.bat e INSTALAR.command)
 tests/        Pruebas automatizadas con datos ficticios
 docs/         Modelo contable, persistencia y marca (docs/marca)

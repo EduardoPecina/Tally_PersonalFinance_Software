@@ -82,7 +82,7 @@ def libro() -> Libro:
     return sesion().libro
 
 
-MAXIMO_CALCULOS = 64          # por versión de tus datos: los filtros que vas probando en un rato
+MAXIMO_CALCULOS = 32          # por versión de tus datos (unos MB a lo más cada uno: el Historial completo ~3 MB)
 # Lo calculado, junto a la sesión de la que salió: se comparte entre pestañas y se va con ella (al bloquear TALLY o
 # recargar tus datos no queda nada en memoria).
 _CALCULOS: weakref.WeakKeyDictionary[Sesion, tuple[tuple, dict]] = weakref.WeakKeyDictionary()
