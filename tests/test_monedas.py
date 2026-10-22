@@ -146,3 +146,11 @@ def test_el_excel_lleva_tu_simbolo():
 def test_numeros_redondos_para_umbrales():
     assert [monedas.redondo(x) for x in (D(116), D(232), D(65), D(30_000), D("0.5"), D(9))] == [
         100, 200, 50, 20_000, 1, 5]
+
+
+def test_otra_moneda_junto_a_la_tuya():
+    assert monedas.en_moneda(D(1200), "USD") == "US$1,200.00"
+    assert monedas.en_moneda(D(75456), "CLP") == "CLP 75.456"                # el código, separado del número
+    assert monedas.en_moneda(D(-10), "SEK") == "-10,00 SEK"
+    monedas.usar("CLP")
+    assert monedas.en_moneda(D(75456), "CLP") == "$75.456"                   # la tuya, con su símbolo

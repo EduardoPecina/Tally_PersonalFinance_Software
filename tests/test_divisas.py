@@ -165,6 +165,39 @@ def test_editar_y_duplicar_vuelven_a_convertir(lib, ctas):
     assert movimientos.describir(movimientos.editar(lib, t.id, llega=98)).llega == D(98)
 
 
+def test_cambiar_un_movimiento_a_una_cuenta_de_otra_moneda_conserva_su_valor(lib, ctas):
+    debito, dolares, euros = ctas
+    dia = date(2026, 7, 1)
+    op = movimientos.registrar_gasto(lib, dia, debito, gasto(lib), 180)
+    a_dolares = movimientos.editar(lib, op.id, cuenta_id=dolares)                       # 180 pesos = 10 dólares
+    assert [(p.importe, p.original) for p in a_dolares.partidas_de_cuenta()] == [(-180_00, -10_00)]
+    assert movimientos.describir(movimientos.editar(lib, op.id, cuenta_id=debito)).monto == D(180)
+    repartido = movimientos.registrar_gasto(lib, dia, debito,
+                                            reparto=[(gasto(lib), 90), (gasto(lib, "RESTAURANTES"), 270)])
+    detalle = movimientos.describir(movimientos.editar(lib, repartido.id, cuenta_id=dolares))
+    assert detalle.monto == D(20) and sorted(m for _, m in detalle.reparto) == [D(5), D(15)]
+    ingreso = movimientos.registrar_ingreso(lib, dia, dolares, gasto(lib, "NOMINA"), 100)
+    assert movimientos.describir(movimientos.editar(lib, ingreso.id, cuenta_id=euros)).monto == D(90)
+    t = registrar_transferencia(lib, dia, debito, euros, 1_800)                         # 1,800 pesos → 90 euros
+    volteada = movimientos.editar(lib, t.id, cuenta_id=dolares, cuenta_destino_id=debito)
+    assert {p.cuenta_id: (p.importe, p.original) for p in volteada.partidas} == {
+        dolares: (-1_800_00, -100_00), debito: (1_800_00, None)}
+    assert movimientos.editar(lib, op.id, cuenta_id=dolares, monto=7).partidas_de_cuenta()[0].original == -7_00
+    cambio = registrar_transferencia(lib, dia, dolares, debito, 10, llega=175)            # el banco te dio 175
+    otra_de_pesos = cuentas.crear(lib, "Otra de pesos", "ahorro", fecha_creacion=INICIO).id
+    otros_dolares = cuentas.crear(lib, "Otros dólares", "efectivo", fecha_creacion=INICIO, moneda="USD").id
+    assert movimientos.describir(movimientos.editar(lib, cambio.id, cuenta_destino_id=otra_de_pesos)).llega == D(175)
+    assert movimientos.describir(movimientos.editar(lib, cambio.id, cuenta_id=otros_dolares)).llega == D(175)
+    a_euros = movimientos.editar(lib, cambio.id, cuenta_destino_id=euros)               # otra moneda: se calcula
+    assert movimientos.describir(a_euros).llega == D(9)
+
+
+def test_sin_tu_moneda_aun_no_hay_cuentas_en_otra(libro):
+    with pytest.raises(ErrorValidacion, match="Primero elige tu moneda"):
+        cuentas.crear(libro, "Dólares Ficticios", "ahorro", moneda="USD")
+    assert cuentas.listar(libro) == []
+
+
 def test_ajustar_el_saldo_en_dolares(lib, ctas):
     _, dolares, _ = ctas
     op = movimientos.actualizar_saldo(lib, dolares, "1012.50", date(2026, 7, 1))

@@ -78,7 +78,9 @@ def formulario_nueva_cuenta(clave: str = "cuentas") -> None:
     tipo = st.selectbox("Tipo de cuenta", TIPOS, format_func=_etiqueta_tipo, key=f"{clave}_tipo_nueva")
     es_credito = tipo is TipoCuenta.CREDITO
     modo_pago = _elegir_modo_pago(f"{clave}_modo_pago") if es_credito else MODO_NINGUNO
-    moneda = (monedas_cuenta.elegir(lib, f"{clave}_moneda_nueva") if tipo in TIPOS_EN_OTRA_MONEDA else "")
+    # Sin perfil (la bienvenida) aún no hay «tu moneda»: las cuentas en otra moneda se agregan después, en Cuentas.
+    moneda = (monedas_cuenta.elegir(lib, f"{clave}_moneda_nueva")
+              if tipo in TIPOS_EN_OTRA_MONEDA and lib.perfil is not None else "")
     en_su_moneda = f" (en {moneda})" if moneda else ""
     with st.form(f"{clave}_nueva_cuenta", clear_on_submit=True, border=False):
         izquierda, derecha = st.columns(2)
@@ -139,7 +141,7 @@ def _tarjeta_de_cuenta(cuenta: Cuenta) -> None:
         detalle = _etiqueta_tipo(cuenta.tipo) + (f" · {cuenta.institucion}" if cuenta.institucion else "")
         if not cuenta.activa:
             detalle += " · eliminada (su historial se conserva)"
-        izquierda.markdown(f"**{cuenta.nombre}**  \n:gray[{detalle}]")
+        izquierda.markdown(f"**{formato.md(cuenta.nombre)}**  \n:gray[{formato.md(detalle)}]")
         botones = izquierda.container(horizontal=True)   # del tamaño de su texto; si no caben, bajan de renglón
         if botones.button("Ver movimientos", icon=":material/receipt_long:", key=f"ver_{cuenta.id}"):
             estado_cuenta.abrir(cuenta.id)

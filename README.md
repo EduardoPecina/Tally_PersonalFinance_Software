@@ -13,18 +13,21 @@ código abierto. Está pensada para una sola persona y corre únicamente en su
 computadora. Es una alternativa más cómoda que llevar las finanzas a mano en
 Excel.
 
-> Estado: **Fase 3 — portal básico**. Ya se puede usar: bienvenida, resumen,
-> registrar movimientos, historial, cuentas, categorías y respaldos.
+> Estado: **versión 1.0**. Lista para llevar tus finanzas del día a día en
+> Windows y en Mac: cuentas (también en otra moneda), tarjetas, préstamos,
+> presupuestos, metas, calendario de pagos, cierre de mes, inversiones,
+> contabilidad, impuestos, importación de tu banco, contraseña y respaldos.
 
 ## Privacidad
 
 - Sin cuentas de usuario y sin correo. La **contraseña es opcional** y vive
   solo en tu PC (ver [Contraseña de TALLY](#contraseña-de-tally-opcional)).
 - Sin conexión bancaria, sin nube y sin telemetría.
-- Funciona sin Internet. Los datos viven en `C:\Users\<tu usuario>\TALLY`,
-  solo en tu PC: fuera de OneDrive y de cualquier nube.
+- Funciona sin Internet. Los datos viven en `C:\Users\<tu usuario>\TALLY`
+  (en Mac, `~/TALLY`), solo en tu computadora: fuera de OneDrive, de iCloud y
+  de cualquier nube.
 - Las conexiones son opcionales. **Consultar valor aproximado actual**, en las
-  cuentas de inversión, Pide a Yahoo Finance el precio público de cada título y
+  cuentas de inversión, pide a Yahoo Finance el precio público de cada título y
   envía **solo el símbolo bursátil** (`GET https://…/chart/IVV`), siempre por
   HTTPS:
   - **No envía** cantidades, precios de compra, saldos, movimientos,
@@ -129,6 +132,8 @@ corre el `INSTALAR.command` de la versión nueva.
 
 Las Mac con procesador Intel no están incluidas por ahora: la librería de
 cifrado que usa TALLY (cryptography 49) ya solo se publica para chip de Apple.
+
+### Qué hay en cada página
 
 | Página | Responde a |
 |---|---|
@@ -310,9 +315,11 @@ vive fuera de `motor/`.
 1. **Motor financiero** ✅
 2. **Persistencia local, bitácora, respaldo, restauración e instalador** ✅
 3. **Portal básico: bienvenida, resumen, cuentas, captura, historial, categorías y respaldos** ✅
-4. Análisis: gráficas, reportes y tablas dinámicas
-5. Exportación (Excel, CSV, ODS) e importación (incluido texto pegado desde Excel)
-6. Pulido y documentación
+4. **Análisis: gráficas, reportes, tablas dinámicas, cierre de mes y contabilidad técnica** ✅
+5. **Exportación (Excel y CSV) e importación (tu banco, plantillas y texto pegado desde Excel)** ✅
+6. **Pulido y documentación: versión 1.0** ✅
+
+Lo que cambia en cada versión está en [`CHANGELOG.md`](CHANGELOG.md).
 
 ## Licencia
 

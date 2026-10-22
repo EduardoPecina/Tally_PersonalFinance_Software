@@ -277,15 +277,21 @@ def editar(
 
     nuevo_monto = valor(monto, actual.monto)
     nueva_cuenta = valor(cuenta_id, actual.cuenta_id)
+    reparto = actual.reparto
+    if monto is _SIN_CAMBIO and divisas.moneda_de(libro, nueva_cuenta) != divisas.moneda_de(libro, actual.cuenta_id):
+        # Pasó a una cuenta de otra moneda sin cambiar el importe: vale lo mismo en tu moneda (no «$100 → US$100»).
+        nuevo_monto, reparto = _en_la_moneda_de(libro, op, nueva_cuenta, nueva_fecha)
 
     if op.tipo in (TipoOperacion.TRANSFERENCIA, TipoOperacion.PAGO_TARJETA):
         if categoria_id is not _SIN_CAMBIO:
             raise ErrorValidacion("Una transferencia no tiene categoría.")
         nuevo_destino = valor(cuenta_destino_id, actual.cuenta_destino_id)
-        mismas = (nueva_cuenta, nuevo_destino) == (actual.cuenta_id, actual.cuenta_destino_id)
+        # Lo que llegó sigue valiendo si el destino sigue en la misma moneda (otra cuenta de dólares, p. ej.).
+        misma_llegada = monto is _SIN_CAMBIO and (
+            divisas.moneda_de(libro, nuevo_destino) == divisas.moneda_de(libro, actual.cuenta_destino_id))
         nueva = construir_con_llegada(
             libro, nueva_fecha, nueva_cuenta, nuevo_destino, nuevo_monto, nueva_descripcion, nuevas_notas,
-            llega=valor(llega, actual.llega if mismas and monto is _SIN_CAMBIO else None), tipo=op.tipo,
+            llega=valor(llega, actual.llega if misma_llegada else None), tipo=op.tipo,
         )
     else:
         if cuenta_destino_id is not _SIN_CAMBIO or llega not in (_SIN_CAMBIO, None):
@@ -296,7 +302,7 @@ def editar(
             if actual.categoria_id is None:
                 nueva = construir(
                     op.tipo, nueva_fecha, nueva_cuenta, descripcion=nueva_descripcion, notas=nuevas_notas,
-                    reparto=actual.reparto,
+                    reparto=reparto,
                 )
             else:
                 nueva = construir(
@@ -311,6 +317,24 @@ def editar(
     if op.tipo is TipoOperacion.GASTO:
         nueva = replace(nueva, msi=nuevo_msi)
     return libro.reemplazar_operacion(operacion_id, replace(nueva, liquida=op.liquida))
+
+
+def _en_la_moneda_de(libro: Libro, op: Operacion, cuenta_id: str, fecha: date
+                     ) -> tuple[Decimal, tuple[tuple[str, Decimal], ...]]:
+    """El importe del movimiento (y su reparto) en la moneda de ``cuenta_id``, con lo que valía en tu moneda."""
+    def convertir(centavos: int) -> int:
+        if not divisas.en_otra_moneda(libro, cuenta_id):
+            return centavos
+        return divisas.desde_base(centavos, divisas.tipo_o_error(libro, divisas.moneda_de(libro, cuenta_id), fecha))
+
+    if op.tipo in (TipoOperacion.TRANSFERENCIA, TipoOperacion.PAGO_TARJETA):
+        return a_pesos(convertir(-min(p.importe for p in op.partidas_de_cuenta()))), ()
+    (cuenta,) = op.partidas_de_cuenta()
+    total = convertir(abs(cuenta.importe))
+    de_categoria = op.partidas_de_categoria()
+    partes = divisas.repartir(total, [abs(p.importe) for p in de_categoria])
+    monto = total if op.tipo in _SIGNO_CUENTA or cuenta.importe > 0 else -total
+    return a_pesos(monto), tuple((p.categoria_id, a_pesos(x)) for p, x in zip(de_categoria, partes))
 
 
 def duplicar(libro: Libro, operacion_id: str, fecha: date) -> Operacion:

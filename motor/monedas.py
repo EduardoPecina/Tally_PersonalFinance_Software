@@ -129,7 +129,8 @@ def en_moneda(importe: Decimal | int, codigo: str, decimales: int | None = None)
     no confundirla con la tuya: ``US$1,200.00`` junto a ``$20,640.00``."""
     m = moneda(codigo)
     if m.codigo != _activa.codigo and m.internacional:
-        m = replace(m, simbolo=m.internacional)
+        # Un código de letras va separado del número: «CLP 75.456», no «CLP75.456».
+        m = replace(m, simbolo=m.internacional, espacio=m.espacio or m.internacional.isalpha())
     return formatear(importe, m, decimales)
 
 

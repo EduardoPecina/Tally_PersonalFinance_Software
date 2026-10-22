@@ -74,6 +74,7 @@ def test_bienvenida_crea_cuenta_y_perfil(raiz):
     at.text_input(key="bienvenida_nombre").input("Usuario Ficticio").run()
     next(t for t in at.text_input if t.label == "Nombre").input("Débito Ficticio")
     next(n for n in at.number_input if n.label.startswith("¿Cuánto tienes")).set_value(1500.0)
+    assert not any(s.label == "Moneda de la cuenta" for s in at.selectbox)   # aún no hay «tu moneda»
     boton(at, "Agregar cuenta").click().run()
     sin_errores(at)
     boton(at, "Empezar a usar TALLY").click().run()
@@ -825,6 +826,41 @@ def test_historial_ofrece_repetir_el_movimiento(raiz, con_datos):
     sin_errores(at)
     assert boton(at, "Repetir este movimiento")
     assert any(d.label == "Fecha del nuevo" for d in at.date_input)
+
+
+def test_historial_pasar_un_gasto_a_la_cuenta_en_dolares(raiz, con_datos):
+    from motor import divisas
+
+    s = sesion_en(raiz)
+    with s.cambio() as lib:
+        divisas.guardar_tipo(lib, "USD", date(lib.hoy().year, 1, 1), 16)
+        dolares = cuentas.crear(lib, "Dólares Ficticios", "ahorro", fecha_creacion=date(lib.hoy().year, 1, 1),
+                                moneda="USD").id
+    at = abrir(_pagina("historial"))
+    at.text_input(key="_w_historial_texto").input("Taxi").run()
+
+    def elegido(accion=None):
+        at.session_state["historial_tabla"] = {"selection": {"rows": [0], "columns": []}}
+        (accion() if accion else at).run()
+        sin_errores(at)
+
+    elegido()
+    next(x for x in at.selectbox if x.label == "Cuenta").set_value(dolares)
+    elegido(boton(at, "Guardar cambios").click)
+    (taxi,) = [op for op in sesion_en(raiz).libro.operaciones(cuenta_id=dolares)]
+    assert [(p.importe, p.original) for p in taxi.partidas_de_cuenta()] == [(-80_00, -5_00)]   # $80 = US$5
+
+
+def test_historial_no_repite_en_una_cuenta_eliminada(raiz, con_datos):
+    with sesion_en(raiz).cambio() as lib:
+        cuentas.archivar(lib, con_datos["ahorro"])
+    at = abrir(_pagina("historial"))
+    at.text_input(key="_w_historial_texto").input("Al ahorro").run()
+    at.session_state["historial_tabla"] = {"selection": {"rows": [0], "columns": []}}
+    at.run()
+    sin_errores(at)
+    assert any("«Ahorro Ficticio» está eliminada" in i.value for i in at.info)
+    assert boton(at, "Repetir este movimiento").disabled
 
 
 def test_historial_borrar_un_aporte_lo_quita_de_la_meta(raiz, con_datos):
@@ -2181,6 +2217,25 @@ def test_cierre_de_mes_cerrar_avisar_y_volver_a_cerrar(raiz, con_datos):
     next(b for b in at.button if b.key == "cierre_reabrir").click().run()
     sin_errores(at)
     assert sesion_en(raiz).libro.cierres() == []
+
+
+def test_cierre_avisa_si_cambio_el_valor_de_una_cuenta_en_dolares(raiz, con_datos):
+    from motor import cierre, divisas
+
+    s = sesion_en(raiz)
+    anio, mes = cierre.anterior(s.libro.hoy())
+    with s.cambio() as lib:
+        divisas.guardar_tipo(lib, "USD", date(anio, mes, 1), 17)
+        cuentas.crear(lib, "Dólares Ficticios", "ahorro", saldo_inicial=100, fecha_creacion=date(anio, mes, 1),
+                      moneda="USD")
+        movimientos.registrar_ingreso(lib, date(anio, mes, 5), con_datos["debito"], con_datos["cat"]["NOMINA"], 900)
+        cierre.cerrar(lib, anio, mes)
+        divisas.guardar_tipo(lib, "USD", date(anio, mes, 20), 18)          # el dólar subió ese mes: +$100
+    at = abrir(_pagina("cierre"))
+    sin_errores(at)
+    assert at.selectbox(key="cierre_mes").value == (anio, mes)
+    (aviso,) = [w.value for w in at.warning if "Desde entonces cambió" in w.value]
+    assert "el valor de tus cuentas en otra moneda" in aviso and r"patrimonio +\$100.00" in aviso
 
 
 def test_cierre_ajustar_gastos_hormiga(raiz, con_datos):

@@ -55,7 +55,7 @@ def mostrar() -> None:
     st.subheader("2. Agrega tus cuentas")
     st.caption(
         "Tarjetas de débito, tarjetas de crédito, ahorro, efectivo… Agrega todas las que quieras; "
-        "también puedes hacerlo después desde **Cuentas**."
+        "también puedes hacerlo después desde **Cuentas** (ahí también las que están en dólares u otra moneda)."
     )
     existentes = cuentas.listar(libro())
     if existentes:
@@ -64,7 +64,7 @@ def mostrar() -> None:
                 texto = f"Debes {formato.dinero_md(tarjetas.deuda(libro(), cuenta.id))}"
             else:
                 texto = formato.dinero_en_md(cuentas.saldo(libro(), cuenta.id), cuenta.moneda)
-            st.markdown(f"- **{cuenta.nombre}** · {ETIQUETA_TIPO_CUENTA[cuenta.tipo]} · {texto}")
+            st.markdown(f"- **{formato.md(cuenta.nombre)}** · {ETIQUETA_TIPO_CUENTA[cuenta.tipo]} · {texto}")
     with st.container(border=True):
         formulario_nueva_cuenta(clave="bienvenida")
     st.caption("¿Ya llevabas tus finanzas en Excel? Al terminar, ve a **Cargar datos**: con una plantilla subes "

@@ -2,6 +2,37 @@
 
 Todos los cambios relevantes de TALLY se documentan aquí.
 
+## [1.0.0] — Sin publicar
+
+**TALLY 1.0.** La primera versión estable: todo lo que se fue sumando hasta la 0.32 (cuentas, también en otra
+moneda; tarjetas, préstamos, presupuestos, metas, calendario de pagos, cierre de mes, inversiones, contabilidad
+técnica, impuestos, importar tu banco, contraseña, respaldos y copia en tu NAS, en Windows y en Mac), revisado de
+punta a punta. Estos son los arreglos de esa última revisión:
+
+- **Cambiar la cuenta de un movimiento por una de otra moneda conserva lo que vale** (Historial → Editar). Un gasto
+  de $180 que pasas a tu cuenta en dólares queda en US$10, no en US$180; igual con un gasto repartido en varias
+  subcategorías y con una transferencia. Si además cambias el importe, va en la moneda de la cuenta nueva (lo dice
+  la ayuda del campo).
+- **Transferencias entre monedas:** cambiar la cuenta de origen o de destino por otra de la misma moneda ya no borra
+  «lo que llegó» (antes se volvía a calcular con el tipo de cambio del día).
+- **Bienvenida:** elegir otra moneda para una cuenta antes de terminar la bienvenida podía dar un error. Ahí las
+  cuentas van en tu moneda; las de dólares u otra moneda se agregan después en Cuentas, y la bienvenida lo dice.
+- **Cierre de mes:** si después de cerrar solo cambió un tipo de cambio o un avalúo de ese mes, el aviso dice qué
+  cambió («el valor de tus cuentas en otra moneda o de tus bienes») y cuánto se movió tu patrimonio, en lugar de
+  «algunos importes».
+- **Historial → Repetir** un movimiento de una cuenta eliminada ya no da error: te dice que primero la restaures.
+- **Cifras grandes:** en las tarjetas de cifras (Resumen, Calendario…) un importe como $1,234,567.89 ya no se corta
+  con «…» en la pantalla de una laptop; el número se achica para caber. En pantallas grandes se ve igual.
+- **Nombres con «$»:** tu nombre y los de tus cuentas, tarjetas, categorías y presupuestos se ven tal cual aunque
+  lleven «$» (con dos, se dibujaban como fórmula).
+- **Peso chileno y peso cubano junto a tu moneda:** «CLP 75.456», con espacio (antes «CLP75.456»).
+- **La revisión:** miles de acciones al azar con cuentas en varias monedas (registrar, editar, borrar, repetir,
+  transferir, respaldar y restaurar) comprobando después de cada una que todo cuadre; todas las páginas, pestañas y
+  desplegables con datos vacíos, normales, grandes y con casos raros (nombres con símbolos y emojis, importes de
+  miles de millones, el 29 de febrero, días 31, monedas sin centavos), en las pruebas y en un navegador real.
+- El README dice el estado actual (antes seguía en «Fase 3») y la hoja de ruta, completa.
+- No cambia el formato de tus datos ni de tus respaldos: la 1.0 abre los de la 0.32 tal cual.
+
 ## [0.32.0] — Sin publicar
 
 **Cuentas en otra moneda.** Una cuenta de débito, ahorro, efectivo, inversión u «otra» puede estar en dólares, euros
