@@ -7,7 +7,7 @@ import zlib
 import pandas as pd
 import streamlit as st
 
-from motor import (avisos, categorias, consultas, cuentas, efectivo, ingresos, movimientos, recurrentes,
+from motor import (avisos, categorias, consultas, cuentas, divisas, efectivo, ingresos, movimientos, recurrentes,
                    reglas_categorias, tarjetas, temporales)
 from motor.consultas import ETIQUETA_TIPO_OPERACION
 from motor.dinero import a_centavos, a_pesos
@@ -81,7 +81,9 @@ def formulario(clave: str = "registrar", cuenta_fija: str | None = None) -> bool
     st.caption(AYUDA[tipo])
 
     ids = [c.id for c in activas]
-    nombre = {c.id: c.nombre for c in activas}
+    nombre = {c.id: formato.nombre_cuenta(c) for c in activas}              # «Ahorro en dólares · USD»
+    moneda = {c.id: c.moneda for c in activas}
+    varias_monedas = any(moneda.values())
     tdc_ids = [c.id for c in activas if c.tipo is TipoCuenta.CREDITO]
     recordadas = dict(st.session_state.setdefault("_registrar_ultimas", {}))
     if cuenta_fija:
@@ -149,11 +151,21 @@ def formulario(clave: str = "registrar", cuenta_fija: str | None = None) -> bool
             cuenta_sugerida = fijo.cuenta_id if fijo and not cuenta_fija else recordadas.get("cuenta")
             origen = derecha.selectbox("Cuenta" if tipo is not TipoOperacion.GASTO else "Pagado con", ids,
                                        format_func=nombre.get, index=_indice(ids, cuenta_sugerida))
-        monto = None
+        monto = llega = None
         if not repartir:
             sugerido = float(a_pesos(recurrentes.monto_en(fijo, fecha_fija))) if fijo else None
-            monto = izquierda.number_input("Importe", min_value=0.0, value=sugerido, step=1.0, format="%.2f",
-                                           placeholder="0.00")
+            que = ("Importe que sale (en la moneda de la cuenta de origen)"
+                   if tipo in (TipoOperacion.TRANSFERENCIA, TipoOperacion.PAGO_TARJETA)
+                   else "Importe (en la moneda de la cuenta)")
+            monto = izquierda.number_input(que if varias_monedas else "Importe", min_value=0.0, value=sugerido,
+                                           step=1.0, format="%.2f", placeholder="0.00")
+            if varias_monedas and tipo in (TipoOperacion.TRANSFERENCIA, TipoOperacion.PAGO_TARJETA):
+                llega = izquierda.number_input(
+                    "Lo que llegó (solo entre cuentas de distinta moneda)", min_value=0.0, value=None, step=1.0,
+                    format="%.2f", placeholder="Opcional",
+                    help="En la moneda de la cuenta que lo recibe, como lo ves en tu banco: así cuenta el tipo de "
+                         "cambio real, con su comisión. Si lo dejas vacío, TALLY lo calcula con el tipo de cambio "
+                         "del día.")
         fecha = fecha_fija or derecha.date_input("Fecha", value=lib.hoy(), format="DD/MM/YYYY")
         if tipo is TipoOperacion.GASTO and tdc_ids and not temporal:
             msi = derecha.number_input("Meses sin intereses", min_value=0, max_value=60, value=0, step=1,
@@ -233,25 +245,27 @@ def formulario(clave: str = "registrar", cuenta_fija: str | None = None) -> bool
         memoria.update(cuenta=origen)
         return guardado(ejecutar(
             con_comprobantes(lambda lib: temporales.registrar(lib, fecha, origen, monto, descripcion, notas)),
-            exito=f"Cargo temporal de {formato.dinero(monto)} guardado{adjuntos}: no cuenta como gasto"))
+            exito=f"Cargo temporal de {formato.dinero_en(monto, moneda[origen])} guardado{adjuntos}: no cuenta como "
+                  "gasto"))
+    llego = llega or None if destino and moneda.get(destino) != moneda.get(origen) else None
     if tipo is TipoOperacion.TRANSFERENCIA:
         memoria.update(origen=origen, destino=destino)
 
         def accion(lib):
-            return registrar_transferencia(lib, fecha, origen, destino, monto, descripcion, notas)
+            return registrar_transferencia(lib, fecha, origen, destino, monto, descripcion, notas, llega=llego)
     elif tipo is TipoOperacion.PAGO_TARJETA:
         memoria.update(origen=origen, tarjeta=destino)
 
         def accion(lib):
-            return registrar_pago_tarjeta(lib, fecha, origen, destino, monto, descripcion, notas)
+            return registrar_pago_tarjeta(lib, fecha, origen, destino, monto, descripcion, notas, llega=llego)
     elif retiro is not None:
         memoria.update(cuenta=origen)
 
         def accion(lib):
             return efectivo.registrar(lib, fecha, origen, monto, descripcion, notas, destino_id=retiro.id)
         return guardado(ejecutar(con_comprobantes(accion), exito=(
-            f"Retiro de efectivo de {formato.dinero(monto)} guardado: pasó de {nombre[origen]} a {retiro.nombre} "
-            f"(no es gasto){adjuntos}")))
+            f"Retiro de efectivo de {formato.dinero_en(monto, moneda[origen])} guardado: pasó de {nombre[origen]} a "
+            f"{retiro.nombre} (no es gasto){adjuntos}")))
     else:
         memoria.update(cuenta=origen)
         registrar = {
@@ -265,13 +279,30 @@ def formulario(clave: str = "registrar", cuenta_fija: str | None = None) -> bool
             if repartir:
                 return registrar(lib, fecha, origen, descripcion=descripcion, notas=notas, reparto=reparto, **extra)
             return registrar(lib, fecha, origen, categoria_id, monto, descripcion, notas, **extra)
-    texto = (f"{ETIQUETA_TIPO_OPERACION[tipo]} de {formato.dinero(total)} "
+    texto = (f"{ETIQUETA_TIPO_OPERACION[tipo]} de {formato.dinero_en(total, moneda[origen])} "
              f"{'guardada' if tipo is TipoOperacion.TRANSFERENCIA else 'guardado'}")
+    if moneda[origen] or (destino and moneda.get(destino)):
+        texto += _equivalente(origen, destino, total, llego, fecha)
     if msi:
         texto += f" a {int(msi)} meses sin intereses"
     if regla is not None:
         texto += f" en {etiquetas[categoria_id]} (por tu regla «{regla.texto}»)"
     return guardado(ejecutar(con_comprobantes(accion), exito=texto + adjuntos))
+
+
+def _equivalente(origen: str, destino: str | None, total, llega, fecha) -> str:
+    """« (≈ $900.00)» o « (llegaron US$100.00)»: lo que valió en tu moneda o lo que llegó a la otra cuenta."""
+    lib = libro()
+    try:
+        de, a = divisas.moneda_de(lib, origen), divisas.moneda_de(lib, destino) if destino else None
+        if a and a != de:
+            if llega:
+                return f" (llegaron {formato.dinero_en(llega, lib.cuenta(destino).moneda)})"
+            return ""
+        tipo = divisas.tipo(lib, de, fecha)
+        return f" (≈ {formato.dinero(a_pesos(divisas.a_base(a_centavos(total), tipo)))})" if tipo else ""
+    except ErrorTally:
+        return ""
 
 
 def limpiar(clave: str = "registrar", todo: bool = False) -> None:
@@ -356,8 +387,10 @@ def _ultimos() -> None:
     for f in filas:
         destino = f" → {f.cuenta_destino}" if f.cuenta_destino else ""
         detalle = " · ".join(x for x in (f.categoria, f.cuenta + destino) if x)
+        original = f" :gray[({formato.md(formato.dinero_en(f.monto_original, f.moneda))})]" if f.moneda else ""
         st.markdown(
             f"{formato.fecha(f.fecha)} · **{formato.md(f.descripcion or f.tipo_etiqueta)}** · "
-            f"{formato.dinero_con_signo_md(f.monto, f.sentido)}  \n:gray[{f.tipo_etiqueta} · {formato.md(detalle)}]"
+            f"{formato.dinero_con_signo_md(f.monto, f.sentido)}{original}  \n"
+            f":gray[{f.tipo_etiqueta} · {formato.md(detalle)}]"
         )
     enlace("historial", "Ver todo el historial", "📋")

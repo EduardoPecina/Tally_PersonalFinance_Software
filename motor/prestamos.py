@@ -28,7 +28,7 @@ from motor.errores import ErrorValidacion
 from motor.libro import Libro
 from motor.modelo import ClaseCategoria, Operacion, Prestamo, TipoCuenta, TipoOperacion
 from motor.movimientos import registrar_gasto
-from motor.transferencias import registrar_transferencia
+from motor.transferencias import registrar_por_valor, registrar_transferencia
 
 CERO = Decimal(0)
 CENTAVO = Decimal("0.01")
@@ -158,8 +158,8 @@ def registrar_pago(libro: Libro, cuenta_id: str, fecha: date, total, cuenta_orig
     if juntas:
         ops.append(registrar_gasto(libro, fecha, cuenta_id, reparto=[(c, a_pesos(v)) for c, v in juntas.items()],
                                    descripcion=f"Intereses y cargos: {nombre}", notas=detalle))
-    ops.append(registrar_transferencia(libro, fecha, cuenta_origen, cuenta_id, a_pesos(pago),
-                                       descripcion or f"Pago de {nombre}", detalle))
+    ops.append(registrar_por_valor(libro, fecha, cuenta_origen, cuenta_id, a_pesos(pago),       # aunque pagues en dólares
+                                   descripcion or f"Pago de {nombre}", detalle))
     return ops
 
 

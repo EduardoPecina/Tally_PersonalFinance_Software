@@ -18,7 +18,7 @@ from dataclasses import dataclass, replace
 from datetime import date, timedelta
 from decimal import Decimal
 
-from motor import prestamos, tarjetas
+from motor import divisas, prestamos, tarjetas
 from motor.dinero import a_centavos, a_pesos
 from motor.errores import ErrorValidacion
 from motor.libro import Libro
@@ -209,13 +209,28 @@ def _sumar_meses(dia: date, meses: int) -> date:
 # ===================================================================== costos
 
 
-def al_mes(r: Recurrente) -> Decimal:
-    """Lo que equivale al mes (una suscripción anual de $1,200 son $100 al mes)."""
-    return a_pesos(int((_promedio(r) * _VECES_AL_MES[r.frecuencia]).to_integral_value()))
+def al_mes(r: Recurrente, libro: Libro | None = None) -> Decimal:
+    """Lo que equivale al mes (una suscripción anual de $1,200 son $100 al mes), en la moneda de su cuenta; con
+    ``libro``, en tu moneda (al tipo de cambio de hoy)."""
+    return _en_tu_moneda(libro, r, int((_promedio(r) * _VECES_AL_MES[r.frecuencia]).to_integral_value()))
 
 
-def al_anio(r: Recurrente) -> Decimal:
-    return a_pesos(int((_promedio(r) * _VECES_AL_MES[r.frecuencia] * 12).to_integral_value()))
+def al_anio(r: Recurrente, libro: Libro | None = None) -> Decimal:
+    return _en_tu_moneda(libro, r, int((_promedio(r) * _VECES_AL_MES[r.frecuencia] * 12).to_integral_value()))
+
+
+def _en_tu_moneda(libro: Libro | None, r: Recurrente, centavos: int) -> Decimal:
+    if libro is not None:
+        centavos = _a_base(libro, r.cuenta_id, centavos)
+    return a_pesos(centavos)
+
+
+def _a_base(libro: Libro, cuenta_id: str, centavos: int, dia: date | None = None) -> int:
+    """Centavos de la moneda de la cuenta → de la tuya (los importes de un recurrente van en la de su cuenta)."""
+    if not divisas.en_otra_moneda(libro, cuenta_id):
+        return centavos
+    tipo = divisas.tipo(libro, divisas.moneda_de(libro, cuenta_id), dia)
+    return centavos if tipo is None else divisas.a_base(centavos, tipo)
 
 
 def _promedio(r: Recurrente) -> Decimal:
@@ -236,10 +251,10 @@ def totales(libro: Libro) -> Totales:
     activos = [r for r in libro.recurrentes() if r.activa]
     gastos = [r for r in activos if r.tipo is TipoOperacion.GASTO]
     suscripciones = [r for r in gastos if r.suscripcion]
-    return Totales(sum((al_mes(r) for r in gastos), Decimal("0.00")),
-                   sum((al_mes(r) for r in suscripciones), Decimal("0.00")),
-                   sum((al_anio(r) for r in suscripciones), Decimal("0.00")),
-                   sum((al_mes(r) for r in activos if r.tipo is TipoOperacion.INGRESO), Decimal("0.00")),
+    return Totales(sum((al_mes(r, libro) for r in gastos), Decimal("0.00")),
+                   sum((al_mes(r, libro) for r in suscripciones), Decimal("0.00")),
+                   sum((al_anio(r, libro) for r in suscripciones), Decimal("0.00")),
+                   sum((al_mes(r, libro) for r in activos if r.tipo is TipoOperacion.INGRESO), Decimal("0.00")),
                    len(suscripciones))
 
 
@@ -251,13 +266,13 @@ def _cubre(libro: Libro, r: Recurrente, op: Operacion) -> bool:
     if r.tipo is TipoOperacion.TRANSFERENCIA:
         if op.tipo not in (TipoOperacion.TRANSFERENCIA, TipoOperacion.PAGO_TARJETA):
             return False
-        sale = sum(p.importe for p in op.partidas if p.cuenta_id == r.cuenta_id)
+        sale = sum(p.en_su_moneda for p in op.partidas if p.cuenta_id == r.cuenta_id)
         entra = sum(p.importe for p in op.partidas if p.cuenta_id == r.destino_id)
-        monto = entra if sale < 0 < entra else 0
+        monto = -sale if sale < 0 < entra else 0
     else:
         if op.tipo is not r.tipo or not any(p.categoria_id == r.categoria_id for p in op.partidas):
             return False
-        monto = abs(sum(p.importe for p in op.partidas if p.cuenta_id == r.cuenta_id))
+        monto = abs(sum(p.en_su_moneda for p in op.partidas if p.cuenta_id == r.cuenta_id))
     montos = (r.monto, r.monto_2 or r.monto)
     return min(montos) / 2 <= monto <= max(montos) * 2
 
@@ -302,7 +317,7 @@ class Evento:
     fecha: date
     nombre: str
     clase: str                    # RECURRENTE, TARJETA, PRESTAMO o FISCO
-    centavos: int                 # + entra, − sale (en la cuenta del evento)
+    centavos: int                 # + entra, − sale (en la cuenta del evento, en su moneda)
     cuenta_id: str
     estado: str                   # PAGADO, PENDIENTE o VENCIDO
     recurrente_id: str = ""
@@ -339,8 +354,11 @@ def calendario(libro: Libro, hoy: date | None = None, dias: int = 30) -> list[Ev
 
 
 def op_monto(op: Operacion, r: Recurrente) -> int:
-    cuenta = r.destino_id if r.tipo is TipoOperacion.TRANSFERENCIA else r.cuenta_id
-    return abs(sum(p.importe for p in op.partidas if p.cuenta_id == cuenta))
+    """Lo que se pagó, en la moneda de la cuenta del recurrente (como su importe)."""
+    propio = sum(p.en_su_moneda for p in op.partidas if p.cuenta_id == r.cuenta_id)
+    if propio or r.tipo is not TipoOperacion.TRANSFERENCIA:
+        return abs(propio)
+    return abs(sum(p.en_su_moneda for p in op.partidas if p.cuenta_id == r.destino_id))
 
 
 def _tarjetas(libro: Libro, hoy: date, desde: date, hasta: date) -> list[Evento]:
@@ -452,11 +470,12 @@ def efecto(libro: Libro, e: Evento) -> int:
         return 0
     if e.clase in (TARJETA, PRESTAMO, FISCO):
         return e.centavos
+    centavos = _a_base(libro, e.cuenta_id, e.centavos, e.fecha)          # en dólares: lo que valen en tu moneda
     disponible = libro.cuenta(e.cuenta_id).en_disponible
     if e.destino_id:
         destino = libro.cuenta(e.destino_id).en_disponible
-        return e.centavos if disponible and not destino else (-e.centavos if destino and not disponible else 0)
-    return e.centavos if disponible else 0
+        return centavos if disponible and not destino else (-centavos if destino and not disponible else 0)
+    return centavos if disponible else 0
 
 
 def flujo(libro: Libro, hoy: date | None = None, dias: int = 30) -> Flujo:
@@ -524,7 +543,7 @@ def detectar(libro: Libro, hoy: date | None = None) -> list[Sugerencia]:
         if len(ops) < 3 or not libro.cuenta(cuenta_id).activa:
             continue
         ops.sort(key=lambda o: o.fecha)
-        montos = [abs(sum(p.importe for p in o.partidas_de_cuenta())) for o in ops]
+        montos = [abs(sum(p.en_su_moneda for p in o.partidas_de_cuenta())) for o in ops]
         if max(montos) > min(montos) * Decimal("1.2"):
             continue
         huecos = [(b.fecha - a.fecha).days for a, b in zip(ops, ops[1:])]

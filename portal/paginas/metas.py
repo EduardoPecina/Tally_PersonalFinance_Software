@@ -156,12 +156,12 @@ def _movimiento(m: Meta, *, retiro: bool) -> None:
             if retiro:
                 otra = c.selectbox("¿A qué cuenta lo pasas?", opciones,
                                    format_func=lambda i: "Lo dejo ahí (solo lo marco)" if i is None
-                                   else lib.cuenta(i).nombre,
+                                   else formato.nombre_cuenta(lib.cuenta(i)),
                                    help="Si eliges una cuenta, TALLY registra la transferencia.")
             else:
                 otra = c.selectbox("¿De qué cuenta sale?", opciones,
                                    format_func=lambda i: f"Ya está en {lib.cuenta(m.cuenta_id).nombre}" if i is None
-                                   else lib.cuenta(i).nombre,
+                                   else formato.nombre_cuenta(lib.cuenta(i)),
                                    help=f"Si eliges otra cuenta, TALLY registra la transferencia a "
                                         f"{lib.cuenta(m.cuenta_id).nombre}.")
         if st.form_submit_button("Retirar" if retiro else "Aportar", type="primary"):
@@ -192,7 +192,7 @@ def _formulario(m: Meta | None, *, emergencia: bool = False, sugerido=None) -> N
         opciones = [None, *cuentas]
         cuenta = a.selectbox("¿Dónde guardas ese dinero?", opciones,
                              index=opciones.index(m.cuenta_id) if m and m.cuenta_id in opciones else 0,
-                             format_func=lambda i: SIN_CUENTA if i is None else lib.cuenta(i).nombre,
+                             format_func=lambda i: SIN_CUENTA if i is None else formato.nombre_cuenta(lib.cuenta(i)),
                              help="Lo ideal: una cuenta de ahorro aparte. Así no te lo gastas sin querer.")
         fecha = b.date_input("¿Para cuándo? (opcional)", value=m.fecha_limite if m else None, format="DD/MM/YYYY")
         ya_tengo = 0.0

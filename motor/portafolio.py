@@ -11,8 +11,12 @@ Es un **detalle** de la cuenta, no un movimiento:
   agrega nada.
 
 El costo de cada título es el **costo promedio** (lo que pagaste, comisiones incluidas, entre los títulos que
-tienes), en pesos al tipo de cambio del día de cada compra. Las inversiones a plazo se valúan sin internet, con
-interés simple sobre año de 360 días (como se pagan los CETES), antes de impuestos.
+tienes), en la moneda de la cuenta al tipo de cambio del día de cada compra. Las inversiones a plazo se valúan sin
+internet, con interés simple sobre año de 360 días (como se pagan los CETES), antes de impuestos.
+
+Todo va en la **moneda de la cuenta**: tu moneda, o la suya si es una cuenta en dólares (motor/divisas.py). En una
+cuenta en dólares, una acción en dólares no necesita tipo de cambio, el valor oficial se escribe en dólares y el
+rendimiento se pasa a tu moneda al guardarlo.
 """
 
 from __future__ import annotations
@@ -23,8 +27,8 @@ from dataclasses import dataclass, replace
 from datetime import date, timedelta
 from decimal import Decimal, InvalidOperation
 
-from motor import categorias, monedas
-from motor.dinero import a_centavos, a_pesos, formatear
+from motor import categorias, divisas, monedas
+from motor.dinero import a_centavos, a_pesos
 from motor.errores import ErrorValidacion
 from motor.libro import Libro
 from motor.modelo import (
@@ -198,13 +202,13 @@ class Valuacion:
 def valuar(libro: Libro, cuenta_id: str, precios: dict[str, tuple[Decimal, str]], tipos_cambio: dict[str, Decimal],
            hoy: date | None = None) -> Valuacion:
     """Valor aproximado con los ``precios`` dados (símbolo → (precio, moneda)) y ``tipos_cambio`` (moneda → cuánto
-    de tu moneda vale una unidad).
+    de tu moneda vale una unidad), en la moneda de la cuenta.
 
     Es pura aritmética: no sale a internet. Los precios vienen de :mod:`motor.cotizaciones` o los escribe el
     usuario.
     """
     hoy = hoy or libro.hoy()
-    tipos = {**tipos_cambio, monedas.de(libro): Decimal(1)}
+    tipos = en_moneda_de_la_cuenta(libro, cuenta_id, tipos_cambio)
     todas = posiciones(libro, cuenta_id)
     filas, faltan = [], []
     for posicion in (p for p in todas if p.titulos):
@@ -228,9 +232,23 @@ def valuar(libro: Libro, cuenta_id: str, precios: dict[str, tuple[Decimal, str]]
     )
 
 
+def en_moneda_de_la_cuenta(libro: Libro, cuenta_id: str, tipos_cambio: dict[str, Decimal]) -> dict[str, Decimal]:
+    """Los tipos de cambio contra tu moneda (moneda → cuánto de la tuya vale una unidad), pasados a la moneda de la
+    cuenta. En una cuenta en dólares: cuántos dólares vale una unidad de cada moneda."""
+    contra_tuya = {**tipos_cambio, monedas.de(libro): Decimal(1)}
+    if not divisas.en_otra_moneda(libro, cuenta_id):
+        return contra_tuya
+    propia = divisas.moneda_de(libro, cuenta_id)
+    tipo = contra_tuya.get(propia) or divisas.tipo(libro, propia)
+    if not tipo:
+        return {propia: Decimal(1)}
+    return {**{m: t / tipo for m, t in contra_tuya.items()}, propia: Decimal(1)}
+
+
 def ajustar_a_valor_oficial(libro: Libro, cuenta_id: str, valor_oficial, fecha: date | None = None
                             ) -> Operacion | None:
-    """La cuenta vale ``valor_oficial`` en ``fecha`` según tu app oficial (títulos + efectivo + intereses).
+    """La cuenta vale ``valor_oficial`` en ``fecha`` según tu app oficial (títulos + efectivo + intereses), en la
+    moneda de la cuenta.
 
     Registra la diferencia contra el saldo que TALLY tiene ese día como **rendimiento** (negativo si bajó), para
     que ambos coincidan al centavo. Devuelve ``None`` si ya coincidían.
@@ -248,7 +266,8 @@ def ajustar_a_valor_oficial(libro: Libro, cuenta_id: str, valor_oficial, fecha: 
         raise ErrorValidacion(f"No encuentro la subcategoría de ingreso «{SUBCATEGORIA_RENDIMIENTO}». Créala de "
                               "nuevo en Categorías → Ingresos.")
     op = construir_con_signo(TipoOperacion.RENDIMIENTO, fecha, cuenta.id, subcategoria.id, a_pesos(diferencia),
-                             f"Ajuste al valor oficial ({formatear(a_pesos(oficial))})")
+                             f"Ajuste al valor oficial "
+                             f"({monedas.en_moneda(a_pesos(oficial), divisas.moneda_de(libro, cuenta))})")
     op = libro.agregar_operacion(op)
     libro.guardar_cuenta(replace(cuenta, plusvalia_registrada=cuenta.plusvalia_registrada + diferencia))
     return op
@@ -266,7 +285,7 @@ def valor_estimado(libro: Libro, cuenta_id: str, valuacion: Valuacion) -> Decima
 
 def _registrar(libro, cuenta_id, fecha, tipo, simbolo, titulos, precio, moneda, tipo_cambio, comision, notas):
     cuenta = _cuenta_de_inversion(libro, cuenta_id)
-    base = monedas.de(libro)
+    base = divisas.moneda_de(libro, cuenta)              # la de la cuenta: en una cuenta en dólares, USD
     moneda = (moneda or base).strip().upper()
     if not _MONEDA.match(moneda):
         raise ErrorValidacion("La moneda va en tres letras: MXN, USD, EUR…")

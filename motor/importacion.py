@@ -27,6 +27,8 @@ el nombre de otra cuenta propia           transferencia; pago de tarjeta si va a
 ========================================  =================================================
 
 - Una transferencia que aparece en los bloques de las dos cuentas se carga una sola vez.
+- En una cuenta en otra moneda (dólares, euros…), sus importes van en esa moneda: TALLY los pasa a la tuya con el
+  tipo de cambio de cada día (motor/divisas.py).
 - Lo que ya está en TALLY (misma fecha, tipo, cuentas, subcategorías e importes) no se vuelve a cargar: subir el
   mismo archivo dos veces no duplica nada.
 - Los nombres se comparan sin importar mayúsculas, acentos, signos ni espacios.
@@ -42,7 +44,7 @@ from dataclasses import dataclass, field
 from datetime import date
 from decimal import Decimal, InvalidOperation
 
-from motor import categorias, cuentas, monedas, reglas_categorias, temporales
+from motor import categorias, cuentas, divisas, monedas, reglas_categorias, temporales
 from motor.dinero import a_centavos, a_pesos
 from motor.errores import ErrorTally, ErrorValidacion
 from motor.libro import Libro
@@ -59,7 +61,7 @@ from motor.modelo import (
 from motor.movimientos import construir, construir_con_signo
 from motor.serializacion import instantanea, libro_desde_instantanea
 from motor.textos import clave
-from motor.transferencias import construir_transferencia
+from motor.transferencias import construir_por_llegada, construir_transferencia
 
 COLUMNAS = ("FECHA", "DESCRIPCION", "SUBCATEGORIA", "CARGO", "ABONO", "NOTAS")
 _ALIAS_COLUMNAS = {
@@ -415,8 +417,8 @@ def _cargar_en(libro: Libro, archivo: Archivo, mapeo: dict[str, Destino]) -> Res
     # Dentro de un mismo día entra primero lo que llega (nómina, rendimientos, devoluciones), luego lo que se
     # mueve entre cuentas y al final los gastos: así ningún saldo pasa por un negativo que nunca existió.
     propuestas.sort(key=lambda p: (p[1].fecha, _momento_del_dia(p[2])))
-    existentes = Counter(_firma(op) for op in libro.operaciones())
-    lado_principal = _lados_principales(propuestas)
+    existentes = Counter(_firma(libro, op) for op in libro.operaciones())
+    lado_principal = _lados_principales(libro, propuestas)
     vistas: Counter = Counter()
     for bloque, linea, op, error in propuestas:
         fila = dict(numero=linea.numero, cuenta=bloque.cuenta, fecha=linea.fecha, descripcion=linea.descripcion,
@@ -429,7 +431,7 @@ def _cargar_en(libro: Libro, archivo: Archivo, mapeo: dict[str, Destino]) -> Res
                 resultado.filas.append(Fila(**fila, tipo=None, destino=linea.destino.upper(), estado=ERROR,
                                             detalle=error))
             continue
-        firma = _firma(op)
+        firma = _firma(libro, op)
         destino = _describir_destino(libro, op, cuenta_id=cuentas_por_nombre[clave(bloque.cuenta)].id)
         es_transferencia = op.tipo in (TipoOperacion.TRANSFERENCIA, TipoOperacion.PAGO_TARJETA)
         if es_transferencia:
@@ -583,6 +585,9 @@ def _operacion(libro: Libro, cuenta: Cuenta, linea: Linea, cuentas_por_nombre: d
         origen, destino = (cuenta, otra) if centavos < 0 else (otra, cuenta)
         tipo = (TipoOperacion.PAGO_TARJETA if destino.tipo is TipoCuenta.CREDITO and origen.tipo is not TipoCuenta.CREDITO
                 else TipoOperacion.TRANSFERENCIA)
+        if destino is cuenta:          # el importe es lo que llegó a esta cuenta, en su moneda
+            return construir_por_llegada(libro, linea.fecha, origen.id, destino.id, monto, linea.descripcion,
+                                         linea.notas, tipo=tipo)
         return construir_transferencia(linea.fecha, origen.id, destino.id, monto, linea.descripcion, linea.notas,
                                        tipo=tipo)
     if categoria.id == CATEGORIA_SALDO_INICIAL:
@@ -600,20 +605,29 @@ def _operacion(libro: Libro, cuenta: Cuenta, linea: Linea, cuentas_por_nombre: d
                                linea.descripcion, linea.notas)
 
 
-def _firma(op: Operacion) -> tuple:
-    """Lo que hace iguales a dos movimientos (para no duplicar): fecha, tipo y partidas (sin descripción)."""
+def _firma(libro: Libro, op: Operacion) -> tuple:
+    """Lo que hace iguales a dos movimientos (para no duplicar): fecha, tipo y partidas (sin descripción). Sirve
+    igual para uno ya guardado que para uno recién leído (aún sin pasar a tu moneda): los importes de las cuentas,
+    en su moneda; los de las categorías, solo si todo es en tu moneda."""
+    de_cuenta = op.partidas_de_cuenta()
+    monedas_ = {divisas.moneda_de(libro, p.cuenta_id) for p in de_cuenta}
+    if len(de_cuenta) == 2 and len(monedas_) == 2 and not op.partidas_de_categoria():
+        # Entre cuentas de distinta moneda, cada lado calcula el otro con su tipo de cambio: no coinciden al centavo.
+        return op.fecha, op.tipo.value, tuple((p.cuenta_id, p.importe > 0) for p in de_cuenta)
+    en_tu_moneda = monedas_ <= {monedas.de(libro)}
     return (op.fecha, op.tipo.value,
-            tuple(sorted((p.cuenta_id or "", p.categoria_id or "", p.importe) for p in op.partidas)))
+            tuple(sorted((p.cuenta_id or "", p.categoria_id or "",
+                          p.en_su_moneda if p.cuenta_id else p.importe if en_tu_moneda else 0) for p in op.partidas)))
 
 
-def _lados_principales(propuestas) -> dict[tuple, str]:
+def _lados_principales(libro: Libro, propuestas) -> dict[tuple, str]:
     """Para cada transferencia, el bloque (cuenta) que manda: el que la trae más veces o, si empatan, el primero
     del archivo. Las filas del otro bloque son la misma transferencia vista desde la otra cuenta."""
     conteo: dict[tuple, Counter] = defaultdict(Counter)
     primero: dict[tuple, dict[str, int]] = defaultdict(dict)
     for bloque, linea, op, _ in propuestas:
         if op is not None and op.tipo in (TipoOperacion.TRANSFERENCIA, TipoOperacion.PAGO_TARJETA):
-            firma, lado = _firma(op), clave(bloque.cuenta)
+            firma, lado = _firma(libro, op), clave(bloque.cuenta)
             conteo[firma][lado] += 1
             primero[firma].setdefault(lado, bloque.numero)
     return {firma: max(lados, key=lambda lado: (lados[lado], -primero[firma][lado])) for firma, lados in conteo.items()}

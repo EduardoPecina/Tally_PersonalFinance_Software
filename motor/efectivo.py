@@ -17,7 +17,7 @@ from __future__ import annotations
 
 from datetime import date
 
-from motor import categorias
+from motor import categorias, divisas
 from motor.errores import ErrorValidacion
 from motor.libro import Libro
 from motor.modelo import Cuenta, Operacion, TipoCuenta, TipoOperacion
@@ -37,9 +37,10 @@ def es_retiro(libro: Libro, categoria_id: str | None) -> bool:
 
 
 def cuenta(libro: Libro, excepto: str | None = None) -> Cuenta | None:
-    """Tu cuenta de efectivo activa (la primera, si tienes varias), distinta de ``excepto``."""
-    return next((c for c in libro.cuentas()
-                 if c.activa and c.tipo is TipoCuenta.EFECTIVO and c.id != excepto), None)
+    """Tu cuenta de efectivo activa (la primera, si tienes varias; mejor una en tu moneda que una de un viaje en
+    dólares o euros), distinta de ``excepto``."""
+    candidatas = [c for c in libro.cuentas() if c.activa and c.tipo is TipoCuenta.EFECTIVO and c.id != excepto]
+    return min(candidatas, key=lambda c: divisas.en_otra_moneda(libro, c), default=None)
 
 
 def destino_para(libro: Libro, origen_id: str, categoria_id: str | None) -> Cuenta | None:

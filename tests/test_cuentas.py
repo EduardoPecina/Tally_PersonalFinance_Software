@@ -3,7 +3,7 @@ from datetime import date
 import pytest
 
 from conftest import D
-from motor import cuentas, movimientos, reportes
+from motor import cuentas, divisas, movimientos, reportes
 from motor.errores import ErrorNoEncontrado, ErrorValidacion
 from motor.modelo import CATEGORIA_SALDO_INICIAL, TipoCuenta, TipoOperacion
 
@@ -12,7 +12,7 @@ def test_crear_cuenta_con_saldo_inicial(libro):
     cuenta = cuentas.crear(libro, "Débito", TipoCuenta.DEBITO, saldo_inicial="1,500.50", fecha_creacion=date(2026, 1, 1))
     assert cuentas.saldo(libro, cuenta.id) == D("1500.50")
     assert cuenta.en_disponible
-    assert cuenta.moneda == "MXN"
+    assert cuenta.moneda == "" and divisas.moneda_de(libro, cuenta) == "MXN"      # "" = tu moneda
     (op,) = libro.operaciones()
     assert op.tipo is TipoOperacion.SALDO_INICIAL
 

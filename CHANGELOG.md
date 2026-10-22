@@ -2,6 +2,40 @@
 
 Todos los cambios relevantes de TALLY se documentan aquí.
 
+## [0.32.0] — Sin publicar
+
+**Cuentas en otra moneda.** Una cuenta de débito, ahorro, efectivo, inversión u «otra» puede estar en dólares, euros
+u otra moneda; TALLY sigue sumando todo en la tuya. Tarjetas, préstamos, bienes y lo que te deben se quedan en tu
+moneda.
+
+- **Al crear una cuenta eliges su moneda** (o después, en Administrar cuenta, mientras no tenga movimientos). Su
+  saldo se ve en su moneda, como en tu banco, y abajo lo que vale en la tuya: «US$1,200.00 · ≈ $22,200.00 · 1 USD =
+  18.50 MXN».
+- **Registrar en esa cuenta es igual:** escribes el importe en su moneda y nada más. TALLY guarda también lo que
+  valía en tu moneda ese día, así que tus gastos del mes pasado, tus presupuestos y tus cierres no cambian cuando se
+  mueve el dólar.
+- **Pasar dinero entre monedas:** escribes lo que salió y, si quieres, **lo que llegó**, como lo ves en tu banco
+  (así cuenta el tipo de cambio real, con su comisión). Si lo dejas vacío, se calcula con el tipo de cambio del día.
+- **Lo que sube o baja el valor de tus dólares** sale aparte, «por tipo de cambio»: debajo de tu patrimonio en el
+  Resumen, en la evolución de tu patrimonio y en Contabilidad Técnica (diferencia por tipo de cambio en el activo,
+  ganancia o pérdida por tipo de cambio en los cambios de valor y en el flujo de efectivo). Todo sigue cuadrando.
+- **Configuración → Tipos de cambio:** el de cada moneda, de qué día es, escribir uno a mano y su historial.
+  Opcional: **traerlos de internet cada día**, en segundo plano (no te hace esperar). Solo se envía el par de monedas
+  (USDMXN); si internet no trae una moneda, se calcula con el dólar o la escribes tú. Los que escribes tú mandan.
+- **Inversiones en dólares:** en una cuenta de inversión en dólares, el costo, el valor, el valor oficial y los
+  CETES o plazos van en dólares; una acción en dólares ya no pide tipo de cambio. El rendimiento se pasa a tu
+  moneda al registrarlo, y las gráficas de Inversiones suman todo en la tuya.
+- **También entienden de monedas:** el Historial (columna «En su moneda»), el estado de cuenta (todo en la moneda de
+  la cuenta), los pagos fijos y el Calendario (su importe en la moneda de su cuenta; los totales y tu dinero en 30
+  días, en la tuya), las metas, los pagos de préstamos desde una cuenta en dólares, los cargos temporales (vuelve
+  lo mismo que te cobraron), cargar el estado de cuenta de tu banco en dólares (sin duplicar al subirlo otra vez)
+  y la Salud de tus datos (avisa si falta un tipo de cambio o si es de hace más de un mes).
+- **Más monedas:** dólar canadiense, libra esterlina, franco suizo, coronas sueca, noruega, danesa y checa, zloty
+  polaco, forinto húngaro y leu rumano. Junto a la tuya, una moneda que usa «$» se escribe US$, CA$, MX$…
+- **Cambia el formato de tus datos (esquema 12) y de tus respaldos (formato 12):** TALLY los pone al día solo al
+  abrir; tus cuentas de antes quedan en tu moneda. Una versión anterior ya no los abre (sumaría tus dólares como si
+  fueran pesos). Los respaldos de antes se siguen restaurando.
+
 ## [0.31.0] — Sin publicar
 
 Revisión completa de rapidez y de errores antes de la 1.0. Medido con datos ficticios grandes (5 años, unos 11,600

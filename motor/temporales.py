@@ -24,7 +24,7 @@ from motor.errores import ErrorValidacion
 from motor.libro import Libro
 from motor.modelo import Cuenta, Operacion, TipoCuenta, TipoOperacion
 from motor.textos import clave
-from motor.transferencias import construir_transferencia
+from motor.transferencias import construir_con_llegada, construir_transferencia
 
 NOMBRE_CUENTA = "POR RECUPERAR"
 DIAS_PARA_RECLAMAR = 45
@@ -113,8 +113,12 @@ def devolver(libro: Libro, cargo_id: str, fecha: date, *, cuenta_id: str | None 
     cargo = _pendiente(libro, cargo_id)
     if fecha < cargo.fecha:
         raise ErrorValidacion("La devolución no puede ser antes del cargo.")
-    op = construir_transferencia(fecha, cuenta(libro).id, cuenta_id or cargo.cuenta_id, cargo.monto,
-                                 f"Devolución: {cargo.descripcion}"[:120])
+    destino = cuenta_id or cargo.cuenta_id
+    original = next((p.original for p in libro.operacion(cargo.operacion_id).partidas_de_cuenta()
+                     if p.cuenta_id == destino and p.original is not None), None)   # vuelve lo mismo, en su moneda
+    op = construir_con_llegada(libro, fecha, cuenta(libro).id, destino, cargo.monto,
+                               f"Devolución: {cargo.descripcion}"[:120],
+                               llega=a_pesos(-original) if original is not None else None)
     return libro.agregar_operacion(replace(op, liquida=cargo.operacion_id))
 
 

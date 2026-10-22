@@ -40,6 +40,7 @@ from motor.modelo import (
     RUBROS_CONTABLES_BASE,
     RUBROS_CONTABLES_FIJOS,
     RubroContable,
+    TipoCambio,
     TipoCuenta,
     TipoOperacion,
     TipoOperacionValor,
@@ -47,7 +48,8 @@ from motor.modelo import (
 
 # Tipos de entidad, en el orden en que se cargan.
 ENTIDADES = ("perfil", "grupo", "rubro", "categoria", "cuenta", "operacion", "valor", "plazo", "bien",
-             "prestamo", "recurrente", "meta", "fiscal", "cierre", "regla", "comprobante", "rubro_contable")
+             "prestamo", "recurrente", "meta", "fiscal", "cierre", "regla", "comprobante", "rubro_contable",
+             "tipo_cambio")
 ID_PERFIL = "perfil"
 ID_FISCAL = "fiscal"
 
@@ -76,7 +78,7 @@ def perfil_a_dict(p: Perfil) -> dict:
             "respaldo_diario": p.respaldo_diario, "respaldos_a_conservar": p.respaldos_a_conservar,
             "periodo_inicial": p.periodo_inicial, "tema": p.tema, "icono": p.icono,
             "dias_para_reclamar": p.dias_para_reclamar, "clasificaciones": p.clasificaciones,
-            "actualizar_precios": p.actualizar_precios, "iva": str(p.iva), "ingreso_esperado": p.ingreso_esperado,
+            "actualizar_precios": p.actualizar_precios, "tipos_por_internet": p.tipos_por_internet, "iva": str(p.iva), "ingreso_esperado": p.ingreso_esperado,
             "meta_ahorro": p.meta_ahorro, "plan_deudas": p.plan_deudas, "estrategia_deudas": p.estrategia_deudas,
             "salud_ignorados": list(p.salud_ignorados), "guia_oculta": p.guia_oculta,
             "hormiga_tope": p.hormiga_tope, "hormiga_fuera": list(p.hormiga_fuera), "hormiga_veces": p.hormiga_veces,
@@ -109,8 +111,9 @@ def rubro_contable_a_dict(r: RubroContable) -> dict:
 def cuenta_a_dict(c: Cuenta) -> dict:
     return {
         "id": c.id, "nombre": c.nombre, "tipo": c.tipo.value, "fecha_creacion": _iso(c.fecha_creacion),
-        "en_disponible": c.en_disponible, "moneda": c.moneda, "activa": c.activa,
+        "en_disponible": c.en_disponible, "activa": c.activa,
         "institucion": c.institucion, "notas": c.notas, "orden": c.orden,
+        **({"divisa": c.moneda} if c.moneda else {}),
         "limite_credito": c.limite_credito, "dia_corte": c.dia_corte, "dia_pago": c.dia_pago,
         "dias_para_pagar": c.dias_para_pagar, "dias_habiles": c.dias_habiles, "recorrer_inhabil": c.recorrer_inhabil,
         **({"plusvalia_registrada": c.plusvalia_registrada} if c.plusvalia_registrada else {}),
@@ -135,7 +138,8 @@ def operacion_a_dict(op: Operacion) -> dict:
     return {
         "id": op.id, "fecha": _iso(op.fecha), "tipo": op.tipo.value,
         "partidas": [
-            {"importe": p.importe, "cuenta_id": p.cuenta_id, "categoria_id": p.categoria_id} for p in op.partidas
+            {"importe": p.importe, "cuenta_id": p.cuenta_id, "categoria_id": p.categoria_id,
+             **({"original": p.original} if p.original is not None else {})} for p in op.partidas
         ],
         "descripcion": op.descripcion, "notas": op.notas, "secuencia": op.secuencia,
         "creado_en": _iso(op.creado_en), "modificado_en": _iso(op.modificado_en),
@@ -154,7 +158,8 @@ def perfil_desde_dict(d: dict) -> Perfil:
                   periodo_inicial=d.get("periodo_inicial", "mes_actual"), tema=d.get("tema", "claro"),
                   icono=d.get("icono", "claro"), dias_para_reclamar=d.get("dias_para_reclamar", 45),
                   clasificaciones=d.get("clasificaciones", 1),
-                  actualizar_precios=d.get("actualizar_precios", False), iva=Decimal(d.get("iva", "16")),
+                  actualizar_precios=d.get("actualizar_precios", False),
+                  tipos_por_internet=d.get("tipos_por_internet", False), iva=Decimal(d.get("iva", "16")),
                   ingreso_esperado=d.get("ingreso_esperado"), meta_ahorro=d.get("meta_ahorro", 10),
                   plan_deudas=d.get("plan_deudas"), estrategia_deudas=d.get("estrategia_deudas", ""),
                   salud_ignorados=tuple(d.get("salud_ignorados", ())), guia_oculta=d.get("guia_oculta", False),
@@ -188,7 +193,8 @@ def rubro_contable_desde_dict(d: dict) -> RubroContable:
 def cuenta_desde_dict(d: dict) -> Cuenta:
     return Cuenta(
         id=d["id"], nombre=d["nombre"], tipo=TipoCuenta(d["tipo"]), fecha_creacion=_fecha(d["fecha_creacion"]),
-        en_disponible=d["en_disponible"], moneda=d.get("moneda", "MXN"), activa=d.get("activa", True),
+        # Antes de TALLY 0.32 «moneda» no se usaba (siempre MXN): la de la cuenta va en «divisa» ("" = tu moneda).
+        en_disponible=d["en_disponible"], moneda=d.get("divisa", ""), activa=d.get("activa", True),
         institucion=d.get("institucion", ""), notas=d.get("notas", ""), orden=d.get("orden", 0),
         limite_credito=d.get("limite_credito"), dia_corte=d.get("dia_corte"), dia_pago=d.get("dia_pago"),
         dias_para_pagar=d.get("dias_para_pagar"), dias_habiles=d.get("dias_habiles", False),
@@ -341,6 +347,16 @@ def fiscal_desde_dict(d: dict) -> Fiscal:
     )
 
 
+def tipo_cambio_a_dict(t: TipoCambio) -> dict:
+    return {"id": t.id, "moneda": t.moneda, "fecha": _iso(t.fecha), "tipo": str(t.tipo),
+            **({"manual": True} if t.manual else {})}
+
+
+def tipo_cambio_desde_dict(d: dict) -> TipoCambio:
+    return TipoCambio(moneda=d["moneda"], fecha=_fecha(d["fecha"]), tipo=Decimal(d["tipo"]),
+                      manual=d.get("manual", False))
+
+
 def prestamo_desde_dict(d: dict) -> Prestamo:
     return Prestamo(
         cuenta_id=d["cuenta_id"], clase=d.get("clase", "otro"), monto=d["monto"],
@@ -361,7 +377,8 @@ def operacion_desde_dict(d: dict) -> Operacion:
     return Operacion(
         id=d["id"], fecha=_fecha(d["fecha"]), tipo=TipoOperacion(d["tipo"]),
         partidas=tuple(
-            Partida(importe=p["importe"], cuenta_id=p.get("cuenta_id"), categoria_id=p.get("categoria_id"))
+            Partida(importe=p["importe"], cuenta_id=p.get("cuenta_id"), categoria_id=p.get("categoria_id"),
+                    original=p.get("original"))
             for p in d["partidas"]
         ),
         descripcion=d.get("descripcion", ""), notas=d.get("notas", ""), secuencia=d.get("secuencia", 0),
@@ -431,6 +448,7 @@ def instantanea(libro: Libro, memoria: Memoria | None = None) -> Instantanea:
         "regla": {r.id: regla_a_dict(r) for r in libro.reglas()},
         "comprobante": {c.id: comprobante_a_dict(c) for c in libro.comprobantes()},
         "rubro_contable": {r.id: rubro_contable_a_dict(r) for r in libro.rubros_contables_propios()},
+        "tipo_cambio": {t.id: tipo_cambio_a_dict(t) for t in libro.tipos_cambio()},
     }
 
 
@@ -460,6 +478,7 @@ def libro_desde_instantanea(
             reglas=[regla_desde_dict(d) for d in datos.get("regla", {}).values()],
             comprobantes=[comprobante_desde_dict(d) for d in datos.get("comprobante", {}).values()],
             rubros_contables=[rubro_contable_desde_dict(d) for d in datos.get("rubro_contable", {}).values()],
+            tipos_cambio=[tipo_cambio_desde_dict(d) for d in datos.get("tipo_cambio", {}).values()],
             secuencia=secuencia,
             reloj=reloj,
         )

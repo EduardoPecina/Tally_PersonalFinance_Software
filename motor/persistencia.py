@@ -34,7 +34,7 @@ from motor.errores import ErrorBloqueado, ErrorDatos
 from motor.libro import Libro
 from motor.serializacion import Instantanea, Memoria, instantanea, libro_desde_instantanea
 
-VERSION_ESQUEMA = 11
+VERSION_ESQUEMA = 12
 # 1: TALLY 0.1–0.3. 2: categorías con subcategorías (entidad «rubro»). Las tablas no cambian; el contenido lo
 #    pone al día ``Sesion`` (motor/catalogo.py) la primera vez que se abre. 3: títulos e inversiones a plazo
 #    (entidades «valor» y «plazo», TALLY 0.7): una versión anterior ya no abre los datos, para no perderlos.
@@ -45,6 +45,8 @@ VERSION_ESQUEMA = 11
 #    los perfiles de impuestos e impuestos «a tu cargo» (TALLY 0.25): una versión anterior los perdería al guardar.
 #    10: los rubros contables de TALLY renombrados o borrados (TALLY 0.26): una versión anterior los vería repetidos.
 #    11: tus ajustes de gastos hormiga en el perfil (TALLY 0.28): una versión anterior los perdería al guardar.
+#    12: cuentas en otra moneda y tipos de cambio (entidad «tipo_cambio», TALLY 0.32): una versión anterior sumaría
+#    sus dólares como si fueran de tu moneda.
 NOMBRE_ARCHIVO = "tally.db"
 
 _ESQUEMA = """

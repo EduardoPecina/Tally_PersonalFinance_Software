@@ -44,11 +44,12 @@ from motor.serializacion import libro_desde_instantanea
 from motor.sesion import Sesion
 
 FORMATO = "tally-respaldo"
-VERSION_FORMATO = 11  # 2: categorías con subcategorías (TALLY 0.4). 3: títulos e inversiones a plazo (TALLY 0.7).
+VERSION_FORMATO = 12  # 2: categorías con subcategorías (TALLY 0.4). 3: títulos e inversiones a plazo (TALLY 0.7).
 # 4: bienes y su depreciación (TALLY 0.10). 5: préstamos (TALLY 0.11). 6: respaldos cifrados (TALLY 0.12).
 # 7: reglas de categorías y comprobantes con sus archivos (TALLY 0.23). 8: rubros contables (TALLY 0.24).
 # 9: recordatorio de pago al fisco en los perfiles de impuestos (TALLY 0.25). 10: rubros contables de TALLY
-# renombrados o borrados (TALLY 0.26). 11: ajustes de gastos hormiga en el perfil (TALLY 0.28).
+# renombrados o borrados (TALLY 0.26). 11: ajustes de gastos hormiga en el perfil (TALLY 0.28). 12: cuentas en
+# otra moneda y tipos de cambio (TALLY 0.32).
 #                      Los anteriores se ponen al día al restaurar
 MANIFIESTO = "manifiesto.json"
 DATOS = "datos.json"

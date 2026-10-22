@@ -18,10 +18,13 @@ Convención (la de cualquier contabilidad): una partida positiva va al **Debe** 
   siempre (si no, hay un error y el reporte lo dice).
 
 La depreciación y los avalúos de los bienes no son movimientos: se calculan (motor/bienes.py) y aquí se suman como
-asientos calculados, para que el balance y la balanza los reflejen y sigan cuadrando.
+asientos calculados, para que el balance y la balanza los reflejen y sigan cuadrando. Igual la diferencia por tipo
+de cambio de las cuentas en otra moneda (motor/divisas.py): sus movimientos están en tu moneda a lo que valían ese
+día, y la diferencia contra lo que valen hoy es un asiento calculado.
 
 En el Estado de Resultados, los **cambios de valor** (rendimientos de tus inversiones, depreciación y plusvalía de
-tus bienes, ganancia o pérdida al venderlos) van aparte de tu día a día: no son dinero que ganaste o gastaste.
+tus bienes, ganancia o pérdida al venderlos, por tipo de cambio) van aparte de tu día a día: no son dinero que
+ganaste o gastaste.
 
 El flujo de efectivo usa el **método directo**: cuánto efectivo entró y salió, y por qué. Cuenta como efectivo el
 dinero en cuentas de débito, ahorro y efectivo (y las de tipo «otra» marcadas como disponibles).
@@ -37,7 +40,7 @@ from dataclasses import dataclass, field, replace
 from datetime import date, timedelta
 from decimal import Decimal
 
-from motor import bienes, prestamos, reportes, rubros_contables
+from motor import bienes, divisas, prestamos, reportes, rubros_contables
 from motor.consultas import ETIQUETA_TIPO_OPERACION
 from motor.dinero import a_centavos, a_pesos, formatear
 from motor.libro import Libro
@@ -73,9 +76,11 @@ RENDIMIENTOS_INVERSION = "Rendimientos y cambios de valor de tus inversiones"
 DEPRECIACION = "Depreciación de tus bienes"
 PLUSVALIA = "Plusvalía (o minusvalía) por avalúos"
 VENTA_BIENES = "Ganancia o pérdida al vender bienes"
+TIPO_DE_CAMBIO = "Ganancia o pérdida por tipo de cambio"
 CAMBIOS_DE_VALOR = "Cambios de valor"
+DIFERENCIA_CAMBIARIA = "Diferencia por tipo de cambio"
 
-DEPRECIADO, AVALUADO = "depreciacion", "plusvalia"
+DEPRECIADO, AVALUADO, CAMBIARIO = "depreciacion", "plusvalia", "tipo_de_cambio"
 
 _TIPOS_EFECTIVO = frozenset({TipoCuenta.DEBITO, TipoCuenta.AHORRO, TipoCuenta.EFECTIVO})
 
@@ -90,7 +95,8 @@ class Origen:
     - ``cuentas``/``categorias``: las partidas de esas cuentas o subcategorías entre ``desde`` y ``hasta``.
     - ``inversion``: True = solo rendimientos de cuentas de inversión; False = sin ellos; None = todo.
     - ``flujo``: (sección, concepto) del flujo de efectivo (None = cualquiera).
-    - ``calculado``: depreciación o plusvalía de los bienes en ``cuentas`` (no son movimientos guardados).
+    - ``calculado``: depreciación o plusvalía de los bienes en ``cuentas``, o la diferencia por tipo de cambio de
+      cuentas en otra moneda (no son movimientos guardados).
     - ``partes``: un renglón que junta varios orígenes (subtotales y totales).
     - ``signo``: −1 si el renglón se lee al revés de la partida (pasivo, patrimonio, ingresos).
     """
@@ -177,11 +183,22 @@ def movimientos(libro: Libro, origen: Origen | None) -> list[Movimiento]:
 
 
 def _calculados(libro: Libro, origen: Origen) -> list[Movimiento]:
-    """Depreciación del periodo (un renglón por bien) o el efecto de cada avalúo del periodo."""
+    """Depreciación del periodo (un renglón por bien), el efecto de cada avalúo del periodo o la diferencia por tipo de
+    cambio del periodo (un renglón por cuenta en otra moneda)."""
     filas = []
     antes = (origen.desde - timedelta(days=1)) if origen.desde else None
     for cuenta_id in origen.cuentas:
         nombre = libro.cuenta(cuenta_id).nombre
+        if origen.calculado == CAMBIARIO:
+            cambio = a_pesos(_cambiaria(libro, cuenta_id, origen.hasta) - (_cambiaria(libro, cuenta_id, antes)
+                                                                            if antes else 0))
+            if cambio:
+                moneda = libro.cuenta(cuenta_id).moneda
+                tipos = [divisas.tipo(libro, moneda, d) for d in (antes, origen.hasta) if d]
+                detalle = " → ".join(f"{t.normalize():f}" for t in tipos if t is not None)
+                filas.append(_calculado(origen.hasta, f"Tipo de cambio de {nombre} ({moneda}: {detalle})",
+                                        "Calculado", cambio, origen.signo, debe=True))
+            continue
         if origen.calculado == DEPRECIADO:
             inicio = bienes.valuar(libro, cuenta_id, antes).depreciacion if antes else Decimal(0)
             cambio = bienes.valuar(libro, cuenta_id, origen.hasta).depreciacion - inicio
@@ -256,23 +273,33 @@ def _categorias_de_resultados(libro: Libro) -> frozenset[str]:
 
 
 def _resultados(libro: Libro, hasta: date, desde: date | None = None) -> int:
-    """Resultado acumulado (ingresos − gastos ± ajustes ± cambios de valor de los bienes) en centavos."""
+    """Resultado acumulado (ingresos − gastos ± ajustes ± cambios de valor de los bienes y por tipo de cambio) en
+    centavos."""
     total = 0
     for op in libro.operaciones(desde, hasta):
         for p in op.partidas_de_categoria():
             if p.categoria_id != CATEGORIA_SALDO_INICIAL:
                 total -= p.importe
-    total += bienes.ajuste_de_valor(libro, hasta)
+    total += bienes.ajuste_de_valor(libro, hasta) + divisas.ajuste(libro, hasta)
     if desde is not None:
-        total -= bienes.ajuste_de_valor(libro, desde - timedelta(days=1))
+        antes = desde - timedelta(days=1)
+        total -= bienes.ajuste_de_valor(libro, antes) + divisas.ajuste(libro, antes)
     return total
+
+
+def _cambiaria(libro: Libro, cuenta_id: str, dia: date) -> int:
+    """Diferencia por tipo de cambio acumulada de una cuenta: lo que vale en tu moneda menos lo que valían sus
+    movimientos al entrar."""
+    return divisas.valor(libro, cuenta_id, dia) - libro.saldo_en_base(cuenta_id, dia)
 
 
 def _origen_resultados(libro: Libro, desde: date | None, hasta: date) -> Origen | None:
     ids = frozenset(b.cuenta_id for b in libro.bienes())
+    otras = frozenset(c.id for c in divisas.cuentas_en_otra_moneda(libro))
     return unir([Origen(desde, hasta, -1, categorias=_categorias_de_resultados(libro)),
                  *([Origen(desde, hasta, -1, cuentas=ids, calculado=DEPRECIADO),
-                    Origen(desde, hasta, 1, cuentas=ids, calculado=AVALUADO)] if ids else [])])
+                    Origen(desde, hasta, 1, cuentas=ids, calculado=AVALUADO)] if ids else []),
+                 *([Origen(desde, hasta, 1, cuentas=otras, calculado=CAMBIARIO)] if otras else [])])
 
 
 # ---------------------------------------------------------------- periodos
@@ -369,11 +396,15 @@ def situacion(libro: Libro, fechas: list[date], desde: date | None = None) -> Si
     for cuenta in cuentas:
         naturaleza, grupo = clasificar_cuenta(cuenta, libro, corte)
         signo = -1 if naturaleza == PASIVO else 1
-        saldos = tuple(libro.saldo_centavos(cuenta.id, f) for f in fechas)
+        saldos = tuple(libro.saldo_en_base(cuenta.id, f) for f in fechas)
         propios = [Renglon(naturaleza, grupo, cuenta.nombre, tuple(a_pesos(signo * s) for s in saldos),
                            Origen(desde, corte, signo, cuentas=frozenset({cuenta.id})))]
         if libro.bien(cuenta.id) is not None:
             propios += _renglones_de_bien(libro, cuenta, fechas, desde)
+        if divisas.en_otra_moneda(libro, cuenta):
+            propios.append(Renglon(naturaleza, grupo, f"{DIFERENCIA_CAMBIARIA} · {cuenta.nombre}",
+                                   tuple(a_pesos(_cambiaria(libro, cuenta.id, f)) for f in fechas),
+                                   Origen(desde, corte, 1, cuentas=frozenset({cuenta.id}), calculado=CAMBIARIO)))
         totales = [sum((r.importes[i] for r in propios), Decimal(0)) for i in range(len(fechas))]
         if any(r.importes[i] for r in propios for i in range(len(fechas))) and (
                 libro.bien(cuenta.id) is None or any(totales) or len(propios) == 1):
@@ -454,8 +485,9 @@ def resultados(libro: Libro, periodos: list[tuple[date, date]]) -> Resultados:
     ingresos: dict[tuple[str, str, str], list[int]] = defaultdict(lambda: [0] * n)
     gastos: dict[tuple[str, str, str], list[int]] = defaultdict(lambda: [0] * n)
     ids: dict[tuple[str, str, str], set[str]] = defaultdict(set)
-    rendimientos, ajustes, ventas = [0] * n, [0] * n, [0] * n
+    rendimientos, ajustes, ventas, cambiaria = [0] * n, [0] * n, [0] * n, [0] * n
     depreciacion, plusvalia = [Decimal(0)] * n, [Decimal(0)] * n
+    otras = frozenset(c.id for c in divisas.cuentas_en_otra_moneda(libro))
     for i, (desde, hasta) in enumerate(periodos):
         for op in libro.operaciones(desde, hasta):
             inversion = _es_rendimiento_de_inversion(libro, op)
@@ -480,6 +512,8 @@ def resultados(libro: Libro, periodos: list[tuple[date, date]]) -> Resultados:
             fin = bienes.valuar(libro, bien.cuenta_id, hasta)
             depreciacion[i] -= fin.depreciacion - inicio.depreciacion
             plusvalia[i] += fin.revaluacion - inicio.revaluacion
+        if otras:
+            cambiaria[i] = divisas.ajuste(libro, hasta) - divisas.ajuste(libro, desde - timedelta(days=1))
     desde, hasta = periodos[0]
     de_ingreso = frozenset(c.id for c in libro.categorias() if c.clase is ClaseCategoria.INGRESO)
     con_bienes = frozenset(b.cuenta_id for b in libro.bienes())
@@ -492,6 +526,8 @@ def resultados(libro: Libro, periodos: list[tuple[date, date]]) -> Resultados:
                 Origen(desde, hasta, 1, cuentas=con_bienes, calculado=AVALUADO)),
         Renglon(INGRESO, "", VENTA_BIENES, tuple(a_pesos(v) for v in ventas),
                 Origen(desde, hasta, -1, categorias=frozenset({CATEGORIA_BIENES}))),
+        *([Renglon(INGRESO, "", TIPO_DE_CAMBIO, tuple(a_pesos(v) for v in cambiaria),
+                   Origen(desde, hasta, 1, cuentas=otras, calculado=CAMBIARIO))] if otras else []),
     ]
     return Resultados(
         tuple(periodos),
@@ -527,8 +563,9 @@ FLUJO_PRESTAMOS = "Préstamos (lo que recibiste y lo que pagaste)"
 FLUJO_POR_COBRAR = "Préstamos y cobros"
 FLUJO_AJUSTES = "Cuentas nuevas y ajustes"
 FLUJO_OTROS = "Otros movimientos"
+FLUJO_CAMBIO = "Tipo de cambio (tu efectivo en otra moneda)"
 SECCIONES_FLUJO = (DIA_A_DIA, FLUJO_TARJETAS, FLUJO_PRESTAMOS, FLUJO_INVERSIONES, FLUJO_BIENES, FLUJO_POR_COBRAR,
-                   FLUJO_AJUSTES, FLUJO_OTROS)
+                   FLUJO_AJUSTES, FLUJO_OTROS, FLUJO_CAMBIO)
 
 
 @dataclass(frozen=True, slots=True)
@@ -546,6 +583,8 @@ class Flujo:
 
     def origen(self, seccion: str | None = None) -> Origen:
         desde, hasta = self.periodos[0]
+        if seccion == FLUJO_CAMBIO:
+            return unir(r.origen for r in self.renglones if r.naturaleza == FLUJO_CAMBIO)
         return Origen(desde, hasta, flujo=(seccion, None))
 
     def secciones(self) -> list[str]:
@@ -581,9 +620,16 @@ def flujo(libro: Libro, periodos: list[tuple[date, date]]) -> Flujo:
                                          key=lambda kv: (SECCIONES_FLUJO.index(kv[0][0]),
                                                          orden_rubros.get(kv[0][1], 10**6), -abs(kv[1][0]), kv[0][1]))
                  if any(v)]
-    inicial = tuple(a_pesos(sum(libro.saldo_centavos(c, d - timedelta(days=1)) for c in efectivo))
+    otras = sorted(c for c in efectivo if divisas.en_otra_moneda(libro, c))
+    for cuenta_id in otras:         # sus movimientos van a lo que valían; lo que cambió su valor, aparte
+        cambio = tuple(a_pesos(_cambiaria(libro, cuenta_id, h) - _cambiaria(libro, cuenta_id, d - timedelta(days=1)))
+                       for d, h in periodos)
+        if any(cambio):
+            renglones.append(Renglon(FLUJO_CAMBIO, FLUJO_CAMBIO, libro.cuenta(cuenta_id).nombre, cambio,
+                                     Origen(desde, hasta, 1, cuentas=frozenset({cuenta_id}), calculado=CAMBIARIO)))
+    inicial = tuple(a_pesos(sum(divisas.valor(libro, c, d - timedelta(days=1)) for c in efectivo))
                     for d, _ in periodos)
-    final = tuple(a_pesos(sum(libro.saldo_centavos(c, h) for c in efectivo)) for _, h in periodos)
+    final = tuple(a_pesos(sum(divisas.valor(libro, c, h) for c in efectivo)) for _, h in periodos)
     nombres = [libro.cuenta(c).nombre for c in sorted(efectivo, key=lambda c: libro.cuenta(c).nombre.casefold())]
     return Flujo(tuple(periodos), inicial, renglones, final, nombres, tuple(a_pesos(t) for t in tarjeta))
 
@@ -672,7 +718,7 @@ class CuentaBalanza:
             return "Aumentó" if v > 0 else "Disminuyó" if v < 0 else "Sin cambio"
         if self.nombre == AJUSTES:
             return "Diferencias corregidas"
-        if self.nombre in (DEPRECIACION, PLUSVALIA, VENTA_BIENES):
+        if self.nombre in (DEPRECIACION, PLUSVALIA, VENTA_BIENES, TIPO_DE_CAMBIO):
             return "Cambio de valor del periodo"
         return "Ingreso del periodo" if self.naturaleza == INGRESO else "Gasto del periodo"
 
@@ -751,8 +797,8 @@ def balanza(libro: Libro, desde: date, hasta: date) -> Balanza:
     """Saldo al inicio, movimientos (Debe y Haber) y saldo al final de cada cuenta y subcuenta del periodo.
 
     Las cuentas de resultados (ingresos, gastos, ajustes) empiezan cada periodo en cero: lo acumulado antes está en
-    «Resultados de periodos anteriores», dentro del patrimonio. La depreciación y los avalúos de los bienes entran
-    como asientos calculados.
+    «Resultados de periodos anteriores», dentro del patrimonio. La depreciación y los avalúos de los bienes, y la
+    diferencia por tipo de cambio de las cuentas en otra moneda, entran como asientos calculados.
     """
     antes = desde - timedelta(days=1)
     contable = rubros_contables.asignaciones(libro)
@@ -778,7 +824,7 @@ def balanza(libro: Libro, desde: date, hasta: date) -> Balanza:
 
     def asentar(clave, importe_antes: int, importe_periodo: int, origen: Origen) -> None:
         nonlocal previos
-        origenes[clave] = origen
+        origenes[clave] = unir([origenes.get(clave), origen])      # varios bienes o cuentas en el mismo renglón
         if clave[0] in (INGRESO, GASTO):
             previos += importe_antes
         else:
@@ -804,6 +850,15 @@ def balanza(libro: Libro, desde: date, hasta: date) -> Balanza:
                     Origen(desde, hasta, 1, cuentas=ids, calculado=AVALUADO))
             asentar((INGRESO, PLUSVALIA, "", CAMBIOS_DE_VALOR), -r0, -(r1 - r0),
                     Origen(desde, hasta, 1, cuentas=ids, calculado=AVALUADO))
+    for cuenta in divisas.cuentas_en_otra_moneda(libro):
+        a0, a1 = _cambiaria(libro, cuenta.id, antes), _cambiaria(libro, cuenta.id, hasta)
+        if a0 or a1:
+            ids = frozenset({cuenta.id})
+            naturaleza, grupo = de_cuenta[cuenta.id]
+            asentar((naturaleza, f"{DIFERENCIA_CAMBIARIA} · {cuenta.nombre}", "", grupo), a0, a1 - a0,
+                    Origen(desde, hasta, 1, cuentas=ids, calculado=CAMBIARIO))
+            asentar((INGRESO, TIPO_DE_CAMBIO, "", CAMBIOS_DE_VALOR), -a0, -(a1 - a0),
+                    Origen(desde, hasta, 1, cuentas=ids, calculado=CAMBIARIO))
     if previos:
         inicial[(PATRIMONIO, RESULTADOS_PREVIOS, "", PATRIMONIO)] += previos
         origenes[(PATRIMONIO, RESULTADOS_PREVIOS, "", PATRIMONIO)] = _origen_resultados(libro, None, antes)

@@ -322,7 +322,8 @@ def _orden_de_fechas(valores) -> str:
     return "dma"
 
 
-_MONEDAS = re.compile(r"MXN|USD|EUR|COP|ARS|CLP|PEN|UYU|US\$|M\.N\.|MN|\$|€", re.IGNORECASE)
+_MONEDAS = re.compile(r"MXN|USD|EUR|COP|ARS|CLP|PEN|UYU|CAD|GBP|CHF|SEK|NOK|DKK|PLN|CZK|HUF|RON|US\$|CA\$|M\.N\.|MN|"
+                      r"\$|€|£|zł|Kč|\bFt\b|\blei\b|\bkr\.?", re.IGNORECASE)
 
 
 def leer_importe(texto: str, *, decimal: str | None = None) -> int | None:
@@ -1253,7 +1254,7 @@ def buscar_duplicados(libro: Libro, cuenta_id: str, movimientos) -> dict[int, Op
     hasta = max(m.fecha for m in movimientos) + tolerancia
     por_importe: dict[int, list[Operacion]] = defaultdict(list)
     for op in libro.operaciones(desde, hasta):
-        efecto = sum(p.importe for p in op.partidas if p.cuenta_id == cuenta_id)
+        efecto = sum(p.en_su_moneda for p in op.partidas if p.cuenta_id == cuenta_id)    # como en tu banco
         if efecto:
             por_importe[efecto].append(op)
     usadas: set[str] = set()

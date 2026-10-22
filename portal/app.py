@@ -21,6 +21,7 @@ from motor.config import LEMA, MAC, VERSION  # noqa: E402
 from motor.errores import ErrorBloqueado, ErrorDatos, ErrorTally  # noqa: E402
 from portal import accesos, navegacion  # noqa: E402
 from portal.componentes import candado, formato, por_recuperar, tema  # noqa: E402
+from portal.componentes import divisas as tipos_de_cambio  # noqa: E402
 from portal.apagado import cerrar_portal, vigilar_inactividad  # noqa: E402
 from portal.componentes.cierre import pagina_cerrado  # noqa: E402
 from portal.componentes.sesion import mostrar_avisos, sesion  # noqa: E402
@@ -163,6 +164,7 @@ def main() -> None:
 
     _respaldo_del_dia(actual)
     _copia_externa(actual)
+    tipos_de_cambio.al_dia()                               # si lo activaste: en segundo plano, una vez al día
     pagina = st.navigation(navegacion.por_seccion(), expanded=True)   # todas las páginas a la vista
     if pagina.url_path != "cuentas":
         st.session_state.pop("cuenta_abierta", None)       # al volver a Cuentas se ve la lista

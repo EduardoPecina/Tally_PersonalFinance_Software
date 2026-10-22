@@ -93,7 +93,7 @@ Campos:
 - nombre
 - tipo
 - institución (opcional)
-- moneda (MXN)
+- moneda: vacía = tu moneda; o la de la cuenta (USD, EUR…), ver 5 bis
 - fecha de creación
 - activa
 - `en_disponible`
@@ -105,6 +105,35 @@ Campos:
   cuenta archivada con saldo distinto de cero sigue contando en el patrimonio.
 - **Tarjeta de débito:** no es una entidad aparte. La cuenta de tipo `DEBITO`
   es la cuenta bancaria.
+
+## 5 bis. Cuentas en otra moneda
+
+Todo se suma en **tu moneda** (la del perfil). Una cuenta de débito, ahorro,
+efectivo, inversión u «otra» puede estar en otra moneda (`motor/divisas.py`);
+tarjetas, préstamos, bienes y por cobrar van siempre en la tuya.
+
+- Cada partida de una cuenta así guarda **dos cifras**: `original`, el importe
+  en la moneda de la cuenta (su saldo cuadra con el banco al centavo), e
+  `importe`, lo que valía en tu moneda al tipo de cambio de ese día. Las
+  partidas siguen sumando cero **en tu moneda**, así que ingresos, gastos,
+  presupuestos, cierres y contabilidad no cambian cuando se mueve el dólar.
+- Al registrar se escribe solo el importe en la moneda de la cuenta: el Libro
+  lo convierte al guardar (`divisas.en_tu_moneda`). En una transferencia entre
+  monedas el importe es lo que salió; lo que llegó se calcula o se escribe
+  (`llega`), y entonces el tipo de cambio real (con su comisión) queda implícito.
+- **Valor de la cuenta** = su saldo × el tipo de cambio del día. La diferencia
+  contra la suma de sus `importe` es la **ganancia o pérdida por tipo de
+  cambio**: no es un movimiento, se calcula (como la depreciación de un bien) y
+  entra al patrimonio, a la contabilidad («Diferencia por tipo de cambio» en el
+  activo, «Ganancia o pérdida por tipo de cambio» en los cambios de valor y una
+  sección del flujo de efectivo) y a la evolución del patrimonio.
+- **Tipos de cambio** (`TipoCambio`): uno por moneda y día, escritos por el
+  usuario o traídos de internet (opcional, solo el par de monedas). Para un día
+  sin tipo de cambio se usa el último anterior. Los escritos a mano mandan.
+- La moneda de una cuenta solo cambia mientras no tenga movimientos, y tu
+  moneda no cambia mientras haya cuentas en otra.
+- Inversiones: en una cuenta de inversión en otra moneda, costo, valor, valor
+  oficial y CETES van en esa moneda; el rendimiento se convierte al guardarlo.
 
 ## 6. Categorías, subcategorías y clasificaciones
 

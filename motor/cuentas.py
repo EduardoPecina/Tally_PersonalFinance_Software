@@ -1,6 +1,7 @@
 """Cuentas: débito, ahorro, crédito, efectivo, inversión, por cobrar y otras.
 
-No hay límite en el número de cuentas de cada tipo.
+No hay límite en el número de cuentas de cada tipo. Una cuenta de débito, ahorro, efectivo, inversión u «otra» puede
+estar en otra moneda (motor/divisas.py): su saldo y sus importes van en esa moneda.
 """
 
 from __future__ import annotations
@@ -9,6 +10,7 @@ from dataclasses import replace
 from datetime import date
 from decimal import Decimal
 
+from motor import divisas
 from motor.dinero import a_centavos, a_pesos
 from motor.errores import ErrorValidacion
 from motor.libro import Libro
@@ -44,8 +46,12 @@ def crear(
     dias_habiles: bool = False,
     recorrer_inhabil: bool = True,
     fecha_creacion: date | None = None,
+    moneda: str = "",
 ) -> Cuenta:
     """Crea una cuenta y, si se indica, registra su saldo inicial.
+
+    ``moneda``: la de la cuenta si no es la tuya (USD, EUR…); su saldo inicial va en esa moneda y necesita el tipo de
+    cambio de su fecha (motor/divisas.py).
 
     Para tarjetas de crédito lo natural es indicar ``deuda_inicial`` (lo que
     se debe hoy) en lugar de ``saldo_inicial``. La fecha límite de pago se
@@ -73,6 +79,7 @@ def crear(
         tipo=tipo,
         fecha_creacion=fecha_creacion,
         en_disponible=tipo in TIPOS_DISPONIBLES_POR_DEFECTO if en_disponible is None else en_disponible,
+        moneda=divisas.moneda_para_cuenta(libro, tipo, moneda),
         institucion=institucion.strip(),
         notas=notas,
         orden=max((c.orden for c in libro.cuentas()), default=-1) + 1,
@@ -84,6 +91,8 @@ def crear(
         recorrer_inhabil=bool(recorrer_inhabil),
     )
     _validar_regla_de_pago(cuenta)
+    if inicial and cuenta.moneda:
+        divisas.tipo_o_error(libro, cuenta.moneda, fecha_saldo_inicial or fecha_creacion)   # antes de crearla
     libro.guardar_cuenta(cuenta)
     if inicial:
         _registrar_saldo_inicial(libro, cuenta.id, inicial, fecha_saldo_inicial or fecha_creacion)
@@ -157,10 +166,34 @@ def editar(
     return libro.guardar_cuenta(nueva)
 
 
+def cambiar_moneda(libro: Libro, cuenta_id: str, moneda: str) -> Cuenta:
+    """Cambia la moneda de una cuenta que aún no tiene movimientos (su saldo inicial, si lo tiene, queda con el mismo
+    número en la nueva moneda)."""
+    cuenta = libro.cuenta(cuenta_id)
+    nueva = replace(cuenta, moneda=divisas.moneda_para_cuenta(libro, cuenta.tipo, moneda))
+    if nueva.moneda == cuenta.moneda:
+        return cuenta
+    if tiene_movimientos(libro, cuenta_id) or libro.tiene_titulos(cuenta_id):
+        raise ErrorValidacion("La cuenta ya tiene movimientos: su moneda ya no se puede cambiar. Crea otra cuenta en "
+                              "la nueva moneda y pasa el dinero con una transferencia.")
+    inicial = _operacion_saldo_inicial(libro, cuenta_id)
+    libro.guardar_cuenta(nueva)
+    if inicial is not None:
+        try:
+            (partida,) = inicial.partidas_de_cuenta()
+            libro.reemplazar_operacion(inicial.id, _operacion_inicial(cuenta_id, partida.en_su_moneda, inicial.fecha))
+        except BaseException:
+            libro.guardar_cuenta(cuenta)
+            raise
+    return nueva
+
+
 def cambiar_tipo(libro: Libro, cuenta_id: str, tipo: TipoCuenta) -> Cuenta:
     """Cambia el tipo de cuenta si sus movimientos siguen siendo válidos."""
     cuenta = libro.cuenta(cuenta_id)
     nueva = replace(cuenta, tipo=TipoCuenta(tipo))
+    if cuenta.moneda:
+        divisas.moneda_para_cuenta(libro, nueva.tipo, cuenta.moneda)      # ¿ese tipo puede estar en otra moneda?
     if nueva.tipo is not TipoCuenta.CREDITO:
         nueva = replace(nueva, limite_credito=None, dia_corte=None, dia_pago=None, dias_para_pagar=None,
                         dias_habiles=False, recorrer_inhabil=True)
@@ -232,7 +265,7 @@ def saldo_inicial(libro: Libro, cuenta_id: str) -> tuple[Decimal, date] | None:
     if op is None:
         return None
     (partida,) = op.partidas_de_cuenta()
-    return a_pesos(partida.importe), op.fecha
+    return a_pesos(partida.en_su_moneda), op.fecha
 
 
 BORRADA, GUARDADA = "borrada", "guardada"
@@ -270,7 +303,7 @@ def tiene_movimientos(libro: Libro, cuenta_id: str) -> bool:
 
 
 def saldo(libro: Libro, cuenta_id: str, al: date | None = None) -> Decimal:
-    """Saldo de la cuenta. En crédito, negativo = deuda."""
+    """Saldo de la cuenta, en su moneda. En crédito, negativo = deuda."""
     return a_pesos(libro.saldo_centavos(cuenta_id, al))
 
 

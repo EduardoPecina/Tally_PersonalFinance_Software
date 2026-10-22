@@ -31,7 +31,7 @@ from motor import cuentas
 from motor.dinero import a_centavos, a_pesos
 from motor.errores import ErrorValidacion
 from motor.libro import Libro
-from motor.transferencias import registrar_transferencia
+from motor.transferencias import registrar_por_valor
 from motor.modelo import (
     CATEGORIA_BIENES,
     Avaluo,
@@ -209,9 +209,8 @@ def convertir_gasto(libro: Libro, operacion_id: str, cuenta_id: str) -> Operacio
         raise ErrorValidacion("Este gasto cierra un cargo temporal; no se puede convertir en un bien.")
     (pago,) = op.partidas_de_cuenta()
     _activo(libro, cuenta_id)
-    nueva = replace(op, tipo=TipoOperacion.TRANSFERENCIA, liquida="",
-                    partidas=(Partida(pago.importe, cuenta_id=pago.cuenta_id),
-                              Partida(-pago.importe, cuenta_id=cuenta_id)))
+    nueva = replace(op, tipo=TipoOperacion.TRANSFERENCIA, liquida="",       # el pago, tal cual (aunque sea en dólares)
+                    partidas=(pago, Partida(-pago.importe, cuenta_id=cuenta_id)))
     return libro.reemplazar_operacion(operacion_id, nueva)
 
 
@@ -317,7 +316,7 @@ def _activo(libro: Libro, cuenta_id: str) -> Bien:
 
 
 def _transferir(libro: Libro, fecha: date, origen: str, destino: str, monto, descripcion: str) -> Operacion:
-    return registrar_transferencia(libro, fecha, origen, destino, monto, descripcion)
+    return registrar_por_valor(libro, fecha, origen, destino, monto, descripcion)    # el monto, en tu moneda
 
 
 def _numero(valor, que: str) -> Decimal:

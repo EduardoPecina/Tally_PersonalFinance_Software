@@ -243,8 +243,9 @@ def _resultados(r: cb.Resultados) -> None:
     _rubros_contables()
     st.caption("**Resultado del día a día**: lo que te quedó de lo que ganaste menos lo que gastaste. Los **cambios "
                "de valor** van aparte: rendimientos de tus inversiones (cuando cuadras con el valor oficial), "
-               "depreciación y plusvalía de tus bienes, y lo que ganaste o perdiste al venderlos. Los saldos "
-               "iniciales de cuentas nuevas no son resultado: son patrimonio.")
+               "depreciación y plusvalía de tus bienes, lo que ganaste o perdiste al venderlos y, si tienes cuentas "
+               "en otra moneda, lo que subió o bajó su valor por el tipo de cambio. Los saldos iniciales de cuentas "
+               "nuevas no son resultado: son patrimonio.")
 
 
 def _filas_resultados(r: cb.Resultados, *, detalle: bool) -> list[Fila]:

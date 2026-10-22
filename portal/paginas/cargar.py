@@ -104,7 +104,7 @@ def _mapeo(pendientes: list[Desconocido]) -> dict[str, Destino]:
                     mapeo[d.clave] = Destino.subcategoria(elegida)
             else:
                 elegida = st.selectbox("Cuenta (será una transferencia)", cuentas_ids, index=None,
-                                       placeholder="Elige la cuenta", format_func=lambda i: lib.cuenta(i).nombre,
+                                       placeholder="Elige la cuenta", format_func=lambda i: formato.nombre_cuenta(lib.cuenta(i)),
                                        key=f"cargar_cuenta_{d.clave}")
                 if elegida:
                     mapeo[d.clave] = Destino.cuenta(elegida)

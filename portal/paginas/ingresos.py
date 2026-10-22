@@ -169,7 +169,7 @@ def _formulario(r: Recurrente | None, *, principal: bool) -> None:
         a, b = st.columns(2)
         cuenta = a.selectbox("¿A qué cuenta te depositan?", cuentas_,
                              index=cuentas_.index(r.cuenta_id) if r and r.cuenta_id in cuentas_ else 0,
-                             format_func=lambda i: lib.cuenta(i).nombre)
+                             format_func=lambda i: formato.nombre_cuenta(lib.cuenta(i)))
         opciones_fs = list(recurrentes.FIN_DE_SEMANA)
         fin_de_semana = b.selectbox("Si el día de pago cae en sábado o domingo", opciones_fs,
                                     format_func=recurrentes.FIN_DE_SEMANA.get,
@@ -202,7 +202,7 @@ def _otros() -> None:
                              else "❓ Elige la subcategoría" for r in lista],      # la suya se borró
             "Te llegan": [_importe(r) for r in lista],
             "Cada cuánto": [recurrentes.FRECUENCIAS[r.frecuencia].split(" (")[0] for r in lista],
-            "Al mes": [formato.dinero(recurrentes.al_mes(r)) for r in lista],
+            "Al mes": [formato.dinero(recurrentes.al_mes(r, lib)) for r in lista],
             "Próxima vez": [formato.fecha_con_dia(d) if r.activa and (d := recurrentes.siguiente(r, hoy)) else "—"
                             for r in lista],
         })), hide_index=True, width="stretch", on_select="rerun", selection_mode="single-row", key="ing_sel")
@@ -223,8 +223,9 @@ def _otros() -> None:
 
 def _importe(r: Recurrente) -> str:
     if r.monto_2:
-        return f"{formato.dinero(a_pesos(r.monto))} / {formato.dinero(a_pesos(r.monto_2))}"
-    return formato.dinero(a_pesos(r.monto))
+        return (f"{formato.dinero_en(a_pesos(r.monto), libro().cuenta(r.cuenta_id).moneda)} / "
+                f"{formato.dinero_en(a_pesos(r.monto_2), libro().cuenta(r.cuenta_id).moneda)}")
+    return formato.dinero_en(a_pesos(r.monto), libro().cuenta(r.cuenta_id).moneda)
 
 
 # ------------------------------------------------------------- ingreso al mes

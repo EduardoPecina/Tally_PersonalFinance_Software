@@ -2583,3 +2583,142 @@ def test_el_menu_dice_que_todo_esta_guardado(raiz, con_datos):
     sin_errores(at)
     textos = [c.value for c in at.sidebar.caption]
     assert any(t.startswith(":green[✓ Todo guardado] · último cambio hoy ") for t in textos), textos
+
+
+# ------------------------------------------------------------------ cuentas en otra moneda
+
+
+@pytest.fixture
+def con_dolares(raiz, con_datos):
+    """Además, una cuenta de ahorro en dólares ficticia: 1,000 dólares a 17, que hoy valen 18."""
+    from motor import divisas
+
+    s = sesion_en(raiz)
+    hoy = s.libro.hoy()
+    with s.cambio() as lib:
+        divisas.guardar_tipo(lib, "USD", date(hoy.year, 1, 1), 17)
+        divisas.guardar_tipo(lib, "USD", hoy, 18)
+        dolares = cuentas.crear(lib, "Dólares Ficticios", "ahorro", saldo_inicial=1000,
+                                fecha_creacion=date(hoy.year, 1, 1), moneda="USD").id
+    return {**con_datos, "dolares": dolares}
+
+
+@pytest.fixture
+def sin_internet(monkeypatch):
+    """Los tipos de cambio «de internet», ficticios: ninguna prueba sale a la red."""
+    from motor import divisas
+
+    pedidos = []
+
+    def falso(pedidos_, base, hoy, enviar=None):
+        pedidos.append(dict(pedidos_))
+        return divisas.Consulta({m: {hoy: Decimal("18.25")} for m in pedidos_})
+
+    monkeypatch.setattr(divisas, "consultar", falso)
+    return pedidos
+
+
+def test_crear_una_cuenta_en_dolares_con_su_tipo_de_cambio(raiz, con_datos, sin_internet):
+    from motor import divisas
+
+    at = abrir(_pagina("cuentas"))
+    abrir_desplegable(at, "cuentas_nueva")
+    at.selectbox(key="cuentas_tipo_nueva").set_value("ahorro").run()
+    at.selectbox(key="cuentas_moneda_nueva").set_value("USD").run()
+    next(t for t in at.text_input if t.label == "Nombre" and not t.value).input("Ahorro en Dólares")
+    next(n for n in at.number_input if n.label.startswith("¿Cuánto tienes") and "USD" in n.label).set_value(1200.0)
+    next(n for n in at.number_input if n.label.startswith("Tipo de cambio")).set_value(18.5)
+    next(c for c in at.checkbox if c.label.startswith("Traer el tipo de cambio")).uncheck()
+    boton(at, "Agregar cuenta").click().run()
+    sin_errores(at)
+    lib = sesion_en(raiz).libro
+    cuenta = cuentas.buscar(lib, "Ahorro en Dólares")
+    assert cuenta.moneda == "USD" and cuentas.saldo(lib, cuenta.id) == 1200
+    assert divisas.tipo(lib, "USD") == Decimal("18.5") and not lib.perfil.tipos_por_internet
+    assert any(m.value == "US$1,200.00" for m in at.metric)
+    assert any("≈ \\$22,200.00 · 1 USD = 18.5 MXN" in c.value for c in at.caption)
+    assert not sin_internet                                                   # no se activó: no se consultó
+
+
+def test_registrar_en_dolares_y_entre_monedas(raiz, con_dolares):
+    at = abrir(_pagina("registrar"))
+    next(s for s in at.selectbox if s.label == "Subcategoría").set_value(con_dolares["cat"]["ALIMENTOS"])
+    next(s for s in at.selectbox if s.label == "Pagado con").set_value(con_dolares["dolares"])
+    next(n for n in at.number_input if n.label == "Importe (en la moneda de la cuenta)").set_value(50.0)
+    boton(at, "Guardar").click().run()
+    sin_errores(at)
+    assert any("Gasto de US$50.00 guardado (≈ $900.00)" in t.value for t in at.toast)
+
+    at.segmented_control(key="registrar_tipo").set_value("transferencia").run()
+    next(s for s in at.selectbox if s.label == "Hacia la cuenta").set_value(con_dolares["dolares"])
+    next(s for s in at.selectbox if s.label == "Desde la cuenta").set_value(con_dolares["debito"])
+    next(n for n in at.number_input if n.label.startswith("Importe que sale")).set_value(1800.0)
+    next(n for n in at.number_input if n.label.startswith("Lo que llegó")).set_value(99.0)
+    boton(at, "Guardar").click().run()
+    sin_errores(at)
+    assert any("Transferencia de $1,800.00 guardada (llegaron US$99.00)" in t.value for t in at.toast)
+    lib = sesion_en(raiz).libro
+    assert cuentas.saldo(lib, con_dolares["dolares"]) == Decimal(1049)
+
+    at = abrir(_pagina("historial"))
+    sin_errores(at)
+    tabla = at.dataframe[0].value
+    assert "US$50.00" in list(tabla["En su moneda"]) and "US$99.00" in list(tabla["En su moneda"])
+
+
+def test_ver_una_cuenta_en_dolares_y_el_resumen(raiz, con_dolares):
+    at = abrir()
+    sin_errores(at)
+    assert any("$1,000.00 por tipo de cambio" in c.value for c in at.caption)     # 1,000 dólares de 17 a 18
+    at = abrir(_pagina("cuentas"))
+    next(b for b in at.button if b.key == f"ver_{con_dolares['dolares']}").click().run()
+    sin_errores(at)
+    assert any(m.label == "Saldo" and m.value == "US$1,000.00" for m in at.metric)
+    assert any("Aquí todo va en USD" in c.value for c in at.caption)
+    at = abrir(_pagina("contabilidad"))
+    sin_errores(at)
+    situacion = at.dataframe[0].value
+    assert any("Diferencia por tipo de cambio · Dólares Ficticios" in c for c in situacion["Concepto"])
+    for pestana in ("Resultados", "Flujo de efectivo", "Balanza de comprobación"):
+        en_pestana(at, pestana, "contabilidad")
+        sin_errores(at)
+    for pagina in ("calendario", "inversiones", "salud", "graficas", "cierre"):
+        sin_errores(abrir(_pagina(pagina)))
+
+
+def test_configuracion_tipos_de_cambio(raiz, con_dolares, sin_internet):
+    from motor import divisas
+
+    at = abrir(_pagina("configuracion"))
+    sin_errores(at)
+    assert any(m.label == "USD" and m.value == "1 USD = 18 MXN" for m in at.metric)
+    next(n for n in at.number_input if n.label == "Cuántos MXN vale 1").set_value(18.4)
+    next(b for b in at.button if b.label == "Guardar" and "tipo_manual" in str(b.id)).click().run()
+    sin_errores(at)
+    assert divisas.tipo(sesion_en(raiz).libro, "USD") == Decimal("18.4")
+    boton(at, "Traer ahora de internet").click().run()
+    sin_errores(at)
+    assert sin_internet and divisas.tipo(sesion_en(raiz).libro, "USD") == Decimal("18.4")   # lo tuyo manda
+    at.toggle(key="configuracion_tipos_internet").set_value(True).run()
+    sin_errores(at)
+    assert sesion_en(raiz).libro.perfil.tipos_por_internet
+
+
+def test_los_tipos_de_cambio_se_traen_solos_en_segundo_plano(raiz, con_dolares, sin_internet):
+    from motor import divisas
+
+    s = sesion_en(raiz)
+    hoy = s.libro.hoy()
+    with s.cambio() as lib:
+        lib.quitar_tipo_cambio(f"USD:{hoy.isoformat()}")
+        perfil.ajustar(lib, tipos_por_internet=True)
+    at = abrir()
+    from portal.componentes import divisas as portal_divisas
+
+    en_curso = at.session_state[portal_divisas._HECHO]
+    en_curso._hilo.join(5)
+    at.run()                                                                 # al siguiente clic se guardan
+    sin_errores(at)
+    assert sin_internet == [{"USD": date(hoy.year, 1, 1)}]
+    assert divisas.tipo(sesion_en(raiz).libro, "USD") == Decimal("18.25")
+    assert at.session_state[portal_divisas._HECHO] == hoy                    # una vez al día

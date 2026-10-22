@@ -11,6 +11,7 @@ from motor import consultas, cuentas, tarjetas
 from motor.consultas import ETIQUETA_TIPO_CUENTA
 from motor.modelo import TipoCuenta
 from portal.componentes import candado, exportar, formato, portafolio
+from portal.componentes import divisas as monedas_cuenta
 from portal.componentes import tarjeta as estado_tarjeta
 from portal.componentes.sesion import libro
 from portal.paginas import historial, registrar
@@ -75,7 +76,10 @@ def mostrar(cuenta_id: str) -> None:
             estado_tarjeta.mostrar(cuenta)
         _msi(cuenta.id)
     else:
-        st.metric("Saldo", formato.dinero_metrica(cuentas.saldo(lib, cuenta.id)))
+        st.metric("Saldo", formato.dinero_metrica_en(cuentas.saldo(lib, cuenta.id), cuenta.moneda))
+        if cuenta.moneda:
+            st.caption(monedas_cuenta.equivalente_md(lib, cuenta) + ". Aquí todo va en "
+                       f"{cuenta.moneda}, como en tu banco.")
     if cuenta.tipo is TipoCuenta.INVERSION:
         with st.container(border=True):
             portafolio.mostrar(cuenta)
@@ -108,12 +112,13 @@ def mostrar(cuenta_id: str) -> None:
         columna_saldo: [float(-f.saldo if es_credito else f.saldo) for f in filas],
     })
     entradas, salidas = sum(f.abono for f in filas), sum(f.cargo for f in filas)
-    st.caption(f"{len(filas)} movimiento(s) · Entradas {formato.dinero_md(entradas)} · "
-               f"Salidas {formato.dinero_md(salidas)}. El saldo es el que quedó después de cada movimiento; para "
+    st.caption(f"{len(filas)} movimiento(s) · Entradas {formato.dinero_en_md(entradas, cuenta.moneda)} · "
+               f"Salidas {formato.dinero_en_md(salidas, cuenta.moneda)}. El saldo es el que quedó después de cada movimiento; para "
                "verlo de arriba abajo usa «Orden» (al ordenar con clic en una columna, el saldo no se recalcula).")
     mostrar = formato.cuantos_mostrar(len(filas), "cuenta_todos")
     filas = filas[:mostrar]
-    vista, config = formato.tabla_en_pesos(tabla.head(mostrar), ("Entrada", "Salida", columna_saldo))
+    vista, config = formato.tabla_en_pesos(tabla.head(mostrar), ("Entrada", "Salida", columna_saldo),
+                                           moneda=cuenta.moneda)
     evento = st.dataframe(
         formato.pintar(vista, rojas=("Salida",)), hide_index=True, width="stretch", on_select="rerun",
         selection_mode="single-row", key="cuenta_tabla",

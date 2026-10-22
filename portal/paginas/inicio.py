@@ -46,6 +46,11 @@ def _situacion() -> None:
                        help="Todo lo que tienes menos lo que debes (aproximado).")
     if ind.te_deben:
         columnas[4].metric("Te deben", formato.dinero_metrica(ind.te_deben))
+    if ind.por_tipo_de_cambio:
+        columnas[3].caption(f"{'+' if ind.por_tipo_de_cambio > 0 else ''}"
+                            f"{formato.dinero_md(ind.por_tipo_de_cambio)} por tipo de cambio",
+                            help="Tus cuentas en otra moneda valen hoy esto más (o menos) de lo que valían cuando "
+                                 "entró su dinero: se movió el tipo de cambio. Ya está sumado arriba.")
 
 
 def _delta(valor) -> str | None:

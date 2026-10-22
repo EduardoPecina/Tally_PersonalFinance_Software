@@ -9,7 +9,7 @@ from __future__ import annotations
 from dataclasses import replace
 from decimal import Decimal, InvalidOperation
 
-from motor import monedas
+from motor import divisas, monedas
 from motor.dinero import a_centavos
 from motor.errores import ErrorValidacion
 from motor.libro import Libro
@@ -31,8 +31,17 @@ def configurar(libro: Libro, nombre: str, moneda: str | None = None) -> Perfil:
     else:
         libro.perfil = replace(libro.perfil, nombre=nombre)
     if moneda is not None:
-        libro.perfil = replace(libro.perfil, moneda=monedas.moneda(moneda).codigo)
+        libro.perfil = replace(libro.perfil, moneda=_tu_moneda(libro, moneda))
     return libro.perfil
+
+
+def _tu_moneda(libro: Libro, moneda: str) -> str:
+    codigo = monedas.moneda(moneda).codigo
+    otras = divisas.cuentas_en_otra_moneda(libro)
+    if otras and codigo != monedas.de(libro):
+        raise ErrorValidacion("Tienes cuentas en otra moneda (" + ", ".join(f"«{c.nombre}»" for c in otras[:3]) +
+                              "). Cambiar tu moneda no convierte importes, así que con ellas ya no se puede.")
+    return codigo
 
 
 MAXIMO_RESPALDOS = 100
@@ -53,6 +62,7 @@ def ajustar(
     icono: str | None = None,
     dias_para_reclamar: int | None = None,
     actualizar_precios: bool | None = None,
+    tipos_por_internet: bool | None = None,
     iva=None,
     ingreso_esperado: object = _SIN_CAMBIO,
     meta_ahorro: int | None = None,
@@ -90,6 +100,8 @@ def ajustar(
         cambios["dias_para_reclamar"] = int(dias_para_reclamar)
     if actualizar_precios is not None:
         cambios["actualizar_precios"] = bool(actualizar_precios)
+    if tipos_por_internet is not None:
+        cambios["tipos_por_internet"] = bool(tipos_por_internet)
     if iva is not None:
         try:
             tasa = Decimal(str(iva))
@@ -111,6 +123,6 @@ def ajustar(
             raise ErrorValidacion("La meta de ahorro va de 0 a 90 % de tu ingreso.")
         cambios["meta_ahorro"] = int(meta_ahorro)
     if moneda is not None:
-        cambios["moneda"] = monedas.moneda(moneda).codigo
+        cambios["moneda"] = _tu_moneda(libro, moneda)
     libro.perfil = replace(libro.perfil, **cambios)
     return libro.perfil

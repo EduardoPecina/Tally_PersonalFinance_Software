@@ -55,6 +55,11 @@ que los dos siempre buscan los datos en el mismo lugar.
   los respaldos: si se borra o se daña, TALLY lo ignora y lo rehace en la
   siguiente consulta.
 - Esquema 5 y respaldos de formato 5 desde TALLY 0.11: entidad `prestamo` (cómo se contrató cada préstamo).
+- Esquema 12 y respaldos de formato 12 desde TALLY 0.32: cuentas en otra moneda. En la `cuenta`, `divisa` (solo si
+  no es tu moneda; el campo `moneda` de antes no se usaba y se ignora); en cada partida de una cuenta así,
+  `original` (el importe en su moneda); entidad `tipo_cambio` (id `USD:2026-10-22`: `moneda`, `fecha`, `tipo` y
+  `manual`); en el `perfil`, `tipos_por_internet`. Una versión anterior ya no los abre: sumaría los dólares como si
+  fueran de tu moneda.
 - Esquema 11 y respaldos de formato 11 desde TALLY 0.28: en el `perfil`, tus ajustes de gastos hormiga
   (`hormiga_tope` en centavos o `null` = automático, `hormiga_fuera`, `hormiga_veces`, `hormiga_porcentaje`).
 - Esquema 10 y respaldos de formato 10 desde TALLY 0.26: en `rubro_contable` también se guarda lo que el usuario

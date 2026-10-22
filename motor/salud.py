@@ -9,7 +9,8 @@ Qué revisa:
 - 🔴 **Datos que no cuadran** (``serializacion.verificar_integridad``): nunca debería pasar; restaura un respaldo.
 - 🟠 **Por revisar**: movimientos que parecen **duplicados**; cuentas de débito, ahorro o efectivo **en negativo**;
   tarjetas **pasadas de su límite**; **fechas** muy adelante o sueltas muy atrás (a más de un año de todo lo
-  demás: no importa cuántos años lleves en TALLY); cargos temporales que **no te han devuelto**.
+  demás: no importa cuántos años lleves en TALLY); cargos temporales que **no te han devuelto**; cuentas en otra
+  moneda **sin tipo de cambio** o con uno de hace más de un mes.
 - 🔵 **Para mejorar**: movimientos en OTROS GASTOS / OTROS INGRESOS o **sin descripción**; tarjetas **sin día de
   corte o sin tasa**; préstamos sin sus datos; cuentas **sin movimientos** hace meses; tus **reglas** que dicen otra
   subcategoría; deducibles del año **sin comprobante**.
@@ -22,7 +23,7 @@ from dataclasses import dataclass, field, replace
 from datetime import date, timedelta
 from itertools import islice, pairwise
 
-from motor import categorias, temporales
+from motor import categorias, divisas, monedas, temporales
 from motor.consultas import ETIQUETA_TIPO_CUENTA
 from motor.dinero import a_pesos, formatear
 from motor.errores import ErrorValidacion
@@ -37,6 +38,7 @@ DIAS_ADELANTE = 31
 DIAS_SUELTA = 365               # un movimiento a más de un año del siguiente más antiguo…
 MAXIMO_SUELTAS = 10             # …y solo unos cuantos así; si son más, es historia de verdad, no un error de dedo
 DIAS_SIN_USO = 120
+DIAS_TIPO_VIEJO = 31            # un tipo de cambio de hace más de esto ya no dice lo que valen tus dólares hoy
 SIN_NEGATIVO = (TipoCuenta.DEBITO, TipoCuenta.AHORRO, TipoCuenta.EFECTIVO)
 GENERICAS = ("OTROS GASTOS", "OTROS INGRESOS")
 
@@ -75,7 +77,7 @@ def revisar(libro: Libro, hoy: date | None = None, *, incluir_ignorados: bool = 
             *_integridad(libro), *_duplicados(libro), *_negativos(libro, hoy), *_limites(libro, hoy),
             *_fechas(libro, hoy), *_temporales(libro, hoy), *_retiros(libro), *_genericas(libro),
             *_sin_descripcion(libro), *_tarjetas_incompletas(libro), *_prestamos_sin_datos(libro),
-            *_sin_uso(libro, hoy), *_reglas(libro), *_deducibles(libro, hoy),
+            *_sin_uso(libro, hoy), *_reglas(libro), *_deducibles(libro, hoy), *_tipos_de_cambio(libro, hoy),
         ]
     ignorados = set(libro.perfil.salud_ignorados) if libro.perfil else set()
     visibles = [h for h in hallazgos if incluir_ignorados or not (h.se_puede_ignorar and h.clave in ignorados)]
@@ -116,8 +118,8 @@ def _integridad(libro: Libro) -> list[Hallazgo]:
 def _firma(op: Operacion) -> tuple:
     de_cuenta = op.partidas_de_cuenta()
     if len(de_cuenta) == 1:                                     # casi todos: un gasto o un ingreso
-        return op.tipo, de_cuenta[0].cuenta_id, de_cuenta[0].importe
-    return op.tipo, tuple(sorted((p.cuenta_id or "", p.importe) for p in de_cuenta))
+        return op.tipo, de_cuenta[0].cuenta_id, de_cuenta[0].en_su_moneda
+    return op.tipo, tuple(sorted((p.cuenta_id or "", p.en_su_moneda) for p in de_cuenta))
 
 
 def _parecidas(a: Operacion, b: Operacion) -> bool:
@@ -144,8 +146,9 @@ def _duplicados(libro: Libro) -> list[Hallazgo]:
                     break
                 if not _parecidas(a, b):
                     continue
+                primera = max(a.partidas_de_cuenta(), key=lambda p: abs(p.importe))
                 cuenta = nombres.get(a.partidas_de_cuenta()[0].cuenta_id, "")
-                importe = formatear(a_pesos(max(abs(p.importe) for p in a.partidas_de_cuenta())))
+                importe = monedas.en_moneda(a_pesos(abs(primera.en_su_moneda)), divisas.moneda_de(libro, primera.cuenta_id))
                 cuando = (f"el {a.fecha:%d/%m/%Y}" if a.fecha == b.fecha
                           else f"el {a.fecha:%d/%m/%Y} y el {b.fecha:%d/%m/%Y}")
                 hallazgos.append(Hallazgo(
@@ -166,7 +169,7 @@ def _negativos(libro: Libro, hoy: date) -> list[Hallazgo]:
             if saldo < 0:
                 hallazgos.append(Hallazgo(
                     f"negativo:{c.id}:{hoy:%Y-%m}", REVISAR, "Cuentas en negativo",
-                    f"«{c.nombre}» tiene {formatear(saldo)} hoy. Una cuenta de "
+                    f"«{c.nombre}» tiene {monedas.en_moneda(saldo, divisas.moneda_de(libro, c))} hoy. Una cuenta de "
                     f"{ETIQUETA_TIPO_CUENTA.get(c.tipo, c.tipo.value).lower()} casi nunca queda en negativo: ¿falta registrar un ingreso o una transferencia, o un gasto se fue a la cuenta "
                     "equivocada?", "cuentas"))
     return hallazgos
@@ -224,6 +227,27 @@ def _temporales(libro: Libro, hoy: date) -> list[Hallazgo]:
     return [Hallazgo(f"temporales:{hoy:%Y-%m}", REVISAR, "Cargos temporales que no te han devuelto",
                      f"{len(vencidos)} cargo(s) por {formatear(total)} llevan más de lo normal sin regresar. Reclámalos "
                      "o pásalos a gasto (en el Resumen).", "inicio", cuantos=len(vencidos))]
+
+
+def _tipos_de_cambio(libro: Libro, hoy: date) -> list[Hallazgo]:
+    """Cuentas en otra moneda sin tipo de cambio (no se pueden sumar a tu patrimonio) o con uno viejo."""
+    hallazgos = []
+    base = monedas.de(libro)
+    for moneda in divisas.monedas_en_uso(libro):
+        fechas, _ = libro.serie_cambio(moneda)
+        if not fechas:
+            hallazgos.append(Hallazgo(
+                f"sin_tipo:{moneda}", REVISAR, "Cuentas en otra moneda sin tipo de cambio",
+                f"No hay ningún tipo de cambio de {moneda}: tus cuentas en {moneda} se suman a lo que valían cuando "
+                f"registraste sus movimientos. Escribe cuántos {base} vale 1 {moneda} (o deja que TALLY lo traiga "
+                "de internet) en Configuración → Tipos de cambio.", "configuracion", se_puede_ignorar=False))
+        elif (hoy - fechas[-1]).days > DIAS_TIPO_VIEJO:
+            hallazgos.append(Hallazgo(
+                f"tipo_viejo:{moneda}:{hoy:%Y-%m}", MEJORAR, "Tipos de cambio viejos",
+                f"El último tipo de cambio de {moneda} es del {fechas[-1]:%d/%m/%Y}: lo que valen hoy tus cuentas en "
+                f"{moneda} puede ser otro. Actualízalo en Configuración → Tipos de cambio (o deja que TALLY lo "
+                "traiga de internet cada día).", "configuracion"))
+    return hallazgos
 
 
 def _retiros(libro: Libro) -> list[Hallazgo]:
