@@ -105,7 +105,7 @@ def _categoria(rubro: Rubro, contenido: list[Categoria], usos: Counter, contable
     """Una categoría en su propio fragmento: abrirla, cerrarla o abrir un ⚙️ Administrar solo rehace esta caja, y
     sus subcategorías solo se arman al abrirla (armar las 100+ de todas hacía lenta la página)."""
     _ventana(rubro.id)
-    caja = st.expander(f"**{rubro.nombre}** · {len(contenido)}", key=f"caja_{rubro.id}", on_change="rerun",
+    caja = st.expander(f"**{formato.md(rubro.nombre)}** · {len(contenido)}", key=f"caja_{rubro.id}", on_change="rerun",
                        # la de la última ⚙️ Administrar sigue abierta aunque cambie su número
                        expanded=rubro.id == st.session_state.get(CAJA_ABIERTA))
     if not caja.open:
@@ -345,7 +345,7 @@ def _caja(grupo, gastos: list[Categoria], version: int) -> None:
     dentro = [c.id for c in gastos if c.grupo_id == grupo.id]
     with st.container(border=True):
         cabeza, acciones = st.columns([5, 1], vertical_alignment="center")
-        cabeza.markdown(f"**{grupo.nombre}** · {len(dentro)} subcategoría(s)")
+        cabeza.markdown(f"**{formato.md(grupo.nombre)}** · {len(dentro)} subcategoría(s)")
         if grupo.nombre in catalogo.DESCRIPCIONES:
             cabeza.caption(catalogo.DESCRIPCIONES[grupo.nombre])
         # Con la clave de su clasificación: al borrar una, el «Editar» de la siguiente no se queda abierto.

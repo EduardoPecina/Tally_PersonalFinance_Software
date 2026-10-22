@@ -73,6 +73,8 @@ def moneda_para_cuenta(libro: Libro, tipo, moneda: str | None) -> str:
     codigo = monedas.moneda(moneda).codigo
     if codigo == monedas.de(libro):
         return ""
+    if libro.perfil is None:
+        raise ErrorValidacion("Primero elige tu moneda (en la bienvenida); después agrega las cuentas en otra.")
     if tipo not in TIPOS_EN_OTRA_MONEDA:
         raise ErrorValidacion("Las tarjetas de crédito, los préstamos, los bienes y lo que te deben van en tu moneda. "
                               "En otra moneda puede ir una cuenta de débito, ahorro, efectivo, inversión u «otra».")

@@ -24,10 +24,10 @@ def avance(desde, hasta, *, titulo: bool = True) -> None:
         with columnas[i % 2]:
             porcentaje = float(a.avance)
             if a.restante >= 0:
-                texto = f"**{a.nombre}** · {formato.dinero_md(a.gastado)} de {formato.dinero_md(a.presupuesto)} · " \
-                        f"te quedan {formato.dinero_md(a.restante)}"
+                texto = f"**{formato.md(a.nombre)}** · {formato.dinero_md(a.gastado)} de " \
+                        f"{formato.dinero_md(a.presupuesto)} · te quedan {formato.dinero_md(a.restante)}"
             else:
-                texto = f"**{a.nombre}** · :red[te pasaste por {formato.dinero_md(-a.restante)}] " \
+                texto = f"**{formato.md(a.nombre)}** · :red[te pasaste por {formato.dinero_md(-a.restante)}] " \
                         f"({formato.dinero_md(a.gastado)} de {formato.dinero_md(a.presupuesto)})"
             st.markdown(texto)
             st.progress(min(porcentaje, 1.0), text=f"{porcentaje:.0%}")
@@ -148,9 +148,9 @@ def _proyeccion() -> None:
         st.error("A este ritmo vas a gastar más de lo que ganas este mes.", icon="🔴")
     pasados = [r for r in p.rubros if r.se_pasa]
     if pasados:
-        st.warning("Te vas a pasar en: " + ", ".join(f"**{r.nombre}** ({formato.dinero_md(r.proyectado)} de "
-                                                      f"{formato.dinero_md(r.presupuesto)})" for r in pasados),
-                   icon="⚠️")
+        st.warning("Te vas a pasar en: " + ", ".join(
+            f"**{formato.md(r.nombre)}** ({formato.dinero_md(r.proyectado)} de {formato.dinero_md(r.presupuesto)})"
+            for r in pasados), icon="⚠️")
     if p.rubros:
         st.dataframe(formato.pintar(pd.DataFrame({
             "Categoría": [r.nombre for r in p.rubros], "Llevas": [formato.dinero(r.gastado) for r in p.rubros],

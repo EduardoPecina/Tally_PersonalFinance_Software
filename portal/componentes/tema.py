@@ -6,7 +6,8 @@ from __future__ import annotations
 
 import streamlit as st
 
-# Los enlaces a otras páginas (fuera del menú) con su cajita, como los botones.
+# Los enlaces a otras páginas (fuera del menú) con su cajita, como los botones. Las cifras de las métricas se achican
+# en columnas angostas (cuatro por renglón en una laptop) en lugar de cortarse: «$1,234,56…».
 BASE = """
 <style>
 [data-testid="stMain"] [data-testid="stPageLink-NavLink"] {
@@ -14,6 +15,8 @@ BASE = """
     width: fit-content; background: #ffffff;
 }
 [data-testid="stMain"] [data-testid="stPageLink-NavLink"]:hover { border-color: #6B53F1; }
+[data-testid="stMetric"] { container-type: inline-size; }
+[data-testid="stMetricValue"] { font-size: min(2.25rem, 14cqi); }
 </style>
 """
 

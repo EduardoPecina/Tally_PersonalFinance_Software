@@ -113,7 +113,8 @@ def _tarjetas() -> None:
     columnas = st.columns(min(len(lista), 2))
     for i, tarjeta in enumerate(lista):
         with columnas[i % len(columnas)], st.container(border=True):
-            st.markdown(f"**{tarjeta.nombre}**" + (f"  \n:gray[{tarjeta.institucion}]" if tarjeta.institucion else ""))
+            st.markdown(f"**{formato.md(tarjeta.nombre)}**"
+                        + (f"  \n:gray[{formato.md(tarjeta.institucion)}]" if tarjeta.institucion else ""))
             estado_tarjeta.mostrar(tarjeta)
 
 
@@ -155,7 +156,7 @@ def _quincenas() -> None:
 
 def mostrar() -> None:
     lib = libro()
-    st.title(f"¡Hola, {lib.perfil.nombre}!" if lib.perfil else "Resumen")
+    st.title(f"¡Hola, {formato.md(lib.perfil.nombre)}!" if lib.perfil else "Resumen")
     st.caption(f"Hoy es {formato.fecha_larga(lib.hoy())}.")
     if not cuentas.listar(lib):
         st.info("Agrega tu primera cuenta para empezar.")

@@ -95,7 +95,7 @@ def _recordar_kit() -> None:
 def _barra_lateral() -> None:
     with st.sidebar:
         nombre = sesion().libro.perfil.nombre
-        st.caption(f"Sesión de **{nombre}** · TALLY {VERSION}  \n*{LEMA}*")
+        st.caption(f"Sesión de **{formato.md(nombre)}** · TALLY {VERSION}  \n*{LEMA}*")
         ultimo = sesion().almacen.ultimo_cambio()
         st.caption((":green[✓ Todo guardado] · último cambio " + formato.cuando(ultimo, sesion().libro.hoy()))
                    if ultimo else ":green[✓] Todo se guarda solo, al momento",

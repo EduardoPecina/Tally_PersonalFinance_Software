@@ -81,7 +81,12 @@ def _estado(r: Reporte) -> None:
         if cambios.borrados:
             partes.append(f"{cambios.borrados} borrado(s)")
         cifras = [f"{n} {formato.dinero_md(v)}" if v < 0 else f"{n} +{formato.dinero_md(v)}"
-                  for n, v in (("ingresos", cambios.ingresos), ("gastos", cambios.gastos)) if v]
+                  for n, v in (("ingresos", cambios.ingresos), ("gastos", cambios.gastos),
+                               ("patrimonio", cambios.patrimonio)) if v]
+        if not partes and not (cambios.ingresos or cambios.gastos):
+            # Sin movimientos que cambiaran: cambió lo que valía algo ese mes (un tipo de cambio, un avalúo…).
+            partes = ["el valor de tus cuentas en otra moneda o de tus bienes (un tipo de cambio o un avalúo de ese "
+                      "mes)"]
         st.warning(texto + " **Desde entonces cambió:** " + ", ".join(partes or ["algunos importes"])
                    + (f" ({'; '.join(cifras)})" if cifras else "") + ". Son ajustes posteriores al cierre: revísalos "
                    "y, si están bien, vuelve a cerrar el mes.", icon="🔒")

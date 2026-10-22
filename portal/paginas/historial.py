@@ -5,7 +5,7 @@ from __future__ import annotations
 import pandas as pd
 import streamlit as st
 
-from motor import bienes, categorias, comprobantes, consultas, cuentas, efectivo, metas, movimientos
+from motor import bienes, categorias, comprobantes, consultas, cuentas, divisas, efectivo, metas, movimientos
 from motor.consultas import ETIQUETA_TIPO_OPERACION, ORDENES
 from motor.modelo import TipoCuenta, TipoOperacion
 from portal.componentes import comprobantes as panel_comprobantes
@@ -171,8 +171,13 @@ def detalle_movimiento(operacion_id: str, tabla: str = TABLA) -> None:
         panel_comprobantes.mostrar(operacion_id)
     with repetir:
         st.caption("Registra otra vez este mismo movimiento en otra fecha (la renta, una suscripción, la nómina…).")
+        eliminadas = [lib.cuenta(p.cuenta_id).nombre for p in op.partidas_de_cuenta()
+                      if not lib.cuenta(p.cuenta_id).activa]
+        if eliminadas:
+            st.info(f"«{formato.md(eliminadas[0])}» está eliminada: para repetir este movimiento, restáurala en "
+                    "Cuentas → «Mostrar eliminadas».")
         fecha = st.date_input("Fecha del nuevo", value=lib.hoy(), format="DD/MM/YYYY", key=f"repetir_fecha_{operacion_id}")
-        if st.button("Repetir este movimiento", key=f"repetir_{operacion_id}"):
+        if st.button("Repetir este movimiento", key=f"repetir_{operacion_id}", disabled=bool(eliminadas)):
             if ejecutar(lambda lib: movimientos.duplicar(lib, operacion_id, fecha),
                         exito=f"Movimiento repetido el {formato.fecha(fecha)}"):
                 st.session_state.pop(tabla, None)
@@ -281,11 +286,15 @@ def _editar(detalle: movimientos.Detalle, tabla: str = TABLA) -> None:
         repartido = detalle.categoria_id is None and bool(detalle.reparto)
         monto = None
         if not repartido:
+            ayuda = ["Positivo si entró dinero a la cuenta, negativo si salió."] if detalle.tipo in CON_SIGNO else []
+            if divisas.cuentas_en_otra_moneda(lib):
+                ayuda.append("Va en la moneda de la cuenta. Si solo cambias la cuenta por una de otra moneda, TALLY "
+                             "lo convierte para que valga lo mismo.")
             monto = derecha.number_input(
                 "Importe" + (f" (en {moneda_de})" if moneda_de else ""), value=float(detalle.monto), step=1.0,
                 format="%.2f",
                 min_value=None if detalle.tipo in CON_SIGNO else 0.01,
-                help="Positivo si entró dinero a la cuenta, negativo si salió." if detalle.tipo in CON_SIGNO else None,
+                help=" ".join(ayuda) or None,
             )
         cuenta = izquierda.selectbox("Cuenta" if detalle.tipo not in CON_DESTINO else "Desde la cuenta", ids,
                                      index=ids.index(detalle.cuenta_id), format_func=nombre.get)
