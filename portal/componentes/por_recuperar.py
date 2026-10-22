@@ -73,7 +73,7 @@ def _dialogo_devolver(cargo_id: str) -> None:
         return
     st.markdown(f"**{formato.md(cargo.descripcion)}** · {formato.dinero_md(cargo.monto)}")
     activas = [c.id for c in cuentas.listar(lib) if c.id != temporales.cuenta(lib).id]
-    destino = st.selectbox("¿A qué cuenta volvió?", activas, format_func=lambda i: lib.cuenta(i).nombre,
+    destino = st.selectbox("¿A qué cuenta volvió?", activas, format_func=lambda i: formato.nombre_cuenta(lib.cuenta(i)),
                            index=activas.index(cargo.cuenta_id) if cargo.cuenta_id in activas else 0)
     fecha = st.date_input("Fecha de la devolución", value=max(lib.hoy(), cargo.fecha), min_value=cargo.fecha,
                           format="DD/MM/YYYY")

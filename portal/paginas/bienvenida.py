@@ -63,7 +63,7 @@ def mostrar() -> None:
             if cuenta.tipo is TipoCuenta.CREDITO:
                 texto = f"Debes {formato.dinero_md(tarjetas.deuda(libro(), cuenta.id))}"
             else:
-                texto = formato.dinero_md(cuentas.saldo(libro(), cuenta.id))
+                texto = formato.dinero_en_md(cuentas.saldo(libro(), cuenta.id), cuenta.moneda)
             st.markdown(f"- **{cuenta.nombre}** · {ETIQUETA_TIPO_CUENTA[cuenta.tipo]} · {texto}")
     with st.container(border=True):
         formulario_nueva_cuenta(clave="bienvenida")

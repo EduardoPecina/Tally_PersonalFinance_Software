@@ -23,8 +23,8 @@ Excel.
 - Sin conexión bancaria, sin nube y sin telemetría.
 - Funciona sin Internet. Los datos viven en `C:\Users\<tu usuario>\TALLY`,
   solo en tu PC: fuera de OneDrive y de cualquier nube.
-- La única conexión es opcional: **Consultar valor aproximado actual**, en las
-  cuentas de inversión. Pide a Yahoo Finance el precio público de cada título y
+- Las conexiones son opcionales. **Consultar valor aproximado actual**, en las
+  cuentas de inversión, Pide a Yahoo Finance el precio público de cada título y
   envía **solo el símbolo bursátil** (`GET https://…/chart/IVV`), siempre por
   HTTPS:
   - **No envía** cantidades, precios de compra, saldos, movimientos,
@@ -47,6 +47,11 @@ Excel.
   - La ganancia de tus inversiones entra a tu contabilidad **solo con el valor
     oficial** que tú escribes («Cuadrar con tu estado de cuenta»). El precio de
     internet es una referencia.
+- Si tienes **cuentas en otra moneda** y activas «Traerlos de internet cada día»
+  (Configuración → Tipos de cambio), TALLY pide a Yahoo Finance el tipo de
+  cambio enviando **solo el par de monedas** (`USDMXN=X`) y un periodo
+  estándar, en segundo plano. Nunca saldos ni movimientos. Los tipos de cambio
+  quedan en tus datos; los que escribes tú mandan.
 - Importar movimientos del banco (Excel, CSV o PDF) pasa en tu PC: TALLY no se
   conecta a tu banco ni manda el archivo a ningún lado.
 - Los **comprobantes** (fotos de tickets, PDF y XML de facturas) se guardan
@@ -130,7 +135,7 @@ cifrado que usa TALLY (cryptography 49) ya solo se publica para chip de Apple.
 | Resumen | ¿Cuánto dinero tengo? ¿Cuánto gasté y en qué? ¿Tengo pagos de tarjeta por vencer? ¿Cómo voy con mis presupuestos? ¿Qué cargos temporales me deben devolver? ¿Cuánto pago a cada deuda según mi plan? ¿Hay algo raro en mis datos? Y, al empezar, tus **primeros pasos** |
 | Registrar | Anotar un gasto (también a meses sin intereses, repartido o como cargo temporal que te van a devolver), ingreso (tu nómina con el importe de esa quincena ya lleno), transferencia, pago de tarjeta o reembolso, con su **comprobante** si quieres. Sin subcategoría, la pone tu **regla automática**. Antes de guardar te avisa si una cuenta quedaría en negativo, una tarjeta pasaría su límite o la fecha parece mal escrita |
 | Historial | Buscar, filtrar, editar, repetir o eliminar movimientos, y sus **📎 comprobantes** (foto del ticket, PDF o XML de la factura) |
-| Cuentas | Saldo de cada cuenta, estado de cuenta con saldo corrido, estado de cada tarjeta (línea, disponible, pago) y, en las de inversión, tus títulos (acciones, ETFs, cripto) y CETES o pagarés con su valor aproximado, y «Cuadrar con tu estado de cuenta» para registrar la ganancia con el valor oficial |
+| Cuentas | Saldo de cada cuenta, también **en dólares, euros u otra moneda** (con lo que vale en la tuya), estado de cuenta con saldo corrido, estado de cada tarjeta (línea, disponible, pago) y, en las de inversión, tus títulos (acciones, ETFs, cripto) y CETES o pagarés con su valor aproximado, y «Cuadrar con tu estado de cuenta» para registrar la ganancia con el valor oficial |
 | Ingresos 💰 | Tu ingreso principal (cada cuánto te pagan, la 1.ª y la 2.ª quincena, qué pasa si cae en fin de semana) y tus otros ingresos fijos; cuánto tiene que durarte cada pago, cuánto puedes gastar al día hasta el próximo y tu ingreso esperado al mes |
 | Deudas | Tarjetas y préstamos: cuánto de tu ingreso se va en deudas, pago mínimo estimado y lo que cuesta pagar solo el mínimo; préstamos con pagos separados en capital, intereses, IVA y cargos, tabla de amortización y simulador para salir antes. **Plan para salir de deudas**: con lo que puedes pagar al mes, cuánto a cada una, en qué orden (avalancha o bola de nieve) y cuándo terminas |
 | Presupuestos | Cuánto puedes gastar, presupuestos sugeridos, proyección del mes y el tope mensual por categoría |
@@ -147,7 +152,7 @@ cifrado que usa TALLY (cryptography 49) ya solo se publica para chip de Apple.
 | Respaldos y bitácora | Descargar o restaurar respaldos, ver qué cambió o empezar de cero |
 | Metas de ahorro 🏆 | Tu fondo de emergencia (cuántos meses te cubre) y tus metas: cuánto apartar al mes y cuándo llegas |
 | Calendario 📅 | Lo que te toca pagar y cobrar en 30 días (también lo que le toca pagar al fisco), cómo quedaría tu dinero día con día, tus pagos fijos y suscripciones (y cuánto te cuestan al año) y lo que se repite en tu historial |
-| Configuración ⚙️ | Tu nombre, **tu moneda** (peso mexicano, euro, peso argentino, colombiano o chileno, sol, quetzal… con su símbolo y formato), tema claro u oscuro, color del ícono, respaldo automático diario y **copia en tu NAS o disco externo** (diaria, semanal o mensual, conservando las últimas), periodo del Resumen y datos de la instalación |
+| Configuración ⚙️ | Tu nombre, **tu moneda** (peso mexicano, euro, peso argentino, colombiano o chileno, sol, quetzal… con su símbolo y formato), **tipos de cambio** de tus cuentas en otra moneda (a mano o de internet), tema claro u oscuro, color del ícono, respaldo automático diario y **copia en tu NAS o disco externo** (diaria, semanal o mensual, conservando las últimas), periodo del Resumen y datos de la instalación |
 
 ### Cambiar de PC sin perder nada
 

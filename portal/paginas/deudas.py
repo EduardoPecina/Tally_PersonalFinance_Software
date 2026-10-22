@@ -350,7 +350,7 @@ def _recomendaciones(cuenta_id: str, e: prestamos.Estado) -> None:
 
 def _cuentas_de_pago() -> dict[str, str]:
     lib = libro()
-    return {c.id: c.nombre for c in cuentas.listar(lib)
+    return {c.id: formato.nombre_cuenta(c) for c in cuentas.listar(lib)
             if c.tipo not in (TipoCuenta.PRESTAMO, TipoCuenta.BIEN, TipoCuenta.CREDITO)}
 
 
@@ -510,7 +510,7 @@ def _formulario_nuevo() -> None:
                     key="prestamo_nuevo_como",
                     help="Lo acabo de recibir: el dinero llegó a una de tus cuentas (o a un bien, como tu auto). "
                          "Ya lo tenía: escribe cuánto debes hoy.")
-    destinos = {c.id: c.nombre for c in cuentas.listar(lib) if c.tipo is not TipoCuenta.PRESTAMO}
+    destinos = {c.id: formato.nombre_cuenta(c) for c in cuentas.listar(lib) if c.tipo is not TipoCuenta.PRESTAMO}
     with st.form("prestamo_nuevo", clear_on_submit=True, border=False):
         a, b = st.columns(2)
         nombre = a.text_input("Nombre", placeholder="Ej. Préstamo BBVA, Crédito auto Versa", max_chars=60)

@@ -36,7 +36,7 @@ def mostrar() -> None:
 
     st.subheader("1. ¿De qué cuenta son los movimientos?")
     ids = [c.id for c in disponibles]
-    cuenta_id = st.selectbox("Cuenta o tarjeta", ids, format_func=lambda i: lib.cuenta(i).nombre, key="banco_cuenta",
+    cuenta_id = st.selectbox("Cuenta o tarjeta", ids, format_func=lambda i: formato.nombre_cuenta(lib.cuenta(i)), key="banco_cuenta",
                              label_visibility="collapsed")
     cuenta = lib.cuenta(cuenta_id)
 

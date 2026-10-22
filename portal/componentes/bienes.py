@@ -143,7 +143,7 @@ def _configurar(cuenta_id: str) -> None:
 
 def _cuentas_de_pago() -> dict[str, str]:
     lib = libro()
-    return {c.id: c.nombre for c in cuentas.listar(lib) if c.tipo is not TipoCuenta.BIEN}
+    return {c.id: formato.nombre_cuenta(c) for c in cuentas.listar(lib) if c.tipo is not TipoCuenta.BIEN}
 
 
 def _mejora(cuenta_id: str) -> None:

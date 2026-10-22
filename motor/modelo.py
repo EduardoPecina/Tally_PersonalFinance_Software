@@ -34,6 +34,11 @@ TIPOS_EN_CUENTAS = frozenset(
 )
 # Destinos que cuentan como "apartado a ahorro".
 TIPOS_AHORRO = frozenset({TipoCuenta.AHORRO, TipoCuenta.INVERSION})
+# Cuentas que pueden estar en otra moneda (motor/divisas.py). Tarjetas, préstamos, bienes y lo que te deben van
+# siempre en tu moneda.
+TIPOS_EN_OTRA_MONEDA = frozenset(
+    {TipoCuenta.DEBITO, TipoCuenta.AHORRO, TipoCuenta.EFECTIVO, TipoCuenta.INVERSION, TipoCuenta.OTRA}
+)
 
 
 class ClaseCategoria(enum.StrEnum):
@@ -75,6 +80,7 @@ class Perfil:
     dias_para_reclamar: int = 45       # cargos temporales: avisar si no te los devuelven en estos días
     clasificaciones: int = 2           # versión del reacomodo de clasificaciones ya aplicado (catalogo.py)
     actualizar_precios: bool = False   # consultar precios de títulos al abrir una cuenta de inversión (solo símbolos)
+    tipos_por_internet: bool = False   # traer cada día los tipos de cambio de tus cuentas en otra moneda (motor/divisas.py)
     iva: Decimal = Decimal(16)         # % de IVA/VAT de tu país: se cobra sobre los intereses (tarjetas, préstamos)
     ingreso_esperado: int | None = None  # centavos al mes; None = el promedio de tus ingresos fijos (planeacion.py)
     meta_ahorro: int = 10              # % del ingreso que quieres ahorrar (presupuestos sugeridos)
@@ -96,7 +102,7 @@ class Cuenta:
     tipo: TipoCuenta
     fecha_creacion: date
     en_disponible: bool
-    moneda: str = MONEDA
+    moneda: str = ""         # "" = tu moneda; o la de la cuenta (USD, EUR…), ver motor/divisas.py
     activa: bool = True
     institucion: str = ""
     notas: str = ""
@@ -143,6 +149,20 @@ class OperacionValor:
     tipo_cambio: Decimal = Decimal(1)   # pesos por unidad de ``moneda`` ese día (1 si es MXN)
     comision: Decimal = Decimal(0)      # en ``moneda``
     notas: str = ""
+
+
+@dataclass(frozen=True, slots=True)
+class TipoCambio:
+    """Cuánto de tu moneda vale una unidad de ``moneda`` en ``fecha`` (motor/divisas.py)."""
+
+    moneda: str
+    fecha: date
+    tipo: Decimal
+    manual: bool = False       # lo escribiste tú: lo que traiga internet para ese día no lo reemplaza
+
+    @property
+    def id(self) -> str:
+        return f"{self.moneda}:{self.fecha.isoformat()}"
 
 
 @dataclass(frozen=True, slots=True)
@@ -241,15 +261,28 @@ RUBROS_CONTABLES_FIJOS = frozenset({RC_OTROS_INGRESOS, RC_VIDA})
 class Partida:
     """Una línea de una operación. Afecta a una cuenta o a una categoría."""
 
-    importe: int  # centavos, con signo
+    importe: int  # centavos de tu moneda, con signo
     cuenta_id: str | None = None
     categoria_id: str | None = None
+    # Solo en cuentas en otra moneda: el importe en la moneda de la cuenta (centavos de dólar, de euro…), con su
+    # signo. ``importe`` es lo que eso vale en tu moneda al tipo de cambio de ese día (motor/divisas.py).
+    original: int | None = None
 
     def __post_init__(self) -> None:
         if (self.cuenta_id is None) == (self.categoria_id is None):
             raise ValueError("Una partida afecta a una cuenta o a una categoría, no a ambas ni a ninguna.")
         if isinstance(self.importe, bool) or not isinstance(self.importe, int):
             raise ValueError("El importe de una partida debe ser un entero en centavos.")
+        if self.original is not None:
+            if isinstance(self.original, bool) or not isinstance(self.original, int):
+                raise ValueError("El importe en la moneda de la cuenta debe ser un entero en centavos.")
+            if self.cuenta_id is None:
+                raise ValueError("Solo una partida de cuenta tiene importe en otra moneda.")
+
+    @property
+    def en_su_moneda(self) -> int:
+        """Centavos en la moneda de su cuenta (los mismos que ``importe`` si la cuenta está en tu moneda)."""
+        return self.importe if self.original is None else self.original
 
 
 @dataclass(frozen=True, slots=True)

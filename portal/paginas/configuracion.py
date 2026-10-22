@@ -15,7 +15,7 @@ from motor.config import LEMA, MAC, VERSION
 from motor.errores import ErrorTally
 from motor.perfil import MAXIMO_RESPALDOS
 from portal import accesos
-from portal.componentes import candado, carpetas, formato, respaldo
+from portal.componentes import candado, carpetas, divisas, formato, respaldo
 from portal.componentes.sesion import avisar, ejecutar, libro, sesion
 from portal.navegacion import enlace
 
@@ -34,8 +34,9 @@ def _perfil() -> None:
 def _moneda() -> None:
     actual = libro().perfil
     st.subheader("Tu moneda")
-    st.caption("TALLY muestra todos tus importes con el símbolo y el formato de tu moneda. En Inversiones, es contra "
-               "la que se calcula el tipo de cambio.")
+    st.caption("TALLY muestra todos tus importes con el símbolo y el formato de tu moneda, y en ella suma todo. Una "
+               "cuenta puede estar en otra moneda (dólares, euros…): se elige al crearla, y su tipo de cambio va en "
+               "la pestaña «Tipos de cambio».")
     codigos = list(monedas.MONEDAS)
     with st.form("configuracion_moneda", border=False):
         elegida = st.selectbox("Moneda", codigos, index=codigos.index(monedas.de(libro())),
@@ -254,7 +255,8 @@ def _acerca() -> None:
         f"- Usuario desde el {lib.perfil.creado_en:%d/%m/%Y}.\n"
         "- Nada sale de esta PC: sin nube, sin bancos conectados, sin telemetría. La única excepción es opcional: "
         "«Consultar valor aproximado actual» en una cuenta de inversión envía solo el símbolo del título "
-        "(p. ej. IVVPESO.MX), y solo cuando lo aprietas."
+        "(p. ej. IVVPESO.MX), y solo cuando lo aprietas; y, si lo activas, los tipos de cambio de tus cuentas en "
+        "otra moneda envían solo el par de monedas (p. ej. USDMXN)."
     )
     if sys.platform in ("win32", "darwin") and st.button("Abrir la carpeta de mis datos",
                                                          icon=":material/folder_open:"):
@@ -268,8 +270,10 @@ def _acerca() -> None:
 
 def mostrar() -> None:
     st.title("Configuración")
-    tu, seguridad_tab, apariencia, respaldos, resumen, acerca = st.tabs(
-        ["Tu perfil", "Seguridad", "Apariencia", "Respaldos", "Resumen", "Acerca de TALLY"])
+    tu, cambio, seguridad_tab, apariencia, respaldos, resumen, acerca = st.tabs(
+        ["Tu perfil", "Tipos de cambio", "Seguridad", "Apariencia", "Respaldos", "Resumen", "Acerca de TALLY"])
+    with cambio:
+        divisas.configuracion()
     with seguridad_tab:
         from portal.paginas import seguridad
 

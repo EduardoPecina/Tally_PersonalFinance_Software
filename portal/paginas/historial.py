@@ -100,15 +100,21 @@ def mostrar() -> None:
             "Categoría": [f.rubro for f in filas],
             "Subcategoría": [f.categoria for f in filas],
             "Importe": [formato.dinero_con_signo(f.monto, f.sentido) for f in filas],
+            "En su moneda": [formato.dinero_en(f.monto_original, f.moneda) if f.moneda else "" for f in filas],
             "📎": [str(adjuntos.get(f.id, "")) for f in filas],
         }
     )
     if not adjuntos:
         tabla = tabla.drop(columns="📎")
+    if not any(f.moneda for f in filas):
+        tabla = tabla.drop(columns="En su moneda")
     evento = st.dataframe(
         formato.pintar(tabla), hide_index=True, on_select="rerun", selection_mode="single-row", key=TABLA,
         column_config={"Fecha": st.column_config.DateColumn(format="DD/MM/YYYY"),
-                       "📎": st.column_config.TextColumn(width="small", help="Comprobantes adjuntos")},
+                       "📎": st.column_config.TextColumn(width="small", help="Comprobantes adjuntos"),
+                       "En su moneda": st.column_config.TextColumn(
+                           help="Si toca una cuenta en otra moneda: el importe en esa moneda. «Importe» es lo que "
+                                "valía en la tuya ese día.")},
         height=min(38 + 35 * len(filas), 520),
     )
     seleccion = evento.selection.rows if evento else []
@@ -130,7 +136,8 @@ def detalle_movimiento(operacion_id: str, tabla: str = TABLA) -> None:
     st.subheader(formato.md(fila.descripcion or fila.tipo_etiqueta))
     st.markdown(
         f"{fila.tipo_etiqueta} · {formato.fecha_larga(fila.fecha)} · "
-        f"**{formato.dinero_con_signo_md(fila.monto, fila.sentido)}**  \n"
+        f"**{formato.dinero_con_signo_md(fila.monto, fila.sentido)}**"
+        + (f" ({formato.md(formato.dinero_en(fila.monto_original, fila.moneda))})" if fila.moneda else "") + "  \n"
         f":gray[{fila.cuenta}{' → ' + fila.cuenta_destino if fila.cuenta_destino else ''}"
         f"{' · ' + (fila.rubro + ' › ' if fila.rubro else '') + fila.categoria if fila.categoria else ''}]"
     )
@@ -201,7 +208,7 @@ def _a_transferencia(op, tabla: str) -> None:
     if not otras:
         st.info("Primero agrega tu otra cuenta en **Cuentas**.")
         return
-    nombres = {c.id: c.nombre for c in otras}
+    nombres = {c.id: formato.nombre_cuenta(c) for c in otras}
     otra = st.selectbox("¿A qué cuenta fue?" if sale else "¿De qué cuenta vino?", list(nombres), index=None,
                         format_func=nombres.get, placeholder="Elige la cuenta", key=f"a_transferencia_{op.id}")
     if otra is not None and sale and lib.cuenta(otra).tipo is TipoCuenta.CREDITO:
@@ -264,7 +271,9 @@ def _editar(detalle: movimientos.Detalle, tabla: str = TABLA) -> None:
     for cuenta_id in (detalle.cuenta_id, detalle.cuenta_destino_id):
         if cuenta_id and cuenta_id not in ids:
             ids.append(cuenta_id)  # una cuenta archivada que ya estaba en el movimiento
-    nombre = {i: lib.cuenta(i).nombre for i in ids}
+    nombre = {i: formato.nombre_cuenta(lib.cuenta(i)) for i in ids}
+    moneda_de = lib.cuenta(detalle.cuenta_id).moneda
+    entre_monedas = bool(detalle.cuenta_destino_id) and moneda_de != lib.cuenta(detalle.cuenta_destino_id).moneda
     cambios: dict = {}
     with st.form(f"editar_{detalle.id}", border=False):
         izquierda, derecha = st.columns(2)
@@ -273,16 +282,22 @@ def _editar(detalle: movimientos.Detalle, tabla: str = TABLA) -> None:
         monto = None
         if not repartido:
             monto = derecha.number_input(
-                "Importe", value=float(detalle.monto), step=1.0, format="%.2f",
+                "Importe" + (f" (en {moneda_de})" if moneda_de else ""), value=float(detalle.monto), step=1.0,
+                format="%.2f",
                 min_value=None if detalle.tipo in CON_SIGNO else 0.01,
                 help="Positivo si entró dinero a la cuenta, negativo si salió." if detalle.tipo in CON_SIGNO else None,
             )
         cuenta = izquierda.selectbox("Cuenta" if detalle.tipo not in CON_DESTINO else "Desde la cuenta", ids,
                                      index=ids.index(detalle.cuenta_id), format_func=nombre.get)
-        destino = None
+        destino = llega = None
         if detalle.tipo in CON_DESTINO:
             destino = derecha.selectbox("Hacia la cuenta", ids, index=ids.index(detalle.cuenta_destino_id),
                                         format_func=nombre.get)
+            if entre_monedas:
+                llega = derecha.number_input(
+                    f"Lo que llegó (en {lib.cuenta(detalle.cuenta_destino_id).moneda or 'tu moneda'})", min_value=0.0,
+                    value=float(detalle.llega) if detalle.llega is not None else None, step=1.0, format="%.2f",
+                    help="Vacío: TALLY lo calcula con el tipo de cambio del día.")
         categoria = None
         if detalle.categoria_id and detalle.tipo is not TipoOperacion.AJUSTE:
             opciones = categorias.para_tipo(lib, detalle.tipo)
@@ -312,6 +327,8 @@ def _editar(detalle: movimientos.Detalle, tabla: str = TABLA) -> None:
                 cambios["monto"] = monto
             if msi is not None and int(msi) != original.msi:
                 cambios["msi"] = int(msi)
+            if entre_monedas and (llega or None) != (float(detalle.llega) if detalle.llega is not None else None):
+                cambios["llega"] = llega or None
             if not cambios:
                 st.info("No cambiaste nada.")
             elif ejecutar(lambda lib: movimientos.editar(lib, detalle.id, **cambios), exito="Movimiento actualizado"):

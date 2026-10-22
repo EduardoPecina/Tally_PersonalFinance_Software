@@ -18,6 +18,35 @@ def dinero(importe: Decimal | int) -> str:
     return formatear(importe)
 
 
+def dinero_en(importe: Decimal | int, moneda: str = "") -> str:
+    """En la moneda de una cuenta ("" = la tuya): ``US$1,200.00`` (con su símbolo internacional si no es la tuya)."""
+    return monedas.en_moneda(importe, moneda) if moneda else formatear(importe)
+
+
+def dinero_en_md(importe: Decimal | int, moneda: str = "") -> str:
+    """Como :func:`dinero_en`, para ``st.markdown``. Negativo, en rojo."""
+    texto = md(dinero_en(importe, moneda))
+    return rojo_md(texto) if Decimal(importe) < 0 and texto.strip("\\$0.,- ") else texto
+
+
+def dinero_metrica_en(importe: Decimal | int, moneda: str = "") -> str:
+    """El valor de un ``st.metric`` en la moneda de una cuenta, en rojo si es negativo."""
+    return dinero_en_md(importe, moneda) if Decimal(importe) < 0 else dinero_en(importe, moneda)
+
+
+def nombre_cuenta(cuenta) -> str:
+    """El nombre de la cuenta, con su moneda si no es la tuya: «Ahorro en dólares · USD»."""
+    return f"{cuenta.nombre} · {cuenta.moneda}" if cuenta.moneda else cuenta.nombre
+
+
+def tipo_de_cambio(tipo: Decimal, moneda: str) -> str:
+    """``1 USD = 17.2034 MXN`` (con los decimales que haga falta)."""
+    texto = f"{tipo.normalize():f}"
+    entero, _, decimales = texto.partition(".")
+    decimales = decimales[:4] if int(entero or 0) else decimales[:8]
+    return f"1 {moneda} = {entero}{'.' + decimales.rstrip('0') if decimales.rstrip('0') else ''} {monedas.activa().codigo}"
+
+
 def dinero_con_signo(importe: Decimal, sentido: str) -> str:
     """``-$300.00``, ``+$1,000.00`` o ``↔ $500.00`` según el efecto del movimiento."""
     if sentido == "↔":
@@ -158,14 +187,15 @@ def columna_dinero() -> str:
     return f"%.{m.decimales}f {m.simbolo}" if m.despues else f"{m.simbolo} %.{m.decimales}f"
 
 
-def tabla_en_pesos(tabla, columnas, *, fijar: str | None = None):
-    """(tabla para mostrar, column_config): esas columnas como texto en tu moneda, alineado a la derecha, y las
-    celdas vacías en blanco (Streamlit pondría «None»). Para exportar se usa la tabla original, con números."""
+def tabla_en_pesos(tabla, columnas, *, fijar: str | None = None, moneda: str = ""):
+    """(tabla para mostrar, column_config): esas columnas como texto en tu moneda (o en ``moneda``, la de una cuenta),
+    alineado a la derecha, y las celdas vacías en blanco (Streamlit pondría «None»). Para exportar se usa la tabla
+    original, con números."""
     import pandas as pd
     import streamlit as st
 
     def pesos(valor) -> str:
-        return "" if valor is None or pd.isna(valor) else formatear(Decimal(str(round(valor, 2))))
+        return "" if valor is None or pd.isna(valor) else dinero_en(Decimal(str(round(valor, 2))), moneda)
 
     vista = tabla.copy()
     for columna in columnas:

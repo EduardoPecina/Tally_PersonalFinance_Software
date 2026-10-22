@@ -5,10 +5,11 @@ from __future__ import annotations
 import pandas as pd
 import streamlit as st
 
-from motor import bienes, categorias, consultas, cuentas, movimientos, tarjetas
+from motor import bienes, categorias, consultas, cuentas, divisas, movimientos, perfil, tarjetas
 from motor.consultas import ETIQUETA_TIPO_CUENTA
-from motor.modelo import TIPOS_DISPONIBLES_POR_DEFECTO, Cuenta, TipoCuenta
+from motor.modelo import TIPOS_DISPONIBLES_POR_DEFECTO, TIPOS_EN_OTRA_MONEDA, Cuenta, TipoCuenta
 from portal.componentes import candado, estado, exportar, formato
+from portal.componentes import divisas as monedas_cuenta
 from portal.componentes import tarjeta as estado_tarjeta
 from portal.componentes.sesion import aplicar, avisar, ejecutar, libro
 from portal.paginas import estado_cuenta
@@ -73,9 +74,12 @@ def _campos_regla_pago(modo: str, izquierda, derecha, cuenta: Cuenta | None = No
 
 def formulario_nueva_cuenta(clave: str = "cuentas") -> None:
     """Formulario para crear una cuenta (se usa también en la bienvenida)."""
+    lib = libro()
     tipo = st.selectbox("Tipo de cuenta", TIPOS, format_func=_etiqueta_tipo, key=f"{clave}_tipo_nueva")
     es_credito = tipo is TipoCuenta.CREDITO
     modo_pago = _elegir_modo_pago(f"{clave}_modo_pago") if es_credito else MODO_NINGUNO
+    moneda = (monedas_cuenta.elegir(lib, f"{clave}_moneda_nueva") if tipo in TIPOS_EN_OTRA_MONEDA else "")
+    en_su_moneda = f" (en {moneda})" if moneda else ""
     with st.form(f"{clave}_nueva_cuenta", clear_on_submit=True, border=False):
         izquierda, derecha = st.columns(2)
         nombre = izquierda.text_input("Nombre", placeholder="Ej. BBVA Débito, Mercado Pago, TDC Nu", max_chars=60)
@@ -92,12 +96,20 @@ def formulario_nueva_cuenta(clave: str = "cuentas") -> None:
             datos.update(_campos_regla_pago(modo_pago, izquierda, derecha))
         else:
             datos["saldo_inicial"] = izquierda.number_input(
-                "¿Cuánto tienes hoy en esta cuenta?", value=0.0, step=100.0, format="%.2f")
+                f"¿Cuánto tienes hoy en esta cuenta?{en_su_moneda}", value=0.0, step=100.0, format="%.2f")
         fecha_saldo = derecha.date_input(
-            "Fecha de ese saldo", value=libro().hoy(), format="DD/MM/YYYY",
+            "Fecha de ese saldo", value=lib.hoy(), format="DD/MM/YYYY",
             help="Registra en TALLY solo los movimientos posteriores a esta fecha: "
                  "los anteriores ya están incluidos en el saldo.",
         )
+        tipo_cambio = por_internet = None
+        if moneda:
+            tipo_cambio = monedas_cuenta.campo_tipo(lib, moneda, lib.hoy(), izquierda)
+            por_internet = derecha.checkbox(
+                "Traer el tipo de cambio de internet cada día",
+                value=lib.perfil.tipos_por_internet if divisas.cuentas_en_otra_moneda(lib) else True,
+                help="Solo se envía el par de monedas (por ejemplo USDMXN), nunca tus saldos. Puedes cambiarlo en "
+                     "Configuración → Tipos de cambio.")
         en_disponible = st.checkbox(
             "Cuenta como dinero disponible", value=tipo in TIPOS_DISPONIBLES_POR_DEFECTO,
             help="Dinero que puedes usar ya mismo (normalmente débito y efectivo).",
@@ -106,9 +118,16 @@ def formulario_nueva_cuenta(clave: str = "cuentas") -> None:
             if datos.get("limite_credito") == 0:
                 datos["limite_credito"] = None
             datos.update(institucion=institucion, fecha_saldo_inicial=fecha_saldo, fecha_creacion=fecha_saldo,
-                         en_disponible=en_disponible)
-            if ejecutar(lambda lib: cuentas.crear(lib, nombre, tipo, **datos),
-                        exito=f"Cuenta «{nombre.strip()}» agregada"):
+                         en_disponible=en_disponible, moneda=moneda)
+
+            def crear(lib):
+                if moneda:
+                    monedas_cuenta.guardar_si_cambio(lib, moneda, min(fecha_saldo, lib.hoy()), tipo_cambio)
+                    if por_internet != lib.perfil.tipos_por_internet:
+                        perfil.ajustar(lib, tipos_por_internet=por_internet)
+                return cuentas.crear(lib, nombre, tipo, **datos)
+
+            if ejecutar(crear, exito=f"Cuenta «{nombre.strip()}» agregada"):
                 st.rerun()
 
 
@@ -144,12 +163,15 @@ def _tarjeta_de_cuenta(cuenta: Cuenta) -> None:
             derecha.metric("Debes", formato.dinero_metrica(max(-saldo, 0)), help="Sus pagos y simulaciones, en Deudas.")
             return
         if cuenta.tipo is not TipoCuenta.CREDITO:
-            derecha.metric("Saldo", formato.dinero_metrica(saldo))
+            derecha.metric("Saldo", formato.dinero_metrica_en(saldo, cuenta.moneda))
+            if cuenta.moneda:
+                derecha.caption(monedas_cuenta.equivalente_md(lib, cuenta))
             return
         estado_tarjeta.mostrar(cuenta)
 
 
 def _editar(cuenta: Cuenta) -> None:
+    lib = libro()
     es_credito = cuenta.tipo is TipoCuenta.CREDITO
     modo_pago = _elegir_modo_pago(f"modo_pago_{cuenta.id}", cuenta) if es_credito else MODO_NINGUNO
     with st.form(f"editar_{cuenta.id}", border=False):
@@ -180,12 +202,23 @@ def _editar(cuenta: Cuenta) -> None:
                                                 help="Si no lo incluye, TALLY le suma el IVA de tu país "
                                                      "(Configuración → Tu perfil)."),
             }
+        moneda = cuenta.moneda
+        if cuenta.tipo in TIPOS_EN_OTRA_MONEDA:
+            fija = cuentas.tiene_movimientos(lib, cuenta.id) or lib.tiene_titulos(cuenta.id)
+            moneda = monedas_cuenta.elegir(
+                lib, f"moneda_{cuenta.id}", cuenta.moneda, contenedor=izquierda, disabled=fija,
+                ayuda=("Ya tiene movimientos: su moneda no se puede cambiar. Si te equivocaste, crea otra cuenta en la "
+                       "moneda correcta y pasa el dinero con una transferencia.") if fija else None)
         notas = st.text_area("Notas", value=cuenta.notas, height=80)
         en_disponible = st.checkbox("Cuenta como dinero disponible", value=cuenta.en_disponible)
         if st.form_submit_button("Guardar cambios", type="primary"):
-            if ejecutar(lambda lib: cuentas.editar(lib, cuenta.id, nombre=nombre, institucion=institucion,
-                                                   notas=notas, en_disponible=en_disponible, **credito),
-                        exito="Cuenta actualizada"):
+            def guardar(lib):
+                cuentas.editar(lib, cuenta.id, nombre=nombre, institucion=institucion, notas=notas,
+                               en_disponible=en_disponible, **credito)
+                if moneda != cuenta.moneda:
+                    cuentas.cambiar_moneda(lib, cuenta.id, moneda)
+
+            if ejecutar(guardar, exito="Cuenta actualizada"):
                 _guardado()
 
 
@@ -207,8 +240,9 @@ def _actualizar_saldo(cuenta: Cuenta) -> None:
                                           value=float(tarjetas.deuda(lib, cuenta.id)))
             razon = razones[1]
         else:
-            real = izquierda.number_input("Saldo que dice tu banco", step=100.0, format="%.2f",
-                                          value=float(cuentas.saldo(lib, cuenta.id)))
+            real = izquierda.number_input(
+                "Saldo que dice tu banco" + (f" (en {cuenta.moneda})" if cuenta.moneda else ""), step=100.0,
+                format="%.2f", value=float(cuentas.saldo(lib, cuenta.id)))
             razon = st.radio("¿Qué explica la diferencia?", razones)
             categoria = st.selectbox("Subcategoría del rendimiento", de_ingreso,
                                      format_func=lambda c: categorias.etiqueta(lib, c.id),
@@ -241,7 +275,8 @@ def _saldo_inicial(cuenta: Cuenta) -> None:
             monto = izquierda.number_input("Deuda inicial", min_value=0.0, step=100.0, format="%.2f",
                                            value=float(cuentas.deuda_inicial(libro(), cuenta.id)))
         else:
-            monto = izquierda.number_input("Saldo inicial", step=100.0, format="%.2f",
+            monto = izquierda.number_input("Saldo inicial" + (f" (en {cuenta.moneda})" if cuenta.moneda else ""),
+                                           step=100.0, format="%.2f",
                                            value=float(registrado[0]) if registrado else 0.0)
         fecha = derecha.date_input("Fecha", value=registrado[1] if registrado else cuenta.fecha_creacion,
                                    format="DD/MM/YYYY")
@@ -272,7 +307,7 @@ def eliminar(cuenta: Cuenta, clave: str) -> None:
     if saldo and cuentas.tiene_movimientos(lib, cuenta.id):
         es_credito = cuenta.tipo is TipoCuenta.CREDITO
         texto = (f"Todavía debes {formato.dinero_md(-saldo)} en esta tarjeta" if es_credito and saldo < 0
-                 else f"Esta cuenta todavía tiene {formato.dinero_md(saldo)}")
+                 else f"Esta cuenta todavía tiene {formato.dinero_en_md(saldo, cuenta.moneda)}")
         st.warning(f"{texto}. Si la eliminas así, ese saldo seguirá contando en tu patrimonio.", icon="⚠️")
         dejar_en_cero = st.checkbox(
             "Ya la pagué o la cancelé: dejar su saldo en cero", value=False, key=f"{clave}_cero",

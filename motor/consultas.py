@@ -75,9 +75,12 @@ class FilaMovimiento:
     cuenta: str
     cuenta_destino: str
     categoria: str  # subcategoría(s)
-    monto: Decimal  # siempre positivo
+    monto: Decimal  # siempre positivo, en tu moneda
     sentido: str  # "-", "+" o "↔"
     rubro: str = ""  # la categoría que agrupa a la subcategoría
+    # Si toca una cuenta en otra moneda: esa moneda y el importe en ella (motor/divisas.py).
+    moneda: str = ""
+    monto_original: Decimal | None = None
 
     @property
     def importe_con_signo(self) -> Decimal:
@@ -96,6 +99,11 @@ def fila(libro: Libro, op: Operacion) -> FilaMovimiento:
     categoria = ", ".join(libro.categoria(cat_id).nombre for cat_id in ids)
     rubro = ", ".join(dict.fromkeys(r for cat_id in ids if (r := categorias.nombre_rubro(libro, cat_id))))
     sentido = _SENTIDO.get(op.tipo) or ("+" if detalle.monto >= 0 else "-")
+    otra = None                                    # la partida de una cuenta en otra moneda, si la hay
+    for p in op.partidas_de_cuenta():
+        if p.original is not None:
+            otra = p
+            break
     return FilaMovimiento(
         id=op.id,
         fecha=op.fecha,
@@ -106,9 +114,13 @@ def fila(libro: Libro, op: Operacion) -> FilaMovimiento:
         cuenta=libro.cuenta(detalle.cuenta_id).nombre,
         cuenta_destino=libro.cuenta(detalle.cuenta_destino_id).nombre if detalle.cuenta_destino_id else "",
         categoria=categoria,
-        monto=abs(detalle.monto),
+        # En tu moneda: sin otra moneda es el del detalle; con otra, el de cualquier cuenta (en una transferencia,
+        # los dos lados valen lo mismo).
+        monto=abs(detalle.monto) if otra is None else a_pesos(abs(otra.importe)),
         sentido=sentido,
         rubro=rubro,
+        moneda=libro.cuenta(otra.cuenta_id).moneda if otra else "",
+        monto_original=a_pesos(abs(otra.original)) if otra else None,
     )
 
 
@@ -190,7 +202,7 @@ class FilaCuenta:
 
 def movimientos_de_cuenta(libro: Libro, cuenta_id: str, desde: date | None = None,
                           hasta: date | None = None) -> list[FilaCuenta]:
-    """Los movimientos de una cuenta con su saldo corrido, del más reciente al más antiguo.
+    """Los movimientos de una cuenta con su saldo corrido, del más reciente al más antiguo, en la moneda de la cuenta.
 
     El saldo se calcula con todo el historial (aunque se pida un rango), así que siempre coincide con el real.
     """
@@ -200,7 +212,7 @@ def movimientos_de_cuenta(libro: Libro, cuenta_id: str, desde: date | None = Non
         propias = [p for p in op.partidas_de_cuenta() if p.cuenta_id == cuenta_id]
         if not propias:
             continue
-        importe = sum(p.importe for p in propias)
+        importe = sum(p.en_su_moneda for p in propias)
         saldo += importe
         if desde is not None and op.fecha < desde:
             continue

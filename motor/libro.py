@@ -14,7 +14,9 @@ from bisect import bisect_left, bisect_right
 from collections.abc import Callable
 from dataclasses import replace
 from datetime import date, datetime
+from decimal import Decimal
 
+from motor import divisas
 from motor.errores import ErrorDatos, ErrorNoEncontrado, ErrorValidacion
 from motor.modelo import (
     CATEGORIA_AJUSTE,
@@ -40,6 +42,7 @@ from motor.modelo import (
     RubroContable,
     RUBROS_CONTABLES_BASE,
     RUBROS_CONTABLES_FIJOS,
+    TipoCambio,
 )
 from motor.reglas import validar_operacion
 
@@ -64,7 +67,10 @@ class Libro:
         # La fecha de cada movimiento que se agrega, cambia (la de antes y la de después) o borra, en orden: para
         # saber qué meses tocó una acción (motor/cierre.py) sin comparar todos los movimientos.
         self._fechas_tocadas: list[date] = []
-        self._acumulados: dict[str, tuple[list[date], list[int]]] | None = None
+        # Por cuenta: fechas, saldo acumulado en la moneda de la cuenta y en tu moneda (motor/divisas.py).
+        self._acumulados: dict[str, tuple[list[date], list[int], list[int]]] | None = None
+        self._tipos_cambio: dict[str, TipoCambio] = {}
+        self._series: dict[str, tuple[list[date], list[Decimal]]] | None = None     # por moneda, en orden de fecha
         self._valores: dict[str, OperacionValor] = {}
         self._plazos: dict[str, InversionPlazo] = {}
         self._bienes: dict[str, Bien] = {}
@@ -110,6 +116,7 @@ class Libro:
         reglas: list[Regla] = (),
         comprobantes: list[Comprobante] = (),
         rubros_contables: list[RubroContable] = (),
+        tipos_cambio: list[TipoCambio] = (),
     ) -> Libro:
         """Reconstruye un libro ya guardado, tal cual (lo usa la persistencia)."""
         libro = cls(reloj=reloj)
@@ -129,6 +136,7 @@ class Libro:
         libro._reglas = {r.id: r for r in reglas}
         libro._comprobantes = {c.id: c for c in comprobantes}
         libro._rubros_contables = {r.id: r for r in rubros_contables}
+        libro._tipos_cambio = {t.id: t for t in tipos_cambio}
         libro.fiscal = fiscal or Fiscal()
         libro._secuencia = max([secuencia, *(op.secuencia for op in operaciones)])
         return libro
@@ -224,6 +232,36 @@ class Libro:
     def quitar_plazo(self, plazo_id: str) -> None:
         self.plazo(plazo_id)
         del self._plazos[plazo_id]
+
+    # --------------------------------------------------------- tipos de cambio
+
+    def tipos_cambio(self, moneda: str | None = None) -> list[TipoCambio]:
+        """Los tipos de cambio guardados, por moneda y fecha."""
+        lista = [t for t in self._tipos_cambio.values() if moneda is None or t.moneda == moneda]
+        return sorted(lista, key=lambda t: (t.moneda, t.fecha))
+
+    def tipo_cambio(self, tipo_id: str) -> TipoCambio | None:
+        return self._tipos_cambio.get(tipo_id)
+
+    def guardar_tipo_cambio(self, tipo: TipoCambio) -> TipoCambio:
+        self._tipos_cambio[tipo.id] = tipo
+        self._series = None
+        return tipo
+
+    def quitar_tipo_cambio(self, tipo_id: str) -> None:
+        if self._tipos_cambio.pop(tipo_id, None) is None:
+            raise ErrorNoEncontrado("Ese tipo de cambio no existe.")
+        self._series = None
+
+    def serie_cambio(self, moneda: str) -> tuple[list[date], list[Decimal]]:
+        """Fechas y tipos de cambio de ``moneda``, en orden (para buscar el de un día con bisect)."""
+        if self._series is None:
+            self._series = {}
+            for t in sorted(self._tipos_cambio.values(), key=lambda t: t.fecha):
+                fechas, tipos = self._series.setdefault(t.moneda, ([], []))
+                fechas.append(t.fecha)
+                tipos.append(t.tipo)
+        return self._series.get(moneda, ([], []))
 
     # ------------------------------------------------------------------ bienes
 
@@ -552,7 +590,7 @@ class Libro:
         return self._fechas_tocadas[desde:]
 
     def agregar_operacion(self, op: Operacion) -> Operacion:
-        op = replace(op, fecha=_solo_fecha(op.fecha))
+        op = divisas.en_tu_moneda(self, replace(op, fecha=_solo_fecha(op.fecha)))
         if op.id and op.id in self._operaciones:
             raise ErrorValidacion("Ya existe un movimiento con ese identificador.")
         validar_operacion(self, op)
@@ -573,8 +611,7 @@ class Libro:
         """Sustituye una operación conservando su identidad y su lugar en el orden."""
         original = self.operacion(operacion_id)
         nueva = replace(
-            nueva,
-            fecha=_solo_fecha(nueva.fecha),
+            divisas.en_tu_moneda(self, replace(nueva, fecha=_solo_fecha(nueva.fecha))),
             id=original.id,
             secuencia=original.secuencia,
             creado_en=original.creado_en,
@@ -612,22 +649,33 @@ class Libro:
     # ------------------------------------------------------------------ saldos
 
     def saldo_centavos(self, cuenta_id: str, al: date | None = None) -> int:
-        """Saldo de la cuenta al final del día ``al`` (o con todo, si es None)."""
+        """Saldo de la cuenta al final del día ``al`` (o con todo, si es None), en la moneda de la cuenta."""
+        return self._saldo(cuenta_id, al, 1)
+
+    def saldo_en_base(self, cuenta_id: str, al: date | None = None) -> int:
+        """Como :meth:`saldo_centavos`, pero en tu moneda: la suma de lo que valía cada movimiento el día que se
+        hizo. En una cuenta en tu moneda es lo mismo; en una en dólares, lo que valen hoy esos dólares lo da
+        :func:`motor.divisas.valor`."""
+        return self._saldo(cuenta_id, al, 2)
+
+    def _saldo(self, cuenta_id: str, al: date | None, cual: int) -> int:
         self.cuenta(cuenta_id)
         if self._acumulados is None:
             self._acumulados = {}
             for op in self._ordenadas()[0]:
                 for p in op.partidas:
                     if p.cuenta_id is not None:
-                        fechas, totales = self._acumulados.setdefault(p.cuenta_id, ([], []))
+                        fechas, propios, base = self._acumulados.setdefault(p.cuenta_id, ([], [], []))
                         fechas.append(op.fecha)
-                        totales.append((totales[-1] if totales else 0) + p.importe)
-        fechas, totales = self._acumulados.get(cuenta_id, ((), ()))
-        if not totales:
+                        propios.append((propios[-1] if propios else 0) + p.en_su_moneda)
+                        base.append((base[-1] if base else 0) + p.importe)
+        acumulado = self._acumulados.get(cuenta_id)
+        if acumulado is None:
             return 0
+        totales = acumulado[cual]
         if al is None:
             return totales[-1]
-        i = bisect_right(fechas, _solo_fecha(al))
+        i = bisect_right(acumulado[0], _solo_fecha(al))
         return totales[i - 1] if i else 0
 
 

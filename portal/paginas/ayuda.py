@@ -64,6 +64,12 @@ COMO_HAGO = (
      "dices cada cuándo pagas, sobre qué ingresos y la fecha límite, y el Resumen te dice cuánto pagar y hasta "
      "cuándo. También sale en tu Calendario y cuenta en cómo quedaría tu dinero en 30 días.", "impuestos",
      "Ir a Impuestos"),
+    ("Una cuenta en dólares, euros u otra moneda",
+     "En **Cuentas → Nueva cuenta**, elige su **moneda** (débito, ahorro, efectivo, inversión u «otra»). Su saldo y "
+     "lo que registras en ella van en esa moneda, como en tu banco; tus totales, el Resumen y la contabilidad, en la "
+     "tuya, al **tipo de cambio** de cada día. Lo que sube o baja su valor cuando se mueve el dólar sale aparte, «por "
+     "tipo de cambio». Al pasar dinero entre monedas puedes escribir cuánto llegó. Los tipos de cambio los ves, "
+     "corriges o traes de internet en **Configuración → Tipos de cambio**.", "cuentas", "Ir a Cuentas"),
     ("Corregir o borrar un movimiento",
      "**Historial**: busca el movimiento, selecciónalo (casilla a la izquierda) y usa Editar o Eliminar. Todo queda "
      "en la bitácora.", "historial", "Ir al Historial"),
@@ -107,6 +113,8 @@ PALABRAS = (
                          "importas o registras."),
     ("Rubro contable", "Un renglón de tus estados financieros que junta subcategorías: «Gastos financieros» junta "
                        "intereses, comisiones y anualidades. Lo ves y lo cambias en Categorías › Contabilidad."),
+    ("Tipo de cambio", "Cuánto de tu moneda vale una unidad de otra (1 USD = 18.75 MXN). Con él, tus cuentas en otra "
+                       "moneda se suman a tus totales; lo que gastaste en dólares queda con el de ese día."),
 )
 
 

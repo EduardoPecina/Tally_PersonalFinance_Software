@@ -22,6 +22,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import date, timedelta
 
+from motor import divisas, monedas
 from motor.dinero import a_pesos, formatear
 from motor.libro import Libro
 from motor.modelo import TipoCuenta
@@ -40,7 +41,7 @@ class Aviso:
 
 def antes_de_registrar(libro: Libro, fecha: date, cambios: Iterable[tuple[str, int]]) -> list[Aviso]:
     """Los avisos de un movimiento que aún no se guarda. ``cambios``: (cuenta, centavos) que movería en cada cuenta,
-    con signo: −50000 si salen $500 de ella, +50000 si entran."""
+    con signo y en la moneda de la cuenta: −50000 si salen $500 de ella, +50000 si entran."""
     hoy = libro.hoy()
     avisos = []
     if (fecha - hoy).days > DIAS_ADELANTE:
@@ -73,7 +74,8 @@ def antes_de_registrar(libro: Libro, fecha: date, cambios: Iterable[tuple[str, i
             continue
         cuando = "" if dia == al else f" el {dia:%d/%m/%Y}, con lo que ya registraste para esos días"
         if cuenta.tipo in SIN_NEGATIVO:
-            avisos.append(Aviso(NEGATIVO, f"«{cuenta.nombre}» quedaría en {formatear(a_pesos(saldo))}{cuando}. "
+            texto = monedas.en_moneda(a_pesos(saldo), divisas.moneda_de(libro, cuenta))
+            avisos.append(Aviso(NEGATIVO, f"«{cuenta.nombre}» quedaría en {texto}{cuando}. "
                                           "¿Están bien la cuenta y el importe?"))
         else:
             avisos.append(Aviso(LIMITE, f"«{cuenta.nombre}» pasaría su límite de "
@@ -86,7 +88,7 @@ def _saldos(libro: Libro, cuenta_id: str, al: date) -> list[tuple[int, date]]:
     """El saldo de la cuenta al cierre de ``al`` y de cada día posterior con movimientos ya registrados."""
     por_dia: dict[date, int] = defaultdict(int)                         # en orden: operaciones() es cronológico
     for op in libro.operaciones(desde=al + timedelta(days=1)):
-        por_dia[op.fecha] += sum(p.importe for p in op.partidas if p.cuenta_id == cuenta_id)
+        por_dia[op.fecha] += sum(p.en_su_moneda for p in op.partidas if p.cuenta_id == cuenta_id)
     saldo = libro.saldo_centavos(cuenta_id, al)
     saldos = [(saldo, al)]
     for fecha, cambio in por_dia.items():

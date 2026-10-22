@@ -77,7 +77,7 @@ def _proximos() -> None:
         "Fecha": [e.fecha for e in f.eventos],
         "Qué": [f"{ICONOS[e.clase]} {e.nombre}" for e in f.eventos],
         "Cuenta": [lib.cuenta(e.cuenta_id).nombre if e.cuenta_id else "—" for e in f.eventos],
-        "Importe": [formato.dinero_con_signo(a_pesos(abs(e.centavos)), "+" if e.centavos > 0 else "-")
+        "Importe": [("+" if e.centavos > 0 else "-") + formato.dinero_en(a_pesos(abs(e.centavos)), _moneda(lib, e))
                     for e in f.eventos],
         "Estado": [ESTADOS[e.estado] for e in f.eventos],
         "Detalle": [("⭐ Suscripción · " if e.suscripcion else "") + e.detalle for e in f.eventos],
@@ -119,7 +119,7 @@ def _registrar(eventos) -> None:
     lib = libro()
     st.markdown("##### ✍️ Registrar un pago del calendario")
     st.caption("Elige cuál y TALLY lo registra con su importe y su subcategoría (cámbialo si este mes fue distinto).")
-    opciones = {f"{formato.fecha(e.fecha)} · {e.nombre} · {formato.dinero(a_pesos(abs(e.centavos)))}": e
+    opciones = {f"{formato.fecha(e.fecha)} · {e.nombre} · {formato.dinero_en(a_pesos(abs(e.centavos)), _moneda(lib, e))}": e
                 for e in eventos}
     elegido = st.selectbox("¿Cuál?", list(opciones), key="cal_registrar")
     evento = opciones[elegido]
@@ -131,7 +131,7 @@ def _registrar(eventos) -> None:
                                format="%.2f")
         cuentas_ = [cu.id for cu in lib.cuentas() if cu.activa and cu.tipo in TIPOS_DE_CUENTA]
         cuenta = c.selectbox("Cuenta", cuentas_, index=cuentas_.index(evento.cuenta_id)
-                             if evento.cuenta_id in cuentas_ else 0, format_func=lambda i: lib.cuenta(i).nombre)
+                             if evento.cuenta_id in cuentas_ else 0, format_func=lambda i: formato.nombre_cuenta(lib.cuenta(i)))
         if st.form_submit_button("Registrar", type="primary", icon=":material/check:"):
             if aplicar(lambda li: recurrentes.registrar(li, evento.recurrente_id, fecha, monto, cuenta_id=cuenta),
                        f"Registrado: {evento.nombre}"):
@@ -160,10 +160,11 @@ def _fijos() -> None:
             "Qué es": [TIPOS[r.tipo] for r in lista],
             "Cuenta": [lib.cuenta(r.cuenta_id).nombre for r in lista],
             "Subcategoría o destino": [_destino(lib, r) for r in lista],
-            "Importe": [formato.dinero(a_pesos(r.monto)) + (f" / {formato.dinero(a_pesos(r.monto_2))}" if r.monto_2 else "")
-                        for r in lista],
+            "Importe": [formato.dinero_en(a_pesos(r.monto), lib.cuenta(r.cuenta_id).moneda)
+                        + (f" / {formato.dinero_en(a_pesos(r.monto_2), lib.cuenta(r.cuenta_id).moneda)}"
+                           if r.monto_2 else "") for r in lista],
             "Cada cuánto": [recurrentes.FRECUENCIAS[r.frecuencia].split(" (")[0] for r in lista],
-            "Al mes": [formato.dinero(recurrentes.al_mes(r)) for r in lista],
+            "Al mes": [formato.dinero(recurrentes.al_mes(r, lib)) for r in lista],
             "Próxima vez": [recurrentes.siguiente(r, hoy) if r.activa else None for r in lista],
             "Activo": ["Sí" if r.activa else "Pausado" for r in lista],
         })
@@ -219,11 +220,11 @@ def _formulario(r: Recurrente | None) -> None:
         a, b = st.columns(2)
         cuenta = a.selectbox("Entra a la cuenta" if tipo is TipoOperacion.INGRESO else "Sale de la cuenta", cuentas_,
                              index=cuentas_.index(r.cuenta_id) if r and r.cuenta_id in cuentas_ else 0,
-                             format_func=lambda i: lib.cuenta(i).nombre,
+                             format_func=lambda i: formato.nombre_cuenta(lib.cuenta(i)),
                              help="Si lo pagas con tarjeta de crédito, elige la tarjeta.")
         categoria = destino = None
         if tipo is TipoOperacion.TRANSFERENCIA:
-            destino = b.selectbox("A la cuenta", cuentas_, format_func=lambda i: lib.cuenta(i).nombre,
+            destino = b.selectbox("A la cuenta", cuentas_, format_func=lambda i: formato.nombre_cuenta(lib.cuenta(i)),
                                   index=cuentas_.index(r.destino_id) if r and r.destino_id in cuentas_ else None,
                                   placeholder="Elige la cuenta")
         else:
@@ -277,12 +278,18 @@ def _sugerencias(sugerencias) -> None:
             a, b = st.columns([4, 1], vertical_alignment="center")
             sentido = "Entra" if s.tipo is TipoOperacion.INGRESO else "Sale"
             a.markdown(f"{'⭐ ' if s.suscripcion else ''}**{formato.md(s.nombre)}** · {sentido} "
-                       f"{formato.dinero_md(s.monto)} {recurrentes.FRECUENCIAS[s.frecuencia].lower()}  \n"
+                       f"{formato.dinero_en_md(s.monto, lib.cuenta(s.cuenta_id).moneda)} "
+                       f"{recurrentes.FRECUENCIAS[s.frecuencia].lower()}  \n"
                        f":gray[{categorias.etiqueta(lib, s.categoria_id)} · {lib.cuenta(s.cuenta_id).nombre} · "
                        f"se repitió {s.veces} veces · la próxima sería el {formato.fecha(s.siguiente)}]")
             if b.button("Agregar", key=f"cal_sugerencia_{n}", type="primary", width="stretch"):
                 if ejecutar(lambda li, s=s: recurrentes.agregar_sugerencia(li, s), f"Se agregó «{s.nombre}»"):
                     st.rerun()
+
+
+def _moneda(lib, e) -> str:
+    """La moneda en la que va el importe del evento: la de su cuenta (un pago fijo en dólares, en dólares)."""
+    return lib.cuenta(e.cuenta_id).moneda if e.cuenta_id and e.clase == recurrentes.RECURRENTE else ""
 
 
 def proximos_avisos(dias: int = 3) -> None:
@@ -298,7 +305,8 @@ def proximos_avisos(dias: int = 3) -> None:
         dias_ = (e.fecha - hoy).days
         cuando = ("venció el " + formato.fecha(e.fecha) if dias_ < 0 else "hoy" if dias_ == 0
                   else "mañana" if dias_ == 1 else f"en {dias_} días")
-        partes.append(f"**{formato.md(e.nombre)}** {formato.dinero_md(a_pesos(abs(e.centavos)))} ({cuando})")
+        partes.append(f"**{formato.md(e.nombre)}** {formato.dinero_en_md(a_pesos(abs(e.centavos)), _moneda(lib, e))} "
+                      f"({cuando})")
     vencido = any(e.estado == recurrentes.VENCIDO for e in eventos)
     (st.warning if vencido else st.info)("Próximos pagos: " + "; ".join(partes) + ".", icon="📅")
     navegacion.enlace("calendario", "Ver calendario", "📅")

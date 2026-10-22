@@ -16,13 +16,13 @@ from dataclasses import dataclass, replace
 from datetime import date, timedelta
 from decimal import ROUND_CEILING, Decimal
 
-from motor import planeacion, prestamos
+from motor import divisas, planeacion, prestamos
 from motor.dinero import a_centavos, a_pesos, formatear
 from motor.errores import ErrorValidacion
 from motor.libro import Libro
 from motor.modelo import Aporte, ClaseCategoria, Meta, TipoCuenta
 from motor.textos import normalizar_nombre
-from motor.transferencias import registrar_transferencia
+from motor.transferencias import registrar_por_valor
 
 CERO = Decimal("0.00")
 GRUPOS_ESENCIALES = ("Necesidad", "Compromisos")
@@ -89,8 +89,8 @@ def aportar(libro: Libro, meta_id: str, monto, fecha: date | None = None, *, des
     fecha = fecha or libro.hoy()
     operacion = ""
     if desde and meta.cuenta_id and desde != meta.cuenta_id:
-        op = registrar_transferencia(libro, fecha, desde, meta.cuenta_id, a_pesos(centavos),
-                                     f"Aporte a la meta «{meta.nombre}»")
+        op = registrar_por_valor(libro, fecha, desde, meta.cuenta_id, a_pesos(centavos),        # en tu moneda
+                                 f"Aporte a la meta «{meta.nombre}»")
         operacion = op.id
     return libro.guardar_meta(replace(meta, aportes=(*meta.aportes, Aporte(fecha, centavos, operacion))))
 
@@ -104,8 +104,8 @@ def retirar(libro: Libro, meta_id: str, monto, fecha: date | None = None, *, hac
     fecha = fecha or libro.hoy()
     operacion = ""
     if hacia and meta.cuenta_id and hacia != meta.cuenta_id:
-        op = registrar_transferencia(libro, fecha, meta.cuenta_id, hacia, a_pesos(centavos),
-                                     f"Retiro de la meta «{meta.nombre}»")
+        op = registrar_por_valor(libro, fecha, meta.cuenta_id, hacia, a_pesos(centavos),
+                                 f"Retiro de la meta «{meta.nombre}»")
         operacion = op.id
     return libro.guardar_meta(replace(meta, aportes=(*meta.aportes, Aporte(fecha, -centavos, operacion))))
 
@@ -179,7 +179,7 @@ def por_cuenta(libro: Libro, hoy: date | None = None) -> list[Cuenta]:
             apartado[m.cuenta_id] += ahorrado(m)
     resultado = []
     for cuenta_id, centavos in apartado.items():
-        saldo = libro.saldo_centavos(cuenta_id, hoy)
+        saldo = divisas.valor(libro, cuenta_id, hoy)              # en tu moneda, como tus metas
         resultado.append(Cuenta(cuenta_id, a_pesos(centavos), a_pesos(saldo), a_pesos(saldo - centavos)))
     return resultado
 

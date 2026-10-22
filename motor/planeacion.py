@@ -98,7 +98,7 @@ def ingreso_esperado(libro: Libro, hoy: date | None = None) -> IngresoEsperado:
     from motor import recurrentes
 
     elegidas = {c.id for c in libro.categorias() if c.principal or c.secundario}
-    configurado = sum((recurrentes.al_mes(r) for r in libro.recurrentes()
+    configurado = sum((recurrentes.al_mes(r, libro) for r in libro.recurrentes()
                        if r.activa and r.tipo is TipoOperacion.INGRESO and r.categoria_id in elegidas), CERO)
     return IngresoEsperado(configurado, "configurado" if configurado else "sin_datos", meses)
 

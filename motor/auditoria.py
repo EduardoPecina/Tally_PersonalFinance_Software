@@ -83,6 +83,7 @@ ETIQUETA_ENTIDAD = {
     "regla": "Regla de categoría",
     "comprobante": "Comprobante",
     "rubro_contable": "Rubro contable",
+    "tipo_cambio": "Tipo de cambio",
     "respaldo": "Respaldo",
 }
 ETIQUETA_ACCION = {CREAR: "Creó", EDITAR: "Editó", BORRAR: "Borró", RESTAURAR: "Restauró"}
@@ -93,7 +94,7 @@ _CAMPOS = {
     "en_disponible": "cuenta como disponible", "institucion": "institución",
     "limite_credito": "límite", "dia_corte": "día de corte", "dia_pago": "día de pago",
     "dias_para_pagar": "días para pagar", "respaldo_diario": "respaldo diario",
-    "respaldos_a_conservar": "respaldos a conservar", "periodo_inicial": "periodo del resumen", "moneda": "moneda", "tema": "tema", "icono": "ícono", "dias_habiles": "días hábiles", "recorrer_inhabil": "recorrer a día hábil",
+    "respaldos_a_conservar": "respaldos a conservar", "periodo_inicial": "periodo del resumen", "moneda": "moneda", "divisa": "moneda", "tema": "tema", "icono": "ícono", "dias_habiles": "días hábiles", "recorrer_inhabil": "recorrer a día hábil",
 }
 _IGNORAR = {"modificado_en", "secuencia", "creado_en"}
 
@@ -109,6 +110,8 @@ def resumen(registro: Registro | Cambio) -> str:
         datos = {**datos, "nombre": datos.get("id", "")}                # «2026-09»
     elif registro.entidad == "regla":
         datos = {**datos, "nombre": datos.get("texto", "")}             # «OXXO»
+    elif registro.entidad == "tipo_cambio":
+        datos = {**datos, "nombre": f"{datos.get('moneda', '')} {datos.get('fecha', '')}".strip()}   # «USD 2026-10-22»
     nombre = datos.get("nombre") or datos.get("descripcion") or datos.get("archivo") or ""
     texto = f"{ETIQUETA_ACCION.get(registro.accion, registro.accion)} {ETIQUETA_ENTIDAD.get(registro.entidad, registro.entidad)}"
     if nombre:

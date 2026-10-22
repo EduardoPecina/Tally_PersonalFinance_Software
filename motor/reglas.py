@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from motor import divisas
 from motor.errores import ErrorValidacion
 from motor.modelo import (
     CATEGORIA_AJUSTE,
@@ -38,6 +39,7 @@ def validar_operacion(libro: Libro, op: Operacion, original: Operacion | None = 
         raise ErrorValidacion("Las partidas de la operación no cuadran (no suman cero).")
 
     _validar_referencias(libro, op, original)
+    _validar_monedas(libro, op)
     _validar_msi(libro, op)
 
     cuentas = op.partidas_de_cuenta()
@@ -99,6 +101,19 @@ def _validar_referencias(libro: Libro, op: Operacion, original: Operacion | None
             categoria = libro.categoria(p.categoria_id)
             if not categoria.activa and categoria.id not in ya_usadas:
                 raise ErrorValidacion(f"La categoría «{categoria.nombre}» está archivada.")
+
+
+def _validar_monedas(libro: Libro, op: Operacion) -> None:
+    """Una cuenta en otra moneda lleva su importe en esa moneda (``original``), con el mismo signo; una en tu
+    moneda, no (motor/divisas.py)."""
+    for p in op.partidas_de_cuenta():
+        cuenta = libro.cuenta(p.cuenta_id)
+        if divisas.en_otra_moneda(libro, cuenta):
+            if p.original is None or p.original == 0 or (p.original > 0) != (p.importe > 0):
+                raise ErrorValidacion(f"El importe en {cuenta.moneda} de «{cuenta.nombre}» no cuadra con el de tu "
+                                      "moneda.")
+        elif p.original is not None:
+            raise ErrorValidacion(f"«{cuenta.nombre}» está en tu moneda: su movimiento no lleva importe en otra.")
 
 
 MSI_MINIMO, MSI_MAXIMO = 2, 60

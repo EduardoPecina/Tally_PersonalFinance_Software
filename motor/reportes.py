@@ -12,6 +12,7 @@ from dataclasses import dataclass, replace
 from datetime import date, timedelta
 from decimal import Decimal
 
+from motor import divisas
 from motor.dinero import a_pesos
 from motor.libro import Libro
 from motor.modelo import (
@@ -217,15 +218,24 @@ class Indicadores:
     te_deben: Decimal
     deuda_tarjetas: Decimal
     patrimonio_neto: Decimal
+    # Cuentas en otra moneda: cuánto de lo anterior es ganancia (o pérdida) por tipo de cambio (motor/divisas.py).
+    por_tipo_de_cambio: Decimal = Decimal("0.00")
 
 
 def indicadores(libro: Libro, al: date | None = None) -> Indicadores:
-    """Situación a una fecha. Las cuentas archivadas con saldo también cuentan."""
+    """Situación a una fecha, en tu moneda (las cuentas en otra, a lo que valen ese día). Las cuentas archivadas con
+    saldo también cuentan."""
     from motor import bienes
 
-    indicadores_ = _indicadores(libro, {c.id: libro.saldo_centavos(c.id, al) for c in libro.cuentas()})
+    saldos = {c.id: libro.saldo_centavos(c.id, al) for c in libro.cuentas()}
+    cambio = 0
+    for cuenta in divisas.cuentas_en_otra_moneda(libro):
+        saldos[cuenta.id] = divisas.valor(libro, cuenta.id, al)
+        cambio += saldos[cuenta.id] - libro.saldo_en_base(cuenta.id, al)
+    indicadores_ = _indicadores(libro, saldos)
     ajuste = bienes.ajuste_de_valor(libro, al or libro.hoy()) if libro.bienes() else 0
-    return replace(indicadores_, patrimonio_neto=indicadores_.patrimonio_neto + a_pesos(ajuste))
+    return replace(indicadores_, patrimonio_neto=indicadores_.patrimonio_neto + a_pesos(ajuste),
+                   por_tipo_de_cambio=a_pesos(cambio))
 
 
 def _indicadores(libro: Libro, saldos: dict[str, int]) -> Indicadores:
@@ -284,15 +294,25 @@ def evolucion(libro: Libro, desde: date, hasta: date) -> list[PuntoEvolucion]:
     from motor import bienes
 
     con_bienes = bool(libro.bienes())     # la depreciación y los avalúos también cambian el patrimonio
+    otras = divisas.cuentas_en_otra_moneda(libro)     # en otra moneda: su saldo al tipo de cambio de cada punto
     saldos: dict[str, int] = defaultdict(int)
+    propios: dict[str, int] = defaultdict(int)
     operaciones = libro.operaciones(hasta=hasta)
     resultado, i = [], 0
     for punto in puntos:
         while i < len(operaciones) and operaciones[i].fecha <= punto:
             for p in operaciones[i].partidas_de_cuenta():
                 saldos[p.cuenta_id] += p.importe
+                propios[p.cuenta_id] += p.en_su_moneda
             i += 1
-        ind = _indicadores(libro, saldos)
+        al_dia = saldos
+        if otras:
+            al_dia = dict(saldos)
+            for cuenta in otras:
+                tipo = divisas.tipo(libro, cuenta.moneda, punto)
+                if tipo is not None:
+                    al_dia[cuenta.id] = divisas.a_base(propios[cuenta.id], tipo)
+        ind = _indicadores(libro, al_dia)
         patrimonio = ind.patrimonio_neto + (a_pesos(bienes.ajuste_de_valor(libro, punto)) if con_bienes else 0)
         resultado.append(PuntoEvolucion(punto, patrimonio, ind.dinero_disponible, ind.deuda_tarjetas))
     return resultado
@@ -449,7 +469,7 @@ def sobrantes_de_quincena(libro: Libro, cuenta_id: str, desde: date | None = Non
     resultado = []
     saldo = libro.saldo_centavos(cuenta_id, desde - timedelta(days=1)) if desde is not None else 0
     for op in libro.operaciones(desde):
-        cambio = sum(p.importe for p in op.partidas if p.cuenta_id == cuenta_id)
+        cambio = sum(p.en_su_moneda for p in op.partidas if p.cuenta_id == cuenta_id)
         if cambio and _es_ingreso_principal(libro, op):
             resultado.append(Sobrante(op.fecha, op.id, a_pesos(saldo)))
         saldo += cambio

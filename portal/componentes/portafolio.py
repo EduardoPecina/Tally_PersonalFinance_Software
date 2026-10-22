@@ -9,7 +9,7 @@ from decimal import Decimal
 import pandas as pd
 import streamlit as st
 
-from motor import cotizaciones, cuentas, monedas, perfil, portafolio
+from motor import cotizaciones, cuentas, divisas, monedas, perfil, portafolio
 from motor.dinero import a_pesos
 from motor.modelo import Cuenta, TipoOperacionValor
 from portal import navegacion
@@ -46,11 +46,11 @@ def mostrar(cuenta: Cuenta) -> None:
     else:
         precios, tipos = _precios(cuenta, abiertas)
         valuacion = portafolio.valuar(lib, cuenta.id, precios, tipos)
-        _resumen(valuacion)
+        _resumen(valuacion, cuenta.moneda)
         if valuacion.filas:
-            _tabla_titulos(valuacion)
+            _tabla_titulos(valuacion, cuenta.moneda)
         if valuacion.plazos:
-            _tabla_plazos(valuacion)
+            _tabla_plazos(valuacion, cuenta.moneda)
         navegacion.enlace("inversiones", "Ver el rendimiento en el tiempo (gráficas)", "📈")
     if cuenta.activa:
         _cuadrar(cuenta, valuacion)
@@ -128,7 +128,7 @@ def _precios(cuenta: Cuenta, abiertas) -> tuple[dict, dict]:
         with st.expander("Escribir precios a mano (sin internet)"):
             st.caption("Si no hay conexión o el precio no te convence, escríbelo aquí (0 = no usar). Manda sobre el "
                        "consultado.")
-            otras = sorted({p.moneda for p in abiertas} - {base})
+            otras = sorted({p.moneda for p in abiertas} - {base, divisas.moneda_de(lib, cuenta)})
             columnas = st.columns(min(len(abiertas) + len(otras), 3))
             for i, posicion in enumerate(abiertas):
                 valor = columnas[i % len(columnas)].number_input(
@@ -148,44 +148,48 @@ def _precios(cuenta: Cuenta, abiertas) -> tuple[dict, dict]:
 # ------------------------------------------------------------------- vistas
 
 
-def _resumen(v: portafolio.Valuacion) -> None:
+def _resumen(v: portafolio.Valuacion, moneda: str = "") -> None:
     columnas = st.columns(4)
-    columnas[0].metric("Valor aproximado hoy", formato.dinero(v.valor_total) if v.valor_total is not None else "—",
+    columnas[0].metric("Valor aproximado hoy", formato.dinero_en(v.valor_total, moneda)
+                       if v.valor_total is not None else "—",
                        help="Títulos a precio actual + inversiones a plazo con su interés a la fecha.")
-    columnas[1].metric("Ganancia sin vender", formato.dinero(v.ganancia_no_realizada)
+    columnas[1].metric("Ganancia sin vender", formato.dinero_en(v.ganancia_no_realizada, moneda)
                        if v.ganancia_no_realizada is not None else "—",
                        help="Valor actual de lo que tienes menos lo que te costó.")
-    columnas[2].metric("Ganancia de lo vendido", formato.dinero_metrica(v.ganancia_realizada))
-    columnas[3].metric("Interés de inversiones a plazo", formato.dinero_metrica(v.interes_plazos))
+    columnas[2].metric("Ganancia de lo vendido", formato.dinero_metrica_en(v.ganancia_realizada, moneda))
+    columnas[3].metric("Interés de inversiones a plazo", formato.dinero_metrica_en(v.interes_plazos, moneda))
     if v.faltan:
         st.caption("Sin precio todavía: " + ", ".join(v.faltan) + ". Usa «Consultar valor aproximado actual» o "
                    "escríbelo a mano.")
 
 
-def _tabla_titulos(v: portafolio.Valuacion) -> None:
+def _tabla_titulos(v: portafolio.Valuacion, moneda: str = "") -> None:
+    def dinero(valor) -> str:
+        return formato.dinero_en(valor, moneda) if valor is not None else "—"
+
     tabla = pd.DataFrame({
         "Símbolo": [f.posicion.simbolo for f in v.filas],
         "Títulos": [f"{f.posicion.titulos.normalize():f}" for f in v.filas],
-        "Costo promedio": [formato.dinero(f.posicion.costo_promedio) for f in v.filas],
-        "Costo": [formato.dinero(f.posicion.costo) for f in v.filas],
+        "Costo promedio": [dinero(f.posicion.costo_promedio) for f in v.filas],
+        "Costo": [dinero(f.posicion.costo) for f in v.filas],
         "Precio actual": [f"{f.precio:,.4f} {f.moneda_precio}" if f.precio is not None else "—" for f in v.filas],
-        "Valor actual": [formato.dinero(f.valor) if f.valor is not None else "—" for f in v.filas],
-        "Ganancia": [formato.dinero(f.ganancia) if f.ganancia is not None else "—" for f in v.filas],
+        "Valor actual": [dinero(f.valor) for f in v.filas],
+        "Ganancia": [dinero(f.ganancia) for f in v.filas],
         "%": [f"{f.porcentaje:+.1f} %" if f.porcentaje is not None else "—" for f in v.filas],
     })
     st.dataframe(formato.pintar(tabla), hide_index=True, width="stretch")
 
 
-def _tabla_plazos(v: portafolio.Valuacion) -> None:
+def _tabla_plazos(v: portafolio.Valuacion, moneda: str = "") -> None:
     st.dataframe(formato.pintar(pd.DataFrame({
         "Inversión": [p.plazo.nombre for p in v.plazos],
-        "Monto": [formato.dinero(a_pesos(p.plazo.monto)) for p in v.plazos],
+        "Monto": [formato.dinero_en(a_pesos(p.plazo.monto), moneda) for p in v.plazos],
         "Tasa anual": [f"{p.plazo.tasa_anual.normalize():f} %" for p in v.plazos],
         "Inicio": [formato.fecha(p.plazo.fecha_inicio) for p in v.plazos],
         "Vence": [formato.fecha(p.vence) + (" ✓" if p.vencido else "") for p in v.plazos],
-        "Interés a hoy": [formato.dinero(p.interes_hoy) for p in v.plazos],
-        "Valor hoy": [formato.dinero(p.valor_hoy) for p in v.plazos],
-        "Al vencer": [formato.dinero(p.valor_al_vencer) for p in v.plazos],
+        "Interés a hoy": [formato.dinero_en(p.interes_hoy, moneda) for p in v.plazos],
+        "Valor hoy": [formato.dinero_en(p.valor_hoy, moneda) for p in v.plazos],
+        "Al vencer": [formato.dinero_en(p.valor_al_vencer, moneda) for p in v.plazos],
     })), hide_index=True, width="stretch")
     st.caption("Interés simple, año de 360 días, antes de impuestos (aproximado).")
 
@@ -200,15 +204,17 @@ def _cuadrar(cuenta: Cuenta, v: portafolio.Valuacion | None) -> None:
                    "app oficial (GBM, Cetesdirecto, tu banco…): títulos + efectivo + intereses. TALLY registra la "
                    "diferencia contra su saldo como **rendimiento** (INTERESES Y RENDIMIENTOS) y así coinciden al "
                    "centavo. El valor consultado en internet es solo una referencia.")
+        m = cuenta.moneda
         saldo = cuentas.saldo(lib, cuenta.id)
         estimado = portafolio.valor_estimado(lib, cuenta.id, v) if v is not None else None
-        referencia = f"Saldo en TALLY hoy: {formato.dinero_md(saldo)}"
+        referencia = f"Saldo en TALLY hoy: {formato.dinero_en_md(saldo, m)}"
         if estimado is not None:
-            referencia += f" · Valor aproximado con los precios consultados: {formato.dinero_md(estimado)}"
+            referencia += f" · Valor aproximado con los precios consultados: {formato.dinero_en_md(estimado, m)}"
         st.caption(referencia)
         with st.form(f"valor_oficial_{cuenta.id}", border=False):
             izquierda, derecha = st.columns(2)
-            valor = izquierda.number_input(f"Valor oficial de la cuenta ({monedas.de(lib)})", min_value=0.0, value=None, step=100.0,
+            valor = izquierda.number_input(f"Valor oficial de la cuenta ({divisas.moneda_de(lib, cuenta)})",
+                                           min_value=0.0, value=None, step=100.0,
                                            format="%.2f", placeholder="Cópialo de tu app, al centavo",
                                            key=f"oficial_valor_{cuenta.id}")
             fecha = derecha.date_input("Fecha de ese valor", value=lib.hoy(), max_value=lib.hoy(),
@@ -224,18 +230,19 @@ def _cuadrar(cuenta: Cuenta, v: portafolio.Valuacion | None) -> None:
         en_tally = cuentas.saldo(lib, cuenta.id, dia)
         diferencia = oficial - en_tally
         if not diferencia:
-            st.success(f"Ya cuadra: el {formato.fecha(dia)} TALLY tiene {formato.dinero_md(en_tally)}, igual que tu "
+            st.success(f"Ya cuadra: el {formato.fecha(dia)} TALLY tiene {formato.dinero_en_md(en_tally, m)}, igual que tu "
                        "app. No hay nada que registrar.")
             if st.button("Listo", key=f"oficial_listo_{cuenta.id}"):
                 st.session_state.pop(pendiente, None)
                 st.rerun()
             return
         signo = "+" if diferencia > 0 else "−"
-        st.info(f"El {formato.fecha(dia)} TALLY tiene {formato.dinero_md(en_tally)} y tu app dice "
-                f"{formato.dinero_md(oficial)}: se registra un rendimiento de **{signo}"
-                f"{formato.dinero_md(abs(diferencia))}** ({'ganancia' if diferencia > 0 else 'pérdida'}).")
+        st.info(f"El {formato.fecha(dia)} TALLY tiene {formato.dinero_en_md(en_tally, m)} y tu app dice "
+                f"{formato.dinero_en_md(oficial, m)}: se registra un rendimiento de **{signo}"
+                f"{formato.dinero_en_md(abs(diferencia), m)}** ({'ganancia' if diferencia > 0 else 'pérdida'})"
+                + (" (en tu Resumen cuenta lo que vale en tu moneda ese día)." if m else "."))
         confirmar, cancelar = st.columns(2)
-        if confirmar.button(f"Registrar rendimiento ({signo}{formato.dinero(abs(diferencia))})", type="primary",
+        if confirmar.button(f"Registrar rendimiento ({signo}{formato.dinero_en(abs(diferencia), m)})", type="primary",
                             key=f"registrar_rendimiento_{cuenta.id}", width="stretch"):
             if ejecutar(lambda lib: portafolio.ajustar_a_valor_oficial(lib, cuenta.id, oficial, dia),
                         exito="Rendimiento registrado: tu cuenta ya cuadra con tu app"):
@@ -266,8 +273,8 @@ def _registros(cuenta: Cuenta, valores: list, plazos: list) -> None:
             "Símbolo": [v.simbolo for v in valores],
             "Títulos": [f"{v.titulos.normalize():f}" for v in valores],
             "Precio": [f"{v.precio:,.4f} {v.moneda}" for v in valores],
-            "Tipo de cambio": [f"{v.tipo_cambio.normalize():f}" if v.moneda != monedas.de(lib) else ""
-                               for v in valores],
+            "Tipo de cambio": [f"{v.tipo_cambio.normalize():f}" if v.moneda != divisas.moneda_de(lib, cuenta)
+                               else "" for v in valores],
             "Comisión": [f"{v.comision:,.2f}" if v.comision else "" for v in valores],
             "Notas": [v.notas for v in valores],
         })), hide_index=True, width="stretch")
@@ -295,7 +302,7 @@ def _formulario_valor(cuenta: Cuenta) -> None:
         titulos = izquierda.number_input("Títulos", min_value=0.0, value=None, step=1.0, format="%.6f",
                                          placeholder="Ej. 3 o 0.0025")
         precio = derecha.number_input("Precio por título", min_value=0.0, value=None, step=1.0, format="%.4f")
-        base = monedas.de(lib)
+        base = divisas.moneda_de(lib, cuenta)               # la de la cuenta: en una cuenta en dólares, USD
         moneda = izquierda.selectbox("Moneda del precio", list(dict.fromkeys([base, "USD", "EUR", *monedas.MONEDAS])),
                                      help="La moneda en la que cotiza el título (la que muestra Yahoo Finance).")
         tipo_cambio = derecha.number_input(f"Tipo de cambio ese día (solo si no es {base})", min_value=0.0,
@@ -324,7 +331,8 @@ def _formulario_plazo(cuenta: Cuenta) -> None:
     with st.form(f"plazo_{cuenta.id}", clear_on_submit=True, border=False):
         nombre = st.text_input("Nombre", placeholder="Ej. CETES 28 días, Pagaré BBVA 91 días", max_chars=60)
         izquierda, derecha = st.columns(2)
-        monto = izquierda.number_input(f"Monto invertido ({monedas.de(lib)})", min_value=0.0, value=None, step=100.0, format="%.2f")
+        monto = izquierda.number_input(f"Monto invertido ({divisas.moneda_de(lib, cuenta)})", min_value=0.0, value=None,
+                                       step=100.0, format="%.2f")
         tasa = derecha.number_input("Tasa anual (%)", min_value=0.0, max_value=100.0, value=None, step=0.1,
                                     format="%.2f", placeholder="Ej. 10.5")
         fecha = izquierda.date_input("Fecha de inicio", value=lib.hoy(), format="DD/MM/YYYY")

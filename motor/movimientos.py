@@ -1,7 +1,8 @@
 """Registro, consulta, edición y borrado de movimientos.
 
 El usuario captura un importe positivo y el motor decide los signos de cada
-partida según el tipo de movimiento.
+partida según el tipo de movimiento. En una cuenta en otra moneda, el importe va en
+esa moneda: el Libro lo pasa a la tuya al guardar (motor/divisas.py).
 """
 
 from __future__ import annotations
@@ -11,11 +12,12 @@ from dataclasses import dataclass, replace
 from datetime import date
 from decimal import Decimal
 
+from motor import divisas
 from motor.dinero import a_centavos, a_pesos
 from motor.errores import ErrorValidacion
 from motor.libro import Libro
 from motor.modelo import CATEGORIA_AJUSTE, Operacion, Partida, TipoCuenta, TipoOperacion
-from motor.transferencias import construir_pago_tarjeta, construir_transferencia, origen_y_destino
+from motor.transferencias import construir_con_llegada, construir_transferencia
 
 Monto = Decimal | int | float | str
 Reparto = Iterable[tuple[str, Monto]]
@@ -158,7 +160,7 @@ def actualizar_saldo(
     categoria_id: str | None = None,
     descripcion: str = "",
 ) -> Operacion | None:
-    """Hace que el saldo de la cuenta en ``fecha`` sea ``saldo_real``.
+    """Hace que el saldo de la cuenta en ``fecha`` sea ``saldo_real`` (en la moneda de la cuenta).
 
     - Sin categoría: registra un **ajuste** (no cuenta como ingreso ni gasto).
     - Con una categoría de ingreso (p. ej. «Intereses y rendimientos»):
@@ -185,7 +187,8 @@ def actualizar_saldo(
 
 @dataclass(frozen=True, slots=True)
 class Detalle:
-    """Vista simple de una operación, en los términos que captura el usuario."""
+    """Vista simple de una operación, en los términos que captura el usuario: los importes, en la moneda de la
+    cuenta (la de origen, en una transferencia)."""
 
     id: str
     fecha: date
@@ -197,18 +200,29 @@ class Detalle:
     reparto: tuple[tuple[str, Decimal], ...]
     descripcion: str
     notas: str
+    llega: Decimal | None = None  # transferencia entre cuentas de distinta moneda: lo que llegó, en la del destino
 
 
 def describir(op: Operacion) -> Detalle:
     if op.tipo in (TipoOperacion.TRANSFERENCIA, TipoOperacion.PAGO_TARJETA):
-        origen, destino = origen_y_destino(op)
-        monto = a_pesos(max(p.importe for p in op.partidas))
-        return Detalle(op.id, op.fecha, op.tipo, monto, origen, destino, None, (), op.descripcion, op.notas)
+        origen, destino = op.partidas_de_cuenta()
+        if origen.importe > 0:
+            origen, destino = destino, origen
+        sale, llega = -origen.en_su_moneda, destino.en_su_moneda
+        return Detalle(op.id, op.fecha, op.tipo, a_pesos(sale), origen.cuenta_id, destino.cuenta_id, None, (),
+                       op.descripcion, op.notas, a_pesos(llega) if llega != sale else None)
 
     (cuenta,) = op.partidas_de_cuenta()
     signo = _SIGNO_CUENTA.get(op.tipo)
-    reparto = tuple((p.categoria_id, a_pesos(abs(p.importe))) for p in op.partidas_de_categoria())
-    monto = a_pesos(abs(cuenta.importe) if signo else cuenta.importe)
+    if cuenta.original is None:
+        reparto = tuple((p.categoria_id, a_pesos(abs(p.importe))) for p in op.partidas_de_categoria())
+        propio = cuenta.importe
+    else:                                              # cuenta en otra moneda: el reparto, también en esa moneda
+        de_categoria = op.partidas_de_categoria()
+        partes = divisas.repartir(abs(cuenta.original), [abs(p.importe) for p in de_categoria])
+        reparto = tuple((p.categoria_id, a_pesos(parte)) for p, parte in zip(de_categoria, partes))
+        propio = cuenta.original
+    monto = a_pesos(abs(propio) if signo else propio)
     categoria_id = reparto[0][0] if len(reparto) == 1 else None
     return Detalle(op.id, op.fecha, op.tipo, monto, cuenta.cuenta_id, None, categoria_id, reparto, op.descripcion, op.notas)
 
@@ -234,10 +248,13 @@ def editar(
     descripcion: str | object = _SIN_CAMBIO,
     notas: str | object = _SIN_CAMBIO,
     msi: int | object = _SIN_CAMBIO,
+    llega: Monto | None | object = _SIN_CAMBIO,
 ) -> Operacion:
     """Edita un movimiento conservando su tipo (y sus meses sin intereses, salvo que se indique ``msi``).
 
-    En una transferencia, cambiar el importe cambia ambos lados a la vez.
+    En una transferencia, cambiar el importe cambia ambos lados a la vez; entre cuentas de distinta moneda,
+    ``llega`` es lo que llegó (``None``: calcularlo con el tipo de cambio). Los importes van en la moneda de la
+    cuenta; si cambia la fecha de un movimiento en otra moneda, se convierte con el tipo de cambio del nuevo día.
     Para cambiar el tipo (p. ej. de gasto a transferencia) usa :func:`reemplazar`.
     """
     op = libro.operacion(operacion_id)
@@ -252,7 +269,9 @@ def editar(
     estructura = (monto, cuenta_id, cuenta_destino_id, categoria_id)
 
     nuevo_msi = int(valor(msi, op.msi) or 0)
-    if all(v is _SIN_CAMBIO for v in estructura):
+    en_otra_moneda = any(p.original is not None for p in op.partidas)
+    if all(v is _SIN_CAMBIO for v in estructura) and llega is _SIN_CAMBIO and not (
+            en_otra_moneda and nueva_fecha != op.fecha):
         nueva = replace(op, fecha=nueva_fecha, descripcion=nueva_descripcion, notas=nuevas_notas, msi=nuevo_msi)
         return libro.reemplazar_operacion(operacion_id, nueva)
 
@@ -262,13 +281,14 @@ def editar(
     if op.tipo in (TipoOperacion.TRANSFERENCIA, TipoOperacion.PAGO_TARJETA):
         if categoria_id is not _SIN_CAMBIO:
             raise ErrorValidacion("Una transferencia no tiene categoría.")
-        constructor = construir_pago_tarjeta if op.tipo is TipoOperacion.PAGO_TARJETA else construir_transferencia
-        nueva = constructor(
-            nueva_fecha, nueva_cuenta, valor(cuenta_destino_id, actual.cuenta_destino_id),
-            nuevo_monto, nueva_descripcion, nuevas_notas,
+        nuevo_destino = valor(cuenta_destino_id, actual.cuenta_destino_id)
+        mismas = (nueva_cuenta, nuevo_destino) == (actual.cuenta_id, actual.cuenta_destino_id)
+        nueva = construir_con_llegada(
+            libro, nueva_fecha, nueva_cuenta, nuevo_destino, nuevo_monto, nueva_descripcion, nuevas_notas,
+            llega=valor(llega, actual.llega if mismas and monto is _SIN_CAMBIO else None), tipo=op.tipo,
         )
     else:
-        if cuenta_destino_id is not _SIN_CAMBIO:
+        if cuenta_destino_id is not _SIN_CAMBIO or llega not in (_SIN_CAMBIO, None):
             raise ErrorValidacion("Este movimiento no tiene cuenta de destino.")
         if op.tipo in _SIGNO_CUENTA:
             if actual.categoria_id is None and (monto is not _SIN_CAMBIO or categoria_id is not _SIN_CAMBIO):
@@ -298,8 +318,9 @@ def duplicar(libro: Libro, operacion_id: str, fecha: date) -> Operacion:
     op = libro.operacion(operacion_id)
     if op.tipo is TipoOperacion.SALDO_INICIAL:
         raise ErrorValidacion("El saldo inicial no se puede repetir.")
-    return libro.agregar_operacion(replace(op, id="", fecha=fecha, secuencia=0, creado_en=None, modificado_en=None,
-                                              liquida=""))
+    nueva = op if fecha == op.fecha else divisas.sin_convertir(op)      # en otra moneda: al tipo de cambio de ese día
+    return libro.agregar_operacion(replace(nueva, id="", fecha=fecha, secuencia=0, creado_en=None, modificado_en=None,
+                                           liquida=""))
 
 
 def reemplazar(libro: Libro, operacion_id: str, nueva: Operacion) -> Operacion:
@@ -328,8 +349,15 @@ def a_transferencia(libro: Libro, operacion_id: str, otra_cuenta_id: str) -> Ope
     origen, destino = (cuenta.cuenta_id, otra.id) if cuenta.importe < 0 else (otra.id, cuenta.cuenta_id)
     tipo = (TipoOperacion.PAGO_TARJETA if libro.cuenta(destino).tipo is TipoCuenta.CREDITO
             and libro.cuenta(origen).tipo is not TipoCuenta.CREDITO else TipoOperacion.TRANSFERENCIA)
-    nueva = construir_transferencia(op.fecha, origen, destino, a_pesos(abs(cuenta.importe)), op.descripcion, op.notas,
-                                    tipo=tipo)
+    importe = a_pesos(abs(cuenta.en_su_moneda))
+    if origen == cuenta.cuenta_id or divisas.moneda_de(libro, origen) == divisas.moneda_de(libro, destino):
+        nueva = construir_transferencia(op.fecha, origen, destino, importe, op.descripcion, op.notas, tipo=tipo)
+    else:       # llegó a esta cuenta desde una de otra moneda: lo que salió de aquella, con lo que valía ese día
+        sale = abs(cuenta.importe)
+        if divisas.en_otra_moneda(libro, origen):
+            sale = divisas.desde_base(sale, divisas.tipo_o_error(libro, divisas.moneda_de(libro, origen), op.fecha))
+        nueva = divisas.transferencia(libro, op.fecha, origen, destino, a_pesos(sale), importe, op.descripcion,
+                                      op.notas, tipo_operacion=tipo)
     return libro.reemplazar_operacion(op.id, nueva)
 
 

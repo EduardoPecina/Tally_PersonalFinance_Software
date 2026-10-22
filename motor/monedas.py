@@ -4,12 +4,14 @@
 Por dentro todo sigue en centavos (``int``): la moneda solo cambia cómo se ve, no los importes. Por eso conviene
 elegirla al empezar; cambiarla después no convierte nada (no es un tipo de cambio).
 
-En Inversiones, tu moneda es la base: un título en otra moneda se valúa con el tipo de cambio contra la tuya.
+Tu moneda es la base: TALLY suma todo en ella. Una cuenta puede estar en otra (dólares, euros…) y un título en otra;
+se convierten con el tipo de cambio contra la tuya (motor/divisas.py). Las monedas de Europa y los dólares de
+Estados Unidos y Canadá están aquí sobre todo para eso.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from decimal import ROUND_HALF_UP, Decimal
 
 from motor.errores import ErrorValidacion
@@ -28,6 +30,7 @@ class Moneda:
     decimal: str = "."
     despues: bool = False          # el símbolo va después del número: 1.234,56 €
     espacio: bool = False          # un espacio entre el símbolo y el número: $ 1.234,56
+    internacional: str = ""        # el símbolo cuando no es tu moneda, para no confundirla: US$, CA$, MX$, SEK…
 
     @property
     def etiqueta(self) -> str:
@@ -39,23 +42,40 @@ class Moneda:
 
 
 MONEDAS: dict[str, Moneda] = {m.codigo: m for m in (
-    Moneda("MXN", "Peso mexicano", "México", "$"),
-    Moneda("USD", "Dólar estadounidense", "Estados Unidos, Ecuador, El Salvador, Panamá, Puerto Rico", "$"),
+    Moneda("MXN", "Peso mexicano", "México", "$", internacional="MX$"),
+    Moneda("USD", "Dólar estadounidense", "Estados Unidos, Ecuador, El Salvador, Panamá, Puerto Rico", "$",
+           internacional="US$"),
     Moneda("EUR", "Euro", "España", "€", miles=".", decimal=",", despues=True, espacio=True),
-    Moneda("ARS", "Peso argentino", "Argentina", "$", miles=".", decimal=",", espacio=True),
-    Moneda("COP", "Peso colombiano", "Colombia", "$", decimales=0, miles=".", decimal=",", espacio=True),
-    Moneda("CLP", "Peso chileno", "Chile", "$", decimales=0, miles=".", decimal=","),
+    Moneda("ARS", "Peso argentino", "Argentina", "$", miles=".", decimal=",", espacio=True, internacional="ARS"),
+    Moneda("COP", "Peso colombiano", "Colombia", "$", decimales=0, miles=".", decimal=",", espacio=True,
+           internacional="COP"),
+    Moneda("CLP", "Peso chileno", "Chile", "$", decimales=0, miles=".", decimal=",", internacional="CLP"),
     Moneda("PEN", "Sol", "Perú", "S/", espacio=True),
-    Moneda("UYU", "Peso uruguayo", "Uruguay", "$", miles=".", decimal=",", espacio=True),
+    Moneda("UYU", "Peso uruguayo", "Uruguay", "$", miles=".", decimal=",", espacio=True, internacional="UYU"),
     Moneda("PYG", "Guaraní", "Paraguay", "₲", decimales=0, miles=".", decimal=",", espacio=True),
-    Moneda("BOB", "Boliviano", "Bolivia", "Bs", miles=".", decimal=",", espacio=True),
-    Moneda("VES", "Bolívar", "Venezuela", "Bs.", miles=".", decimal=",", espacio=True),
+    Moneda("BOB", "Boliviano", "Bolivia", "Bs", miles=".", decimal=",", espacio=True, internacional="BOB"),
+    Moneda("VES", "Bolívar", "Venezuela", "Bs.", miles=".", decimal=",", espacio=True, internacional="VES"),
     Moneda("GTQ", "Quetzal", "Guatemala", "Q"),
     Moneda("HNL", "Lempira", "Honduras", "L", espacio=True),
     Moneda("NIO", "Córdoba", "Nicaragua", "C$", espacio=True),
     Moneda("CRC", "Colón", "Costa Rica", "₡", miles=".", decimal=","),
     Moneda("DOP", "Peso dominicano", "República Dominicana", "RD$"),
-    Moneda("CUP", "Peso cubano", "Cuba", "$"),
+    Moneda("CUP", "Peso cubano", "Cuba", "$", internacional="CUP"),
+    # Para cuentas en otra moneda (motor/divisas.py): los dólares de Norteamérica y las monedas de Europa.
+    Moneda("CAD", "Dólar canadiense", "Canadá", "$", internacional="CA$"),
+    Moneda("GBP", "Libra esterlina", "Reino Unido", "£"),
+    Moneda("CHF", "Franco suizo", "Suiza", "CHF", miles="'", espacio=True),
+    Moneda("SEK", "Corona sueca", "Suecia", "kr", miles=" ", decimal=",", despues=True, espacio=True,
+           internacional="SEK"),
+    Moneda("NOK", "Corona noruega", "Noruega", "kr", miles=" ", decimal=",", despues=True, espacio=True,
+           internacional="NOK"),
+    Moneda("DKK", "Corona danesa", "Dinamarca", "kr.", miles=".", decimal=",", despues=True, espacio=True,
+           internacional="DKK"),
+    Moneda("PLN", "Zloty polaco", "Polonia", "zł", miles=" ", decimal=",", despues=True, espacio=True),
+    Moneda("CZK", "Corona checa", "Chequia", "Kč", miles=" ", decimal=",", despues=True, espacio=True),
+    Moneda("HUF", "Forinto húngaro", "Hungría", "Ft", decimales=0, miles=" ", decimal=",", despues=True,
+           espacio=True),
+    Moneda("RON", "Leu rumano", "Rumania", "lei", miles=".", decimal=",", despues=True, espacio=True),
 )}
 
 _activa: Moneda = MONEDAS[BASE]
@@ -102,6 +122,15 @@ def numero(importe: Decimal | int, m: Moneda | None = None, decimales: int | Non
     valor = abs(Decimal(importe)).quantize(Decimal(1).scaleb(-dec), rounding=ROUND_HALF_UP)
     texto = f"{valor:,.{dec}f}"
     return texto.replace(",", "\0").replace(".", m.decimal).replace("\0", m.miles)
+
+
+def en_moneda(importe: Decimal | int, codigo: str, decimales: int | None = None) -> str:
+    """Un importe en la moneda ``codigo`` (la de una cuenta). Si no es tu moneda, con su símbolo internacional para
+    no confundirla con la tuya: ``US$1,200.00`` junto a ``$20,640.00``."""
+    m = moneda(codigo)
+    if m.codigo != _activa.codigo and m.internacional:
+        m = replace(m, simbolo=m.internacional)
+    return formatear(importe, m, decimales)
 
 
 def formatear(importe: Decimal | int, m: Moneda | None = None, decimales: int | None = None) -> str:

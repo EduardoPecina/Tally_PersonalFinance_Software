@@ -15,6 +15,9 @@ La ganancia de un periodo es ``valor final − valor inicial − (lo que metiste
 en % usa el método de Dietz modificado: divide la ganancia entre el valor inicial más lo que metiste, pesado por
 el tiempo que estuvo invertido (meter dinero el último día no infla el %).
 
+Todo va en tu moneda, aunque haya cuentas en otra (motor/divisas.py): sus montos se convierten con el tipo de
+cambio de cada día, así que lo que valen tus dólares cuenta como ganancia o pérdida.
+
 Todo es aritmética en tu PC; este módulo no sale a internet.
 """
 
@@ -22,11 +25,11 @@ from __future__ import annotations
 
 from bisect import bisect_right
 from collections import defaultdict
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import date, timedelta
 from decimal import Decimal
 
-from motor import monedas, portafolio
+from motor import divisas, monedas, portafolio
 from motor.dinero import a_pesos
 from motor.libro import Libro
 from motor.modelo import TipoCuenta, TipoOperacion, TipoOperacionValor
@@ -160,7 +163,8 @@ def por_titulo(libro: Libro, cuenta_ids: list[str], desde: date, hasta: date, me
         if elegidos is not None and instrumento not in elegidos:
             continue
         if instrumento.tipo == TITULO:
-            operaciones = [v for c in cuenta_ids for v in libro.valores(c) if v.simbolo == instrumento.nombre]
+            operaciones = [_en_tu_moneda(libro, v) for c in cuenta_ids for v in libro.valores(c)
+                           if v.simbolo == instrumento.nombre]
             precio, real = _precios_en_pesos(instrumento.nombre, operaciones, mercado, tipos, base)
             valor, flujo = _serie_titulo(operaciones, fechas, precio)
             if not real:
@@ -168,22 +172,25 @@ def por_titulo(libro: Libro, cuenta_ids: list[str], desde: date, hasta: date, me
         else:
             plazos = [p for c in cuenta_ids for p in libro.plazos(c)
                       if p.nombre.casefold() == instrumento.nombre.casefold()]
-            valor, flujo = _serie_plazos(plazos, fechas)
+            valor, flujo = _serie_plazos(libro, plazos, fechas)
         valores[instrumento.etiqueta] = [v.quantize(CENTAVO) for v in valor]
         flujos[instrumento.etiqueta] = [f.quantize(CENTAVO) for f in flujo]
     return Evolucion(desde, hasta, fechas, valores, flujos, frozenset(estimados))
 
 
 def oficial(libro: Libro, cuenta_ids: list[str], desde: date, hasta: date) -> Evolucion:
-    """El saldo de cada cuenta en TALLY: transferencias = dinero que metiste o sacaste; rendimientos = ganancia."""
+    """El saldo de cada cuenta en TALLY: transferencias = dinero que metiste o sacaste; rendimientos = ganancia. Una
+    cuenta en otra moneda vale cada día su saldo por el tipo de cambio de ese día."""
     fechas = _dias(desde - timedelta(days=1), hasta)
     indice = {d: i for i, d in enumerate(fechas)}
     valores: dict[str, list[Decimal]] = {}
     flujos: dict[str, list[Decimal]] = {}
     for cuenta_id in cuenta_ids:
+        moneda = libro.cuenta(cuenta_id).moneda if divisas.en_otra_moneda(libro, cuenta_id) else ""
         antes, cambios, aportes = 0, defaultdict(int), defaultdict(int)
-        for op in libro.operaciones(hasta=hasta):
-            importe = sum(p.importe for p in op.partidas if p.cuenta_id == cuenta_id)
+        for op in libro.operaciones(hasta=hasta, cuenta_id=cuenta_id):
+            propias = [p for p in op.partidas if p.cuenta_id == cuenta_id]
+            importe = sum(p.en_su_moneda for p in propias)
             if not importe:
                 continue
             if op.fecha <= fechas[0]:
@@ -191,11 +198,12 @@ def oficial(libro: Libro, cuenta_ids: list[str], desde: date, hasta: date) -> Ev
                 continue
             cambios[indice[op.fecha]] += importe
             if op.tipo is not TipoOperacion.RENDIMIENTO:
-                aportes[indice[op.fecha]] += importe
+                aportes[indice[op.fecha]] += sum(p.importe for p in propias)     # en tu moneda, a lo que valía
         saldo, serie = antes, []
-        for i in range(len(fechas)):
+        for i, dia in enumerate(fechas):
             saldo += cambios.get(i, 0)
-            serie.append(a_pesos(saldo))
+            tipo = divisas.tipo(libro, moneda, dia) if moneda else None
+            serie.append(a_pesos(divisas.a_base(saldo, tipo) if tipo is not None else saldo))
         nombre = libro.cuenta(cuenta_id).nombre
         valores[nombre] = serie
         flujos[nombre] = [a_pesos(aportes.get(i, 0)) for i in range(len(fechas))]
@@ -282,18 +290,29 @@ def _resultado(valores: list[Decimal], flujos: list[Decimal], inicio: int, fin: 
 
 def _tipos_de_cambio(libro: Libro, cuenta_ids: list[str], mercado: Mercado, base: str
                      ) -> dict[str, list[tuple[date, Decimal]]]:
-    """Moneda → [(fecha, cuánto de tu moneda vale una unidad)]: el historial guardado más el tipo de cambio de cada
-    compra o venta."""
+    """Moneda → [(fecha, cuánto de tu moneda vale una unidad)]: el historial guardado, los tipos de cambio de tus
+    cuentas en otra moneda y el de cada compra o venta."""
     puntos: dict[str, dict[date, Decimal]] = defaultdict(dict)
     for c in cuenta_ids:
-        for v in libro.valores(c):
+        for v in map(lambda v: _en_tu_moneda(libro, v), libro.valores(c)):
             if v.moneda != base:
                 puntos[v.moneda][v.fecha] = v.tipo_cambio
     otras = set(puntos) | {m for m, _ in mercado.values() if m != base}
     for moneda in otras:
+        fechas, tipos = libro.serie_cambio(moneda)
+        puntos[moneda].update(zip(fechas, tipos))
         _, cierres = mercado.get(f"{moneda}{base}=X", (base, {}))
         puntos[moneda].update(cierres)
     return {m: sorted(p.items()) for m, p in puntos.items() if p}
+
+
+def _en_tu_moneda(libro: Libro, v):
+    """Una compra o venta de una cuenta en otra moneda, con su tipo de cambio contra tu moneda (el suyo es contra la
+    de la cuenta)."""
+    if not divisas.en_otra_moneda(libro, v.cuenta_id):
+        return v
+    tipo = divisas.tipo(libro, libro.cuenta(v.cuenta_id).moneda, v.fecha)
+    return replace(v, tipo_cambio=v.tipo_cambio * tipo) if tipo is not None else v
 
 
 def _en(puntos: list[tuple[date, Decimal]], dia: date) -> Decimal | None:
@@ -342,15 +361,21 @@ def _serie_titulo(operaciones, fechas: list[date], precio: list[tuple[date, Deci
     return valores, flujos
 
 
-def _serie_plazos(plazos, fechas: list[date]):
+def _serie_plazos(libro: Libro, plazos, fechas: list[date]):
     valores, flujos = [CERO] * len(fechas), [CERO] * len(fechas)
     for plazo in plazos:
         vence = plazo.fecha_inicio + timedelta(days=plazo.plazo_dias)
+        moneda = libro.cuenta(plazo.cuenta_id).moneda if divisas.en_otra_moneda(libro, plazo.cuenta_id) else ""
+
+        def en_tu_moneda(importe: Decimal, dia: date) -> Decimal:     # un plazo en una cuenta en dólares
+            tipo = divisas.tipo(libro, moneda, dia) if moneda else None
+            return importe if tipo is None else importe * tipo
+
         for i, dia in enumerate(fechas):
             if plazo.fecha_inicio <= dia < vence:
-                valores[i] += portafolio.valor_plazo(plazo, dia).valor_hoy
+                valores[i] += en_tu_moneda(portafolio.valor_plazo(plazo, dia).valor_hoy, dia)
             if i and dia == plazo.fecha_inicio:
-                flujos[i] += a_pesos(plazo.monto)
+                flujos[i] += en_tu_moneda(a_pesos(plazo.monto), dia)
             if i and dia == vence:
-                flujos[i] -= portafolio.valor_plazo(plazo, vence).valor_al_vencer
+                flujos[i] -= en_tu_moneda(portafolio.valor_plazo(plazo, vence).valor_al_vencer, dia)
     return valores, flujos
